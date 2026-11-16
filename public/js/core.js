@@ -1,127 +1,106 @@
-// The central AI core: a holographic, audio-reactive canvas rendering.
-// Idle: slow orbiting rings. Listening: calm cyan pulse. Thinking: fast scanning arcs. Speaking: radial spectrum driven by real audio.
-import { voice } from "./voice.js";
+// The 2D JARVIS core (canvas): used for small cores (HUD, sign-in) and as the fallback when WebGL isn't available.
+// Same states and the same real audio levels as the 3D core.
+import { core } from "./corestate.js";
 
-export function mountCore(canvas) {
+const HUES = { idle: [188, 214], listening: [186, 192], thinking: [196, 214], speaking: [186, 190], researching: [190, 206], executing: [200, 206], alarm: [186, 190], offline: [210, 212] };
+const SAT = { offline: 12, executing: 30 };
+
+export function mountCore(canvas, { animation = "full" } = {}) {
   const g = canvas.getContext("2d");
-  let w = 0, h = 0, dpr = 1, level = 0, target = 0, t0 = performance.now(), boundaryPulse = 0;
+  let w = 0, h = 0, level = 0, raf = 0, t0 = performance.now(), last = 0, prevLevel = 0, gone = false;
+  const reduced = animation === "reduced" || matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const still = animation === "off";
   const particles = Array.from({ length: 70 }, () => ({ a: Math.random() * Math.PI * 2, r: 0.55 + Math.random() * 0.45, s: (Math.random() - 0.5) * 0.004, z: Math.random() }));
   const ripples = [];
-  let last = 0, prevLevel = 0;
-
   function resize() {
     const r = canvas.getBoundingClientRect();
-    dpr = Math.min(devicePixelRatio || 1, 2);
+    const dpr = Math.min(devicePixelRatio || 1, 2);
     w = r.width; h = r.height;
-    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    canvas.width = Math.max(1, Math.round(w * dpr)); canvas.height = Math.max(1, Math.round(h * dpr));
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (still) frame(performance.now());
   }
-  new ResizeObserver(resize).observe(canvas);
+  const ro = new ResizeObserver(resize); ro.observe(canvas);
   resize();
 
-  const palette = { idle: [268, 285], listening: [180, 200], thinking: [290, 255], speaking: [268, 300] };
-
   function frame(now) {
-    const t = (now - t0) / 1000;
-    const st = voice.state;
-    const { level: real, freq } = voice.sample();
-    if (real != null) target = real;
-    else if (st === "speaking") { if (voice.boundary && now - voice.boundary < 90) boundaryPulse = 1; target = boundaryPulse ? 0.5 + Math.random() * 0.5 : target * 0.94; boundaryPulse = 0; if (Math.random() < 0.12) target = 0.25 + Math.random() * 0.6; }
-    else if (st === "listening") target = 0.12 + 0.06 * Math.sin(t * 2.6);
-    else if (st === "thinking") target = 0.1 + 0.08 * Math.sin(t * 5);
-    else target = 0.03 + 0.02 * Math.sin(t * 0.8);
+    if (gone) return;
+    const t = ((now - t0) / 1000) * (reduced ? 0.35 : 1);
+    const st = core.state;
+    const { level: real, freq } = core.levels();
+    let target = real;
+    if (target == null) target = st === "speaking" ? 0.25 + 0.2 * Math.abs(Math.sin(t * 7)) : st === "alarm" ? 0.6 + 0.4 * Math.max(0, Math.sin(t * 7)) : st === "listening" ? 0.12 + 0.06 * Math.sin(t * 2.6) : st === "thinking" ? 0.1 + 0.08 * Math.sin(t * 5) : 0.03 + 0.02 * Math.sin(t * 0.8);
     level += (target - level) * (target > level ? 0.45 : 0.1);
-    document.documentElement.style.setProperty("--level", level.toFixed(3));
-
+    if (w > 200) document.documentElement.style.setProperty("--level", level.toFixed(3));
     const cx = w / 2, cy = h / 2, R = Math.min(w, h) * 0.36;
-    const [h1, h2] = palette[st] || palette.idle;
+    const [h1, h2] = HUES[st] || HUES.idle, sat = SAT[st] ?? 95, dim = st === "offline" ? 0.45 : 1;
     g.clearRect(0, 0, w, h);
     g.globalCompositeOperation = "lighter";
-
-    // Glow core
     const coreR = R * (0.42 + level * 0.12);
-    let grad = g.createRadialGradient(cx, cy, 0, cx, cy, coreR * 2.2);
-    grad.addColorStop(0, `hsla(${h1}, 100%, 92%, ${0.85})`);
-    grad.addColorStop(0.18, `hsla(${h1}, 95%, 70%, ${0.55 + level * 0.3})`);
-    grad.addColorStop(0.5, `hsla(${h2}, 90%, 45%, ${0.18 + level * 0.2})`);
-    grad.addColorStop(1, "hsla(270, 90%, 20%, 0)");
+    const grad = g.createRadialGradient(cx, cy, 0, cx, cy, coreR * 2.2);
+    grad.addColorStop(0, `hsla(${h1}, ${sat}%, 94%, ${0.85 * dim})`);
+    grad.addColorStop(0.18, `hsla(${h1}, ${sat}%, 66%, ${(0.55 + level * 0.3) * dim})`);
+    grad.addColorStop(0.5, `hsla(${h2}, ${sat}%, 42%, ${(0.18 + level * 0.2) * dim})`);
+    grad.addColorStop(1, "hsla(210, 90%, 15%, 0)");
     g.fillStyle = grad; g.beginPath(); g.arc(cx, cy, coreR * 2.2, 0, Math.PI * 2); g.fill();
-
-    // Inner lattice sphere (rotating meridians)
     g.lineWidth = 0.7;
     for (let i = 0; i < 7; i++) {
       const rot = t * 0.35 + (i * Math.PI) / 7;
-      g.strokeStyle = `hsla(${h1}, 90%, 80%, ${0.12 + level * 0.15})`;
-      g.beginPath(); g.ellipse(cx, cy, coreR * Math.abs(Math.cos(rot)), coreR, 0, 0, Math.PI * 2); g.stroke();
+      g.strokeStyle = `hsla(${h1}, ${sat}%, 80%, ${(0.12 + level * 0.15) * dim})`;
+      g.beginPath(); g.ellipse(cx, cy, Math.max(0.1, coreR * Math.abs(Math.cos(rot))), coreR, 0, 0, Math.PI * 2); g.stroke();
     }
-    for (let i = 1; i < 4; i++) {
-      g.strokeStyle = `hsla(${h2}, 90%, 80%, 0.1)`;
-      g.beginPath(); g.ellipse(cx, cy, coreR, coreR * (i / 4), 0, 0, Math.PI * 2); g.stroke();
-    }
-
-    // Radial spectrum (real frequency data when available)
     const bars = 96;
     for (let i = 0; i < bars; i++) {
       const a = (i / bars) * Math.PI * 2 - Math.PI / 2;
       const bin = freq ? freq[Math.floor(2 + (i < bars / 2 ? i : bars - i) * 0.9)] / 255 : level * (0.4 + 0.6 * Math.abs(Math.sin(t * 6 + i * 0.7)));
-      const len = R * 0.04 + bin * R * (st === "speaking" ? 0.42 : 0.18);
+      const len = R * 0.04 + bin * R * (st === "speaking" || st === "listening" ? 0.42 : 0.18);
       const r0 = R * 0.78;
-      g.strokeStyle = `hsla(${h1 + i * 0.4}, 95%, ${65 + bin * 25}%, ${0.25 + bin * 0.7})`;
+      g.strokeStyle = `hsla(${h1 + i * 0.2}, ${sat}%, ${65 + bin * 25}%, ${(0.25 + bin * 0.7) * dim})`;
       g.lineWidth = 2;
       g.beginPath(); g.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0); g.lineTo(cx + Math.cos(a) * (r0 + len), cy + Math.sin(a) * (r0 + len)); g.stroke();
     }
-
-    // Segmented orbit rings
     const ring = (radius, segs, gap, speed, alpha, width, hue) => {
-      g.lineWidth = width; g.strokeStyle = `hsla(${hue}, 90%, 78%, ${alpha})`;
+      g.lineWidth = width; g.strokeStyle = `hsla(${hue}, ${sat}%, 76%, ${alpha * dim})`;
       const seg = (Math.PI * 2) / segs;
       for (let i = 0; i < segs; i++) { const s0 = t * speed + i * seg; g.beginPath(); g.arc(cx, cy, radius, s0, s0 + seg * (1 - gap)); g.stroke(); }
     };
-    const spin = st === "thinking" ? 3 : st === "listening" ? 1.4 : 1;
+    const spin = st === "thinking" || st === "researching" ? 3 : st === "executing" ? 2.2 : st === "alarm" ? 3.5 : st === "listening" ? 1.4 : st === "offline" ? 0.2 : 1;
     ring(R * 0.66, 3, 0.35, 0.5 * spin, 0.5, 1.6, h1);
     ring(R * 1.02, 24, 0.55, -0.12 * spin, 0.35, 1, h2);
     ring(R * 1.12, 2, 0.7, 0.25 * spin, 0.4, 2.2, h1);
     ring(R * 1.24, 60, 0.7, 0.05 * spin, 0.22, 3, h2);
-
-    // Scanning arcs while thinking
-    if (st === "thinking") {
-      for (let k = 0; k < 3; k++) {
-        const a = t * (2 + k) + k * 2;
-        g.strokeStyle = `hsla(${h1}, 100%, 85%, 0.55)`; g.lineWidth = 2.5;
-        g.beginPath(); g.arc(cx, cy, R * (0.88 + k * 0.08), a, a + 0.6); g.stroke();
-      }
-    }
-
-    // Tick marks (instrument bezel)
-    g.strokeStyle = "hsla(270, 60%, 85%, 0.18)"; g.lineWidth = 1;
-    for (let i = 0; i < 120; i++) {
-      const a = (i / 120) * Math.PI * 2;
-      const r1 = R * 1.36, r2 = r1 + (i % 10 === 0 ? 8 : 3);
-      g.beginPath(); g.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1); g.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2); g.stroke();
-    }
-
-    // Particles
+    if (st === "thinking" || st === "researching") for (let k = 0; k < 3; k++) { const a = t * (2 + k) + k * 2; g.strokeStyle = `hsla(${h1}, 100%, 85%, 0.55)`; g.lineWidth = 2.5; g.beginPath(); g.arc(cx, cy, R * (0.88 + k * 0.08), a, a + 0.6); g.stroke(); }
     for (const p of particles) {
       p.a += p.s * (1 + level * 3);
       const rr = R * (p.r + 0.6) * (1 + level * 0.08);
-      const x = cx + Math.cos(p.a) * rr, y = cy + Math.sin(p.a) * rr * (0.9 + p.z * 0.1);
-      g.fillStyle = `hsla(${h2}, 90%, 85%, ${0.15 + p.z * 0.4})`;
-      g.fillRect(x, y, 1.4, 1.4);
+      g.fillStyle = `hsla(${h2}, ${sat}%, 85%, ${(0.15 + p.z * 0.4) * dim})`;
+      g.fillRect(cx + Math.cos(p.a) * rr, cy + Math.sin(p.a) * rr * (0.9 + p.z * 0.1), 1.4, 1.4);
     }
-
-    // Ripples from speech onsets / listening pulse
-    if (st === "speaking" && level > 0.2 && level - prevLevel > 0.03 && now - last > 140) { ripples.push({ r: R * 0.5, a: 0.5 + level * 0.5, w: 1 + level * 2.5 }); last = now; }
-    if (st === "listening" && now - last > 1100) { ripples.push({ r: R * 0.5, a: 0.4, w: 1.2 }); last = now; }
+    if (!reduced) {
+      if (st === "speaking" && level > 0.2 && level - prevLevel > 0.03 && now - last > 140) { ripples.push({ r: R * 0.5, a: 0.5 + level * 0.5, w: 1 + level * 2.5 }); last = now; }
+      if ((st === "listening" && now - last > 1100) || (st === "alarm" && now - last > 600)) { ripples.push({ r: R * 0.5, a: 0.5, w: 1.4 }); last = now; }
+    }
     prevLevel = level;
     for (let i = ripples.length - 1; i >= 0; i--) {
-      const p = ripples[i]; p.r += st === "speaking" ? 2.4 + level * 2 : 1.2;
+      const p = ripples[i]; p.r += 1.4 + level * 2;
       const life = 1 - (p.r - R * 0.5) / (R * 1.1);
       if (life <= 0) { ripples.splice(i, 1); continue; }
       g.strokeStyle = `hsla(${h1}, 95%, 80%, ${p.a * life})`; g.lineWidth = p.w * life + 0.3;
       g.beginPath(); g.arc(cx, cy, p.r, 0, Math.PI * 2); g.stroke();
     }
     g.globalCompositeOperation = "source-over";
-    requestAnimationFrame(frame);
+    if (!still) raf = requestAnimationFrame(frame);
   }
-  requestAnimationFrame(frame);
+  const off = still ? core.on(() => frame(performance.now())) : () => {};
+  if (!still) raf = requestAnimationFrame(frame);
+  return { kind: "2d", destroy() { gone = true; cancelAnimationFrame(raf); ro.disconnect(); off(); } };
+}
+
+/** The best core this device can show: 3D with a 2D fallback. */
+export async function mountBestCore(canvas, opts = {}) {
+  if (opts.animation !== "off" && opts.quality !== "2d") {
+    try { const { mountCore3D } = await import("./core3d.js"); return await mountCore3D(canvas, opts); }
+    catch (e) { console.warn("[core] 3D unavailable, using 2D:", e.message); }
+  }
+  return mountCore(canvas, opts);
 }

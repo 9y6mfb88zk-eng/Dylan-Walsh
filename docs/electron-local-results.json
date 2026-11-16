@@ -47,7 +47,7 @@
   {
     "name": "speech understood by local Whisper (no OpenAI key, nothing uploaded)",
     "ok": true,
-    "detail": "heard: “this. What is the weather tomorrow?”"
+    "detail": "heard: “What is the weather tomorrow?”"
   },
   {
     "name": "cheap model by default (Claude Haiku 5.5)",
@@ -67,7 +67,7 @@
   {
     "name": "pairing QR now points at the private Tailscale address",
     "ok": true,
-    "detail": "https://dylans-laptop.tail1234.ts.net/pair#mRhDq2V2rn3Z-5t_xAhpuoHgjmi2ZlwG"
+    "detail": "https://dylans-laptop.tail1234.ts.net/pair#6GGXM2gihQ3kFkl30p7lo_XLxedHqrON"
   },
   {
     "name": "Exit JARVIS closes the app",

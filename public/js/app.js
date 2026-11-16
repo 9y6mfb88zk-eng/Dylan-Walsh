@@ -1,50 +1,91 @@
-// JARVIS client shell: auth, navigation, live sync, voice orchestration, desktop bridge, push.
-import { api, onAuthEvent, send, uid, outboxSize } from "./api.js";
+// JARVIS client shell: auth, 21-section navigation, system bar, command palette, notification centre, voice HUD,
+// alarm overlay, live sync and the Windows-app bridge.
+import { api, onAuthEvent, outboxSize } from "./api.js";
 import * as sync from "./sync.js";
 import { voice } from "./voice.js";
+import { core, STATE_LABEL } from "./corestate.js";
+import { conversation, cleanCommand } from "./conversation.js";
 import { mountCore } from "./core.js";
-import { $, $$, esc, toast, icon } from "./util.js";
+import { $, $$, esc, toast, icon, fmtWhen, debounce } from "./util.js";
 
 const desktop = window.jarvisDesktop || null;           // present only inside the Windows app
 const isPhone = () => matchMedia("(max-width: 900px)").matches;
 
+// ---------------------------------------------------------------- Sections (21)
+export const SECTIONS = [
+  { group: "Core" },
+  { id: "home", label: "Command Centre", icon: "home", load: () => import("./views/home.js") },
+  { id: "talk", label: "Conversation", icon: "talk", load: () => import("./views/talk.js") },
+  { id: "briefings", label: "Briefings", icon: "briefing", load: () => import("./views/briefings.js") },
+  { id: "notifications", label: "Notifications", icon: "notifications", load: () => import("./views/notifications.js") },
+  { group: "Time" },
+  { id: "alarms", label: "Alarm Centre", icon: "alarm", load: () => import("./views/alarms.js") },
+  { id: "calendar", label: "Calendar", icon: "calendar", load: () => import("./views/calendar.js") },
+  { id: "tasks", label: "Tasks & Reminders", icon: "tasks", load: () => import("./views/tasks.js") },
+  { id: "focus", label: "Focus", icon: "focus", load: () => import("./views/focus.js") },
+  { id: "goals", label: "Goals & Habits", icon: "goals", load: () => import("./views/goals.js") },
+  { group: "Work" },
+  { id: "projects", label: "Projects", icon: "projects", load: () => import("./views/projects.js") },
+  { id: "business", label: "Business", icon: "business", load: () => import("./views/business.js") },
+  { id: "money", label: "Money", icon: "money", load: () => import("./views/money.js") },
+  { group: "Knowledge" },
+  { id: "intelligence", label: "Intelligence", icon: "intel", load: () => import("./views/intelligence.js") },
+  { id: "documents", label: "Documents", icon: "documents", load: () => import("./views/documents.js") },
+  { id: "memory", label: "Memory & Notes", icon: "memory", load: () => import("./views/memory.js") },
+  { id: "world", label: "World", icon: "world", load: () => import("./views/world.js") },
+  { group: "Systems" },
+  { id: "automations", label: "Automations", icon: "automations", load: () => import("./views/automations.js") },
+  { id: "computer", label: "Computer", icon: "computer", load: () => import("./views/computer.js") },
+  { id: "smarthome", label: "Smart Home", icon: "smarthome", load: () => import("./views/smarthome.js") },
+  { id: "diagnostics", label: "Diagnostics", icon: "diagnostics", load: () => import("./views/diagnostics.js") },
+  { id: "settings", label: "Settings", icon: "settings", load: () => import("./views/settings.js") },
+];
+const VIEWS = Object.fromEntries(SECTIONS.filter((s) => s.id).map((s) => [s.id, s]));
+const ALIASES = { agenda: "calendar", finance: "money", intel: "intelligence", research: "intelligence", ideas: "intelligence", reminders: "tasks", more: "home" };
+const MOBILE = ["home", "talk", "alarms", "calendar"];
+let current = null, currentMod = null, cleanup = null, homeCache = null, diagCache = null;
+const badges = { notifications: 0, alarms: 0, talk: 0 };
+
 export const ctx = {
-  session: null, desktop, agent: null,
-  get settings() { return ctx.session?.settings; },
-  converse, listenOnce, go, refreshChips,
+  session: null, desktop, agent: null, isPhone, core, conversation, SECTIONS,
+  get settings() { return ctx.session?.settings || {}; },
+  go, toast, refreshBadges,
   caption: (t, user) => listeners.caption.forEach((fn) => fn(t, user)),
   onCaption: (fn) => { listeners.caption.add(fn); return () => listeners.caption.delete(fn); },
+  converse: (text, opts = {}) => conversation.ask(text, { speak: opts.speak ?? shouldSpeakTyped(), viaVoice: false }),
+  listen: () => startListening("tap"),
+  listenOnce: () => startListening("tap"),
+  home: () => homeCache,
+  diag: () => diagCache,
+  loc: () => null,
 };
 const listeners = { caption: new Set() };
+conversation.ctx = ctx;
+const shouldSpeakTyped = () => (ctx.settings.voice?.speakReplies ?? true) && (!!desktop || !!voice.cfg.tts);
 
-// ---------------------------------------------------------------- Views
-const VIEWS = {
-  home: { label: "Home", icon: "home", load: () => import("./views/home.js") },
-  talk: { label: "Talk", icon: "talk", load: () => import("./views/talk.js") },
-  agenda: { label: "Agenda", icon: "agenda", load: () => import("./views/agenda.js") },
-  money: { label: "Money", icon: "money", load: () => import("./views/money.js") },
-  projects: { label: "Projects", icon: "projects", load: () => import("./views/projects.js") },
-  intel: { label: "Research", icon: "intel", load: () => import("./views/intel.js") },
-  memory: { label: "Memory", icon: "memory", load: () => import("./views/memory.js") },
-  settings: { label: "Settings", icon: "settings", load: () => import("./views/settings.js") },
-  more: { label: "More", icon: "more", load: () => import("./views/more.js"), phoneOnly: true },
-};
-const DOCK = ["home", "talk", "agenda", "money", "more"];
-let current = null, currentMod = null, cleanup = null;
-
+// ---------------------------------------------------------------- Navigation
 function buildNav() {
-  $("#rail").innerHTML = Object.entries(VIEWS).filter(([, v]) => !v.phoneOnly).map(([k, v]) =>
-    `${k === "settings" ? '<div class="spacer"></div>' : ""}<button class="nav-btn" data-tab="${k}">${icon(v.icon)}<span>${v.label}</span></button>`).join("");
-  $("#dock").innerHTML = DOCK.map((k) => `<button data-tab="${k}">${icon(VIEWS[k].icon)}<span>${VIEWS[k].label}</span></button>`).join("");
+  $("#nav").innerHTML = SECTIONS.map((s) => s.group ? `<div class="nav-group">${s.group}</div>`
+    : `<button class="nav-btn" data-tab="${s.id}" title="${esc(s.label)}">${icon(s.icon)}<span>${esc(s.label)}</span><i class="badge" data-badge="${s.id}" hidden></i></button>`).join("");
+  $("#mobileNav").innerHTML = MOBILE.map((id) => `<button data-tab="${id}">${icon(VIEWS[id].icon)}<span>${id === "home" ? "Home" : id === "talk" ? "Talk" : VIEWS[id].label.split(" ")[0]}</span><i class="badge" data-badge="${id}" hidden></i></button>`).join("")
+    + `<button id="moreBtn">${icon("menu")}<span>More</span><i class="badge" data-badge="more" hidden></i></button>`;
   $$("[data-tab]").forEach((b) => b.addEventListener("click", () => go(b.dataset.tab)));
+  $("#moreBtn").addEventListener("click", () => openPalette({ sectionsOnly: true }));
+  $("#collapse").innerHTML = icon("sidebar");
+  $("#collapse").onclick = () => { $("#app").classList.toggle("collapsed"); try { localStorage.setItem("jarvis.sidebar", $("#app").classList.contains("collapsed") ? "collapsed" : "expanded"); } catch {} };
+  try { if (localStorage.getItem("jarvis.sidebar") === "collapsed") $("#app").classList.add("collapsed"); } catch {}
+  $("#version").textContent = `v${ctx.session?.version || desktop?.version || ""}`;
 }
 
-export async function go(tab, params = {}) {
+export async function go(tab, params = {}, { push = true } = {}) {
+  tab = ALIASES[tab] || tab;
   if (!VIEWS[tab]) tab = "home";
-  if (tab === "more" && !isPhone()) tab = "settings";
   cleanup?.(); cleanup = null;
   current = tab;
-  $$("[data-tab]").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab || (b.dataset.tab === "more" && ["projects", "intel", "memory", "settings"].includes(tab))));
+  $$("[data-tab]").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  $("#pageTitle").textContent = VIEWS[tab].label;
+  document.title = tab === "home" ? "JARVIS" : `${VIEWS[tab].label} · JARVIS`;
+  if (push) { const u = new URL(location.href); u.search = tab === "home" ? "" : `?tab=${tab}`; history.pushState({ tab }, "", u); }
   const root = $("#view");
   root.innerHTML = '<p class="empty">Loading…</p>';
   root.style.animation = "none"; void root.offsetWidth; root.style.animation = "";
@@ -53,133 +94,266 @@ export async function go(tab, params = {}) {
     if (current !== tab) return;
     cleanup = (await currentMod.render(root, ctx, params)) || null;
   } catch (e) {
-    root.innerHTML = `<p class="error">${esc(e.message)}</p>`;
+    console.error(e);
+    root.innerHTML = `<div class="panel"><p class="error">${esc(e.message)}</p></div>`;
   }
+  closeDrawer();
   updateHud();
   scrollTo({ top: 0 });
 }
+addEventListener("popstate", (e) => { if (!ctx.session?.signedIn) return; const t = e.state?.tab || new URL(location.href).searchParams.get("tab") || "home"; go(t, {}, { push: false }); });
 
-// ---------------------------------------------------------------- Voice orchestration
-async function converse(text, { speak = true } = {}) {
-  text = String(text || "").trim();
-  if (!text) return;
-  voice.stop();
-  voice.setState("thinking");
-  ctx.caption(`“${text}”`, true);
+// ---------------------------------------------------------------- System bar
+function tickClock() {
+  const tz = ctx.settings.timezone || undefined;
+  const now = new Date();
+  const t = now.toLocaleTimeString("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+  $("#clockTime").innerHTML = `${t.slice(0, 5)}<i>:${t.slice(6, 8)}</i>`;
+  $("#clockDate").textContent = now.toLocaleDateString("en-GB", { timeZone: tz, weekday: "long", day: "numeric", month: "long" });
+}
+function renderSysbar() {
+  const h = homeCache, d = diagCache;
+  const w = h?.weather;
+  $("#locChip").innerHTML = `${icon("world")}<span>${esc((h?.location?.place || ctx.settings.home?.place || "").split(",")[0])}${w ? ` · ${w.current.temp}${w.unitTemp}` : ""}</span>`;
+  const ai = d?.checks?.find((c) => c.name === "ai");
+  const aiState = !ctx.session?.brain ? "off" : ai?.status || "unknown";
+  $("#aiChip").innerHTML = `<span class="dot ${aiState === "error" ? "bad" : aiState}"></span>AI ${aiState === "ok" ? "online" : aiState === "off" ? "not set up" : aiState === "error" ? "fault" : aiState === "warn" ? "degraded" : "standby"}`;
+  const online = sync.status.online;
+  const overall = !online ? "error" : d?.overall || "unknown";
+  const issues = d ? (d.counts.error || 0) + (d.counts.warn || 0) : 0;
+  $("#sysChip").innerHTML = `<span class="dot ${overall === "error" ? "bad" : overall}"></span>${!online ? `Offline${outboxSize() ? ` · ${outboxSize()} queued` : ""}` : !d ? "Checking…" : issues ? `${issues} to check` : "All systems"}`;
+  const mb = $("#muteBtn");
+  if (desktop && ctx.agent) { mb.hidden = false; mb.innerHTML = icon(ctx.agent.muted ? "micoff" : "mic"); mb.classList.toggle("on", !ctx.agent.muted && ctx.agent.wakeWord === "listening"); mb.title = ctx.agent.muted ? "Microphone muted — click to unmute" : `Mute microphone (${ctx.agent.wakeWord === "listening" ? "“Hey JARVIS” ready" : ctx.agent.wakeWord || "starting"})`; }
+}
+async function loadHomeCache() { try { homeCache = await api("/api/home"); renderSysbar(); return homeCache; } catch { return homeCache; } }
+async function loadDiag() { try { diagCache = await api("/api/diagnostics"); renderSysbar(); } catch {} }
+
+export async function refreshBadges() {
   try {
-    const r = await send("/api/chat", { text, clientId: uid() });
-    if (r.queued) { voice.setState("idle"); ctx.caption("You're offline, sir. I'll send that as soon as we're reconnected."); return; }
-    ctx.caption(r.reply);
-    if (speak) await voice.speak(r.reply); else voice.setState("idle");
-  } catch (e) {
-    voice.setState("idle");
-    ctx.caption(`Something went awry: ${e.message}`);
+    const n = await api("/api/notifications?limit=40");
+    badges.notifications = n.unread;
+    renderNotifList(n.items);
+  } catch {}
+  for (const [k, v] of Object.entries({ ...badges, more: badges.notifications + badges.alarms })) {
+    $$(`[data-badge="${k}"]`).forEach((b) => { b.hidden = !v; b.textContent = v > 99 ? "99+" : v; });
   }
-}
-async function listenOnce({ chime = false } = {}) {
-  voice.ensureAudio();
-  if (chime) voice.chime();
-  if (voice.state === "listening") { voice.stopListening(false); return; }
-  voice.stop();
-  desktop?.setSessionActive?.(true);          // pause wake-word detection while a session runs
-  try {
-    const text = await voice.listen({ onPartial: (t) => ctx.caption(t || "Listening…", true) });
-    if (text) await converse(text);
-    else { voice.setState("idle"); ctx.caption(""); }
-  } catch (e) {
-    voice.setState("idle"); toast(e.message);
-  } finally { desktop?.setSessionActive?.(false); }
+  const bell = $("#bellBtn");
+  bell.innerHTML = icon("notifications") + (badges.notifications ? `<i class="badge">${badges.notifications > 99 ? "99+" : badges.notifications}</i>` : "");
 }
 
-// Persistent HUD when talking from any screen other than Home.
-voice.onState((s) => { updateHud(); desktop?.voiceState?.(s); refreshChips(); });
+// ---------------------------------------------------------------- Notification centre
+function openDrawer() { $("#drawer").classList.add("open"); $("#drawer").setAttribute("aria-hidden", "false"); $("#scrim").hidden = false; refreshBadges(); }
+function closeDrawer() { $("#drawer").classList.remove("open"); $("#drawer").setAttribute("aria-hidden", "true"); $("#scrim").hidden = true; }
+function renderNotifList(items) {
+  const el = $("#notifList");
+  el.innerHTML = items.length ? items.map((n) => `<li class="notif ${n.read_at ? "" : "unread"}" data-id="${n.id}">
+    <div class="spread"><b>${esc(n.title)}</b><span class="pill">${esc(n.kind)}</span></div>
+    ${n.body ? `<div class="muted" style="font-size:13px">${esc(n.body)}</div>` : ""}
+    <div class="spread"><span class="faint" style="font-size:11.5px">${esc(fmtWhen(n.created_at))}${n.snooze_until ? ` · snoozed until ${esc(fmtWhen(n.snooze_until))}` : ""}</span>
+    <span class="acts">${n.url && n.url !== "/" ? '<button class="btn tiny" data-a="open">Open</button>' : ""}${n.read_at ? "" : '<button class="btn tiny ghost" data-a="read">Read</button>'}<button class="btn tiny ghost" data-a="snooze">Snooze</button><button class="btn tiny ghost" data-a="dismiss">Dismiss</button></span></div></li>`).join("")
+    : '<li class="empty">No notifications. All quiet, Sir.</li>';
+  el.querySelectorAll("[data-a]").forEach((b) => b.onclick = async () => {
+    const li = b.closest("[data-id]"), id = li.dataset.id, n = items.find((x) => String(x.id) === id);
+    if (b.dataset.a === "open") { await api(`/api/notifications/${id}/read`, { method: "POST" }); const u = new URL(n.url, location.origin); go(u.searchParams.get("tab") || "home", Object.fromEntries(u.searchParams)); }
+    if (b.dataset.a === "read") await api(`/api/notifications/${id}/read`, { method: "POST" });
+    if (b.dataset.a === "dismiss") await api(`/api/notifications/${id}/dismiss`, { method: "POST" });
+    if (b.dataset.a === "snooze") { await api(`/api/notifications/${id}/snooze`, { method: "POST", body: { minutes: 30 } }); toast("Snoozed for 30 minutes."); }
+    refreshBadges();
+  });
+}
+$("#bellBtn").addEventListener("click", () => ($("#drawer").classList.contains("open") ? closeDrawer() : openDrawer()));
+$("#drawerClose").addEventListener("click", closeDrawer);
+$("#scrim").addEventListener("click", closeDrawer);
+$("#readAll").addEventListener("click", async () => { await api("/api/notifications/read-all", { method: "POST" }); refreshBadges(); });
+$("#dismissAll").addEventListener("click", async () => { await api("/api/notifications/dismiss-all", { method: "POST" }); refreshBadges(); });
+$("#notifHistory").addEventListener("click", () => go("notifications"));
+
+// ---------------------------------------------------------------- Command palette (Ctrl+K)
+const ACTIONS = [
+  { label: "Morning briefing", icon: "briefing", run: () => go("briefings", { run: "morning" }) },
+  { label: "Set an alarm", icon: "alarm", run: () => go("alarms", { new: "1" }) },
+  { label: "Test the alarm", icon: "alarm", run: () => api("/api/alarms/test", { method: "POST", body: {} }).then(() => toast("Test alarm sent to your laptop.")) },
+  { label: "Start a 25-minute focus session", icon: "focus", run: () => api("/api/focus/start", { method: "POST", body: { minutes: 25 } }).then(() => go("focus")) },
+  { label: "Add a task", icon: "tasks", run: () => go("tasks", { new: "1" }) },
+  { label: "Record spending", icon: "money", run: () => go("money", { record: "1" }) },
+  { label: "New note", icon: "memory", run: () => go("memory", { note: "1" }) },
+  { label: "Run diagnostics", icon: "diagnostics", run: () => go("diagnostics") },
+  { label: "Talk to JARVIS", icon: "mic", run: () => startListening("palette") },
+  { label: "Stop speaking", icon: "stop", run: () => { conversation.interrupt(); conversation.endSession(); } },
+];
+let palItems = [], palSel = 0, palSectionsOnly = false;
+function openPalette({ sectionsOnly = false } = {}) {
+  palSectionsOnly = sectionsOnly;
+  $("#palInput").value = "";
+  drawPalette([]);
+  $("#palette").showModal();
+  $("#palInput").focus();
+}
+function drawPalette(remote) {
+  const q = $("#palInput").value.trim().toLowerCase();
+  const sec = SECTIONS.filter((s) => s.id && (!q || s.label.toLowerCase().includes(q))).map((s) => ({ label: s.label, icon: s.icon, k: "Section", run: () => go(s.id) }));
+  const acts = palSectionsOnly && !q ? [] : ACTIONS.filter((a) => !q || a.label.toLowerCase().includes(q)).map((a) => ({ ...a, k: "Action" }));
+  const found = remote.map((r) => ({ label: r.title, icon: { task: "tasks", note: "memory", project: "projects", client: "business", event: "calendar", memory: "memory", research: "intel", alarm: "alarm" }[r.type] || "search", k: r.sub, run: () => go(r.tab, { focus: r.id }) }));
+  palItems = [...(q ? found : []), ...sec, ...acts];
+  if (q.length > 1) palItems.push({ label: `Ask JARVIS: “${$("#palInput").value.trim()}”`, icon: "talk", k: "Enter", run: () => { go("home"); ctx.converse($("#palInput").value.trim()); } });
+  palSel = Math.min(palSel, Math.max(0, palItems.length - 1));
+  $("#palList").innerHTML = palItems.map((it, i) => `<li role="option" class="${i === palSel ? "sel" : ""}" data-i="${i}">${icon(it.icon)}<span>${esc(it.label)}</span><span class="k">${esc(it.k || "")}</span></li>`).join("") || '<li class="empty">Nothing found.</li>';
+  $$("#palList [data-i]").forEach((li) => li.onclick = () => runPal(Number(li.dataset.i)));
+}
+function runPal(i) { const it = palItems[i]; if (!it) return; $("#palette").close(); it.run(); }
+const searchRemote = debounce(async () => {
+  const q = $("#palInput").value.trim();
+  if (q.length < 2) return drawPalette([]);
+  try { drawPalette(await api(`/api/search?q=${encodeURIComponent(q)}`)); } catch { drawPalette([]); }
+}, 180);
+$("#palInput").addEventListener("input", () => { palSel = 0; drawPalette([]); searchRemote(); });
+$("#palInput").addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown") { e.preventDefault(); palSel = Math.min(palItems.length - 1, palSel + 1); drawPalette([]); searchRemote(); }
+  if (e.key === "ArrowUp") { e.preventDefault(); palSel = Math.max(0, palSel - 1); drawPalette([]); searchRemote(); }
+  if (e.key === "Enter") { e.preventDefault(); runPal(palSel); }
+});
+$("#searchBtn").addEventListener("click", () => openPalette());
+$("#searchBtn").innerHTML = icon("search");
+$("#gearBtn").innerHTML = icon("settings");
+$("#gearBtn").addEventListener("click", () => go("settings"));
+$("#sysChip").addEventListener("click", () => go("diagnostics"));
+$("#aiChip").addEventListener("click", () => go("diagnostics"));
+$("#muteBtn").addEventListener("click", () => desktop?.setMuted(!ctx.agent?.muted));
+addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); if (!$("#app").hidden) openPalette(); }
+  if (e.key === "Escape") { closeDrawer(); if (voice.state === "speaking") conversation.interrupt(); }
+});
+
+// ---------------------------------------------------------------- Voice: HUD + core state
+let hudCore = null;
+voice.onState((s) => { updateHud(); desktop?.voiceState?.(s); });
+core.on((s) => { updateHud(); document.documentElement.dataset.core = s; });
 function updateHud() {
   const hud = $("#hud");
-  const show = voice.state !== "idle" && current !== "home";
+  const show = (voice.state !== "idle" || core.state === "thinking" || core.state === "executing" || core.state === "researching") && current !== "home" && current !== "talk" && !$("#app").hidden;
   hud.hidden = !show;
-  $("#hudState").textContent = { listening: "Listening", thinking: "Thinking", speaking: "Speaking" }[voice.state] || "";
+  if (show && !hudCore) hudCore = mountCore($("#hudCore"), { animation: ctx.settings.appearance?.animation });
+  $("#hudState").textContent = STATE_LABEL[core.state] || "";
 }
 ctx.onCaption((t) => { $("#hudCaption").textContent = t || ""; });
-$("#hudStop").addEventListener("click", () => { voice.stop(); voice.stopListening(true); });
+$("#hudStop").addEventListener("click", () => { conversation.interrupt(); conversation.endSession(); });
 
-// ---------------------------------------------------------------- Status chips
-export function refreshChips() {
-  const chips = [];
-  chips.push(`<span class="chip"><span class="dot ${sync.status.online ? "ok" : "bad"}"></span>${sync.status.online ? "Online" : "Offline"}${outboxSize() ? ` · ${outboxSize()} queued` : ""}</span>`);
-  if (ctx.session && !ctx.session.brain) chips.push('<span class="chip"><span class="dot warn"></span>AI not configured</span>');
-  if (desktop && ctx.agent) {
-    const a = ctx.agent;
-    chips.push(`<button class="chip ${a.muted ? "muted-mic" : ""}" id="chipMic" title="Mute / unmute the microphone"><span class="dot ${a.muted ? "bad" : a.wakeWord === "listening" ? "live" : a.wakeWord === "error" ? "bad" : "warn"}"></span>${a.muted ? "Mic muted" : a.wakeWord === "listening" ? "Hey JARVIS ready" : a.wakeWord === "disabled" ? "Wake word off" : a.wakeWord === "error" ? "Mic problem" : "Starting mic…"}</button>`);
-  } else if (ctx.desktopOnline !== undefined) {
-    chips.push(`<span class="chip opt"><span class="dot ${ctx.desktopOnline ? "ok" : ""}"></span>Laptop ${ctx.desktopOnline ? "online" : "offline"}</span>`);
-  }
-  if (voice.state !== "idle") chips.push(`<span class="chip"><span class="dot live"></span>${voice.state}</span>`);
-  $("#chips").innerHTML = chips.join("");
-  $("#chipMic")?.addEventListener("click", () => desktop.setMuted(!ctx.agent.muted));
+async function startListening(source) {
+  voice.ensureAudio();
+  if (voice.state === "speaking" || conversation.session) { conversation.interrupt(); if (conversation.session) return; }
+  try { await conversation.startSession({ source }); } catch (e) { toast(e.message); }
 }
-sync.on("status", refreshChips);
+
+// ---------------------------------------------------------------- Alarm overlay (browsers/phones; the Windows app rings in its own window)
+let ringing = null, alarmAudio = null;
+function showAlarm(alarm, speech) {
+  if (desktop?.agentRingsAlarms) { core.set("alarm", true); return; }      // the Windows agent has its own full-screen alarm window
+  ringing = alarm;
+  core.set("alarm", true);
+  $("#alarmTime").textContent = new Date().toLocaleTimeString("en-GB", { timeZone: ctx.settings.timezone, hour: "2-digit", minute: "2-digit" });
+  $("#alarmLabel").textContent = alarm.label || "Alarm";
+  $("#alarmMsg").textContent = speech || alarm.message || "";
+  $("#alarmOverlay").hidden = false;
+  try {
+    alarmAudio = new Audio(String(alarm.sound || "chime").startsWith("custom:") ? `/api/alarms/sounds/${alarm.sound.slice(7)}/file` : `/sounds/${alarm.sound || "chime"}.wav`);
+    alarmAudio.loop = true; alarmAudio.volume = Math.min(1, (alarm.volume ?? 80) / 100);
+    alarmAudio.play().catch(() => toast("Tap Dismiss or Snooze — the browser blocked the alarm sound until you interact with the page."));
+  } catch {}
+  navigator.vibrate?.([400, 200, 400, 200, 800]);
+  if (speech) setTimeout(() => { if (ringing) voice.speakShort(speech); }, 2500);
+}
+function hideAlarm() { ringing = null; alarmAudio?.pause(); alarmAudio = null; $("#alarmOverlay").hidden = true; core.set("alarm", false); voice.stop(); }
+$("#alarmSnooze").addEventListener("click", async () => { const a = ringing; hideAlarm(); if (a?.id || a?.alarmId) await api(`/api/alarms/${a.id || a.alarmId}/snooze`, { method: "POST", body: {} }).catch(() => {}); });
+$("#alarmDismiss").addEventListener("click", async () => { const a = ringing; hideAlarm(); if (a?.id || a?.alarmId) await api(`/api/alarms/${a.id || a.alarmId}/dismiss`, { method: "POST" }).catch(() => {}); });
 
 // ---------------------------------------------------------------- Live events
-sync.on("changed", (m) => { currentMod?.refresh?.(m.entities, ctx); if (m.entities.includes("health")) loadDesktopPresence(); if (m.entities.includes("settings")) reloadSession(); });
-sync.on("reconnected", () => { currentMod?.refresh?.(["*"], ctx); loadDesktopPresence(); });
+sync.on("status", () => { core.set("offline", !sync.status.online); renderSysbar(); });
+sync.on("changed", (m) => {
+  currentMod?.refresh?.(m.entities, ctx);
+  if (m.entities.some((e) => ["notifications", "alarms"].includes(e))) refreshBadges();
+  if (m.entities.includes("settings")) reloadSession();
+  if (m.entities.includes("health")) loadDiag();
+});
+sync.on("reconnected", () => { currentMod?.refresh?.(["*"], ctx); refreshBadges(); loadDiag(); loadHomeCache(); });
 sync.on("message", (m) => currentMod?.onMessage?.(m.message, ctx));
-sync.on("pending", (m) => toast(`Waiting for your confirmation: ${m.action.summary}`, 5000));
+sync.on("pending", (m) => { toast(`Waiting for your confirmation: ${m.action.summary}`, 6000); refreshBadges(); });
 sync.on("notify", (m) => {
   const n = m.notification;
+  refreshBadges();
+  if (n.kind === "alarm") return;                       // alarms have their own full-screen treatment
   if (desktop) {
     desktop.notify(n.title, n.body || "");
-    if (n.kind === "reminder" && voice.state === "idle") voice.speak(n.speak || `${n.title}. ${n.body}`);   // the laptop says reminders aloud
+    const v = ctx.settings.voice || {};
+    const speakIt = n.speak && voice.state === "idle" && !conversation.session && (n.kind === "briefing" ? v.speakBriefings !== false : v.speakNotifications !== false);
+    if (speakIt && ["reminder", "briefing", "focus", "event", "automation", "habit"].includes(n.kind)) voice.speakShort(n.speak);
   } else if (document.visibilityState === "visible") toast(`${n.title}${n.body ? ` — ${n.body}` : ""}`, 6000);
 });
-// Allowlisted computer actions: the backend asks, the Windows app validates again and executes.
+sync.on("alarm.ringing", (m) => showAlarm(m.alarm, m.speech));
+sync.on("alarm.test", (m) => showAlarm({ ...m.alarm, label: "Test alarm" }, m.speech));
+sync.on("alarm.snoozed", (m) => { if (!ringing || (ringing.id || ringing.alarmId) === m.id) hideAlarm(); });
+sync.on("alarm.dismissed", (m) => { if (!ringing || (ringing.id || ringing.alarmId) === m.id || ringing.test) hideAlarm(); });
+// Allowlisted computer actions. Newer Windows apps run these in their background agent; older ones here.
 sync.on("computer.request", async (m) => {
-  if (!desktop) return sync.sendWs({ type: "computer.result", id: m.id, ok: false, error: "This device cannot run computer actions." });
+  if (desktop?.agentHandlesComputer) return;
+  if (!desktop) return;
   try { const result = await desktop.runAction(m.action, m.args); sync.sendWs({ type: "computer.result", id: m.id, ok: true, result }); }
   catch (e) { sync.sendWs({ type: "computer.result", id: m.id, ok: false, error: e.message }); }
 });
 
-async function loadDesktopPresence() {
-  if (desktop) return;
-  try { const h = await api("/api/health"); ctx.desktopOnline = h.desktops.some((d) => d.online); refreshChips(); } catch {}
-}
-
-// Remove the wake word (and fragments of it caught in the safety buffer) from the start of a command.
-export function cleanCommand(text) {
-  let t = String(text || "").trim();
-  t = t.replace(/^\W*(hey|hi|ok|okay)?\W*(jarvis|jervis|jarvi)\b[\s,.!?:-]*/i, "");
-  t = t.replace(/^\W*(jar|jarv|arvis|vis|this|is|davis|travis|harvis|service)[.,!?]\s+(?=\S)/i, "");
-  return t.trim();
+// ---------------------------------------------------------------- Dimensional UI: parallax background + tilting panels
+let raf = 0, lastPtr = null;
+addEventListener("pointermove", (e) => {
+  lastPtr = e;
+  if (raf || document.documentElement.classList.contains("reduce-motion")) return;
+  raf = requestAnimationFrame(() => {
+    raf = 0;
+    const x = (lastPtr.clientX / innerWidth - 0.5) * 2, y = (lastPtr.clientY / innerHeight - 0.5) * 2;
+    document.documentElement.style.setProperty("--px", (-x).toFixed(3));
+    document.documentElement.style.setProperty("--py", (-y).toFixed(3));
+    const t = lastPtr.target.closest?.(".tilt");
+    $$(".tilt[style*='--rx']").forEach((el) => { if (el !== t) { el.style.removeProperty("--rx"); el.style.removeProperty("--ry"); } });
+    if (t) { const r = t.getBoundingClientRect(); t.style.setProperty("--ry", (((lastPtr.clientX - r.left) / r.width - 0.5) * 5).toFixed(2)); t.style.setProperty("--rx", ((0.5 - (lastPtr.clientY - r.top) / r.height) * 5).toFixed(2)); }
+  });
+}, { passive: true });
+function applyAppearance() {
+  const a = ctx.settings.appearance || {};
+  document.documentElement.classList.toggle("reduce-motion", a.animation === "off" || a.animation === "reduced" || !!a.reduceMotion);
 }
 
 // ---------------------------------------------------------------- Desktop bridge
 function wireDesktop() {
   if (!desktop) return;
-  desktop.onStatus((s) => {
-    ctx.agent = s;
-    sync.sendWs({ type: "agent.status", status: s });
-    refreshChips();
-  });
+  desktop.onStatus((s) => { ctx.agent = s; sync.sendWs({ type: "agent.status", status: s }); renderSysbar(); });
+  // Wake word heard. If the laptop is already recording the command (it always is in newer versions), just show it.
   desktop.onWake((w) => {
     if (current !== "talk") go("home");
-    if (!w?.capture) return listenOnce({ chime: true });
-    // The laptop's always-on listener is already recording the command: just show it and wait.
-    voice.stop(); voice.chime(); voice.setState("listening"); ctx.caption("Listening…", true);
+    if (!w?.capture) return startListening("wake");
+    if (voice.state === "speaking" || conversation.session) conversation.interrupt();    // barge-in
+    voice.chime(); voice.setState("listening"); ctx.caption("Listening…", true);
   });
   desktop.onWakeAudio?.(async (wav) => {
-    if (!wav) { voice.setState("idle"); ctx.caption(""); desktop.voiceState?.("idle"); return; }
-    voice.setState("thinking"); ctx.caption("…");
+    if (!wav) { if (!conversation.session) { voice.setState("idle"); ctx.caption(""); } return; }
     try {
-      const { text } = await api("/api/transcribe", { method: "POST", raw: new Blob([wav], { type: "audio/wav" }), headers: { "content-type": "audio/wav" } });
-      const command = cleanCommand(text);
-      if (!command) { voice.setState("idle"); ctx.caption("Yes, sir?"); voice.speak("Yes, sir?"); return; }
-      await converse(command);
+      const command = await conversation.transcribe(wav);
+      if (!command) { ctx.caption(`Yes, ${ctx.settings.profile?.title || "Sir"}?`); if (!conversation.session) conversation.startSession({ source: "wake" }); return; }
+      if (conversation.session) conversation.inject(command);
+      else conversation.startSession({ source: "wake", first: command });
     } catch (e) { voice.setState("idle"); ctx.caption(e.message); toast(e.message, 6000); }
   });
-  desktop.onPushToTalk(() => listenOnce({ chime: true }));
+  desktop.onCaptureProgress?.(async (wav) => {
+    if (voice.state !== "listening" || partialBusy) return;
+    partialBusy = true;
+    try { const { text } = await api("/api/transcribe", { method: "POST", raw: new Blob([wav], { type: "audio/wav" }), headers: { "content-type": "audio/wav", "x-partial": "1" } }); const t = cleanCommand(text); if (t && voice.state === "listening") ctx.caption(t, true); } catch {}
+    partialBusy = false;
+  });
+  desktop.onLevel?.((l) => core.pushExternalLevel(l));
+  desktop.onPushToTalk(() => startListening("ptt"));
   desktop.onNavigate?.((tab) => go(tab));
-  sync.on("reconnected", () => desktop.getStatus().then((s) => { ctx.agent = s; sync.sendWs({ type: "agent.status", status: s }); refreshChips(); }));
+  desktop.onAlarm?.((a) => { core.set("alarm", !!a?.ringing); });
+  sync.on("reconnected", () => desktop.getStatus().then((s) => { ctx.agent = s; sync.sendWs({ type: "agent.status", status: s }); renderSysbar(); }));
   desktop.signedIn?.(true);
 }
+let partialBusy = false;
 
 // ---------------------------------------------------------------- Push (iPhone home-screen app, browsers)
 export async function ensurePushSubscription() {
@@ -190,11 +364,11 @@ export async function ensurePushSubscription() {
 }
 
 // ---------------------------------------------------------------- Auth screens
-let authMode = "login";
+let authMode = "login", authCore = null;
 function showAuth(mode, { pairCode } = {}) {
   authMode = mode;
   $("#app").hidden = true; $("#hud").hidden = true; $("#auth").hidden = false;
-  const titles = { setup: ["Welcome, sir", "First-time setup. Enter the setup code shown in the server log, then choose a password."], login: ["JARVIS", "Sign in to continue."], pair: ["Pair this device", "Scan the QR code on a signed-in device, or type its pairing code."] };
+  const titles = { setup: ["Welcome, Sir", "First-time setup. Enter the setup code shown in the server log, then choose a password."], login: ["JARVIS", "Sign in to continue."], pair: ["Pair this device", "Scan the QR code on a signed-in device, or type its pairing code."] };
   $("#authTitle").textContent = titles[mode][0];
   $("#authLead").textContent = titles[mode][1];
   $("#codeField").hidden = mode !== "setup";
@@ -206,12 +380,11 @@ function showAuth(mode, { pairCode } = {}) {
   $("#authPairToggle").hidden = mode === "setup";
   $("#authPairToggle").textContent = mode === "pair" ? "Sign in with password instead" : "Pair with a code instead";
   if (desktop && !$("#authDevice").value) $("#authDevice").value = "Windows laptop";
-  // JARVIS running on this laptop: the app knows the setup code, so nothing to copy.
   if (mode === "setup" && desktop?.mode === "local") {
     desktop.setupCode().then((c) => { if (c) { $("#authCode").value = c; $("#codeField").hidden = true; $("#authLead").textContent = "JARVIS runs on this laptop. Choose a password to protect it (you'll use it if you ever sign in from a browser)."; } });
   }
   if (pairCode) $("#authPair").dataset.full = pairCode;
-  if (!$("#authCore").dataset.mounted) { mountCore($("#authCore")); $("#authCore").dataset.mounted = "1"; }
+  if (!authCore) authCore = mountCore($("#authCore"));
 }
 $("#authPairToggle").addEventListener("click", () => showAuth(authMode === "pair" ? "login" : "pair"));
 $("#authForm").addEventListener("submit", async (e) => {
@@ -236,26 +409,34 @@ $("#authForm").addEventListener("submit", async (e) => {
 onAuthEvent((ev) => { if (ev === "unauthorized") { sync.disconnect(); desktop?.signedIn?.(false); boot(); } });
 
 async function reloadSession() {
-  try { ctx.session = await api("/api/session"); voice.cfg = { tts: ctx.session.tts, stt: ctx.session.stt }; } catch {}
+  try {
+    ctx.session = await api("/api/session");
+    const v = ctx.session.settings?.voice || {};
+    voice.cfg = { tts: ctx.session.tts, stt: ctx.session.stt, rate: v.rate || 1, voiceName: v.voiceName || "" };
+    applyAppearance();
+  } catch {}
 }
 
 // ---------------------------------------------------------------- Boot
 async function start() {
   await reloadSession();
   if (!ctx.session?.signedIn) return boot();
+  authCore?.destroy?.(); authCore = null;
   $("#auth").hidden = true; $("#app").hidden = false;
   buildNav();
+  core.set("offline", false);
   sync.connect();
   wireDesktop();
-  refreshChips();
+  tickClock(); setInterval(tickClock, 1000);
   ensurePushSubscription().catch(() => {});
-  loadDesktopPresence();
+  loadHomeCache(); loadDiag(); refreshBadges();
+  setInterval(loadHomeCache, 10 * 60_000);
+  setInterval(loadDiag, 60_000);
   const u = new URL(location.href);
   const tab = u.searchParams.get("tab") || "home";
   const params = Object.fromEntries(u.searchParams);
-  history.replaceState(null, "", "/");
-  await go(tab, params);
-  if (u.searchParams.get("briefing")) currentMod?.briefingReady?.();
+  history.replaceState({ tab }, "", tab === "home" ? "/" : `/?tab=${ALIASES[tab] || tab}`);
+  await go(tab, params, { push: false });
 }
 
 async function boot() {
@@ -277,10 +458,9 @@ async function boot() {
 if ("serviceWorker" in navigator && !desktop) {
   navigator.serviceWorker.register("/sw.js").catch(() => {});
   navigator.serviceWorker.addEventListener("message", (e) => {
-    if (e.data?.type === "navigate") { const u = new URL(e.data.url); go(u.searchParams.get("tab") || "home", Object.fromEntries(u.searchParams)); if (u.searchParams.get("briefing")) currentMod?.briefingReady?.(); }
+    if (e.data?.type === "navigate") { const u = new URL(e.data.url); go(u.searchParams.get("tab") || "home", Object.fromEntries(u.searchParams)); }
   });
 }
-// Offline is an expected state, not an error: keep refresh failures quiet and show the chip instead.
-addEventListener("unhandledrejection", (e) => { if (e.reason?.status === 0) { e.preventDefault(); refreshChips(); } });
-addEventListener("resize", () => { if (current === "more" && !isPhone()) go("settings"); });
+// Offline is an expected state, not an error: keep refresh failures quiet and show the status instead.
+addEventListener("unhandledrejection", (e) => { if (e.reason?.status === 0) { e.preventDefault(); renderSysbar(); } });
 boot();

@@ -20,7 +20,8 @@ router.get("/api/session", (req, res) => {
     device: { id: req.auth.deviceId, name: req.auth.deviceName, kind: req.auth.kind },
     brain: brainReady(), model: config.model, tts: ttsProvider(), stt: !!config.openaiKey || localAsrAvailable(), sttLocal: localAsrAvailable(), webSearch: config.webSearch,
     vapidPublicKey, userName: config.userName, settings: getSettings(),
-    publicUrl: publicBase(req), env: config.env,
+    publicUrl: publicBase(req), env: config.env, hosting: config.hosting,
+    version: process.env.JARVIS_VERSION || process.env.npm_package_version || "",
   });
 });
 

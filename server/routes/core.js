@@ -51,9 +51,11 @@ router.post("/api/tts", rateLimit({ name: "tts", limit: 60, windowMs: 60_000 }),
   res.on("close", () => { if (!res.writableFinished) ac.abort(); });
   await streamTTS(text, res, ac.signal);
 }));
-router.post("/api/transcribe", rateLimit({ name: "stt", limit: 30, windowMs: 60_000 }), express.raw({ type: () => true, limit: "15mb" }), wrap(async (req, res) => {
+const sttLimit = rateLimit({ name: "stt", limit: 40, windowMs: 60_000 }), partialLimit = rateLimit({ name: "stt-partial", limit: 90, windowMs: 60_000 });
+router.post("/api/transcribe", (req, res, next) => (req.headers["x-partial"] === "1" ? partialLimit : sttLimit)(req, res, next), express.raw({ type: () => true, limit: "15mb" }), wrap(async (req, res) => {
   if (!req.body?.length) return res.status(400).json({ error: "No audio" });
-  res.json({ text: await transcribe(req.body, req.headers["content-type"] || "audio/webm") });
+  const partial = req.headers["x-partial"] === "1";
+  res.json({ text: await transcribe(req.body, req.headers["content-type"] || "audio/webm", { localOnly: partial }), partial });
 }));
 
 // ---------------- Weather & settings

@@ -9,7 +9,8 @@ const SKIP_DIRS = new Set(["node_modules", ".git", "AppData", "$Recycle.Bin", ".
 
 /**
  * deps: { paths: {downloads, documents, desktop, pictures, music, videos}, openPath(p), openExternal(url),
- *         launch(appKey, candidates), settings(): {bookmarks, computerEnabled}, log(entry) }
+ *         launch(appKey, candidates), settings(): {bookmarks, computerEnabled}, log(entry),
+ *         screenshot() → PNG Buffer, clipboard {readText, writeText}, windows {list, focus, minimize, close}, lock(), systemStatus() }
  */
 export function createActions(deps) {
   const recent = new Set();   // files returned by the last searches: the only ones open_file may open
@@ -81,6 +82,37 @@ export function createActions(deps) {
       top.forEach((h) => recent.add(path.resolve(h.path)));
       return { count: hits.length, results: top };
     },
+    async create_folder({ name, parent }) {
+      const dir = path.join(deps.paths[parent], name);
+      if (!inRoots(dir)) throw new Error("Folders can only be created inside your personal folders.");
+      const existed = fs.existsSync(dir);
+      if (!existed) fs.mkdirSync(dir, { recursive: false });      // never replaces or merges anything
+      return { path: dir, existed };
+    },
+    async screenshot() {
+      if (!deps.screenshot) throw new Error("Screenshots aren't available on this system.");
+      const png = await deps.screenshot();
+      const dir = path.join(deps.paths.pictures, "JARVIS Screenshots");
+      fs.mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, `Screenshot ${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.png`);
+      fs.writeFileSync(file, png, { flag: "wx" });
+      return { file, bytes: png.length };                       // stays on the laptop; never uploaded
+    },
+    async list_windows() {
+      if (!deps.windows) throw new Error("Window control isn't available on this system.");
+      return { windows: (await deps.windows.list()).slice(0, 40) };
+    },
+    async focus_window({ target }) { if (!deps.windows) throw new Error("Window control isn't available on this system."); return deps.windows.focus(target); },
+    async minimize_window({ target }) { if (!deps.windows) throw new Error("Window control isn't available on this system."); return deps.windows.minimize(target); },
+    async close_window({ target }) {
+      if (!deps.windows) throw new Error("Window control isn't available on this system.");
+      if (/jarvis/i.test(target)) throw new Error("JARVIS won't close itself that way. Use the tray icon → Exit JARVIS.");
+      return deps.windows.close(target);
+    },
+    async clipboard_read() { if (!deps.clipboard) throw new Error("Clipboard isn't available."); const text = deps.clipboard.readText() || ""; return { text: text.slice(0, 20_000), truncated: text.length > 20_000 }; },
+    async clipboard_write({ text }) { if (!deps.clipboard) throw new Error("Clipboard isn't available."); deps.clipboard.writeText(text); return { copied: text.length }; },
+    async lock_screen() { if (!deps.lock) throw new Error("Locking isn't available on this system."); await deps.lock(); return { locked: true }; },
+    async system_status() { return deps.systemStatus ? deps.systemStatus() : {}; },
     async open_file({ path: p }) {
       const real = path.resolve(p);
       if (!recent.has(real) && !inRoots(real)) throw new Error("JARVIS only opens files inside your personal folders.");

@@ -52,8 +52,10 @@ export async function streamTTS(text, res, signal) {
  * Speech to text. Prefers free local Whisper on this machine (WAV input); falls back to OpenAI Whisper.
  * Errors carry a plain-English reason the user can act on.
  */
-export async function transcribe(buffer, mimeType = "audio/webm") {
+export async function transcribe(buffer, mimeType = "audio/webm", { localOnly = false } = {}) {
   const isWav = /wav/.test(mimeType) || buffer.toString("ascii", 0, 4) === "RIFF";
+  // Live (partial) transcription runs only on the laptop's own Whisper: free, private, and never billed.
+  if (localOnly) return isWav && localAsrAvailable() ? transcribeLocal(buffer).catch(() => "") : "";
   if (isWav && localAsrAvailable()) {
     try { return await transcribeLocal(buffer); }
     catch (e) { if (!config.openaiKey) throw Object.assign(new Error(`Local speech recognition failed: ${e.message}`), { status: 500, expose: true }); }

@@ -1,8 +1,8 @@
 {
   "name": "jarvis",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "private": true,
-  "description": "JARVIS — personal AI operating system: cloud backend, iPhone PWA and Windows app with a local Hey JARVIS wake word.",
+  "description": "JARVIS — personal AI system: laptop-hosted server, Windows app with Hey JARVIS and continuous conversation, iPhone PWA.",
   "type": "module",
   "engines": {
     "node": ">=22.13"
@@ -16,7 +16,8 @@
     "test:electron": "cd desktop && xvfb-run -a node test/electron-e2e.js",
     "desktop": "cd desktop && npm start",
     "vapid": "node scripts/vapid.js",
-    "icons": "node scripts/icons.js"
+    "icons": "node scripts/icons.js",
+    "sounds": "node scripts/make-sounds.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",

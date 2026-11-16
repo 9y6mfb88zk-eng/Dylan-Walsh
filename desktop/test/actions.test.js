@@ -79,3 +79,35 @@ test("the desktop allowlist is identical to the server's", () => {
   const b = fs.readFileSync(new URL("../../server/shared/computer-actions.js", import.meta.url), "utf8");
   assert.equal(a, b);
 });
+
+test("new laptop actions: folders never overwrite, screenshots stay local, clipboard, windows", async () => {
+  const shots = [], clip = { v: "" };
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-home-"));
+  const paths = Object.fromEntries(["downloads", "documents", "desktop", "pictures", "music", "videos"].map((k) => { const p = path.join(home, k); fs.mkdirSync(p); return [k, p]; }));
+  const closed = [];
+  const run = createActions({
+    paths, settings: () => ({ computerEnabled: true, bookmarks: {} }), openPath: async () => "", openExternal: async () => {}, launch: async () => {},
+    screenshot: async () => { shots.push(1); return Buffer.from([0x89, 0x50, 0x4e, 0x47]); },
+    clipboard: { readText: () => clip.v, writeText: (t) => { clip.v = t; } },
+    windows: { list: async () => [{ app: "notepad", title: "notes.txt" }], focus: async (t) => ({ focused: t }), minimize: async () => ({ minimised: 1 }), close: async (t) => { closed.push(t); return { closeRequested: 1 }; } },
+    systemStatus: () => ({ battery: 80 }),
+  });
+  const a = await run("create_folder", { name: "Clients", parent: "documents" });
+  assert.equal(a.path, path.join(paths.documents, "Clients"));
+  assert.equal(a.existed, false);
+  fs.writeFileSync(path.join(a.path, "keep.txt"), "x");
+  const b = await run("create_folder", { name: "Clients", parent: "documents" });
+  assert.equal(b.existed, true);
+  assert.ok(fs.existsSync(path.join(a.path, "keep.txt")), "existing folder left untouched");
+  await assert.rejects(run("create_folder", { name: "../escape", parent: "documents" }), /can't contain/);
+  await assert.rejects(run("create_folder", { name: "x", parent: "windows" }), /Parent folder/);
+  const s = await run("screenshot", {});
+  assert.ok(s.file.startsWith(path.join(paths.pictures, "JARVIS Screenshots")) && fs.existsSync(s.file));
+  await run("clipboard_write", { text: "hello" });
+  assert.equal((await run("clipboard_read", {})).text, "hello");
+  assert.deepEqual((await run("list_windows", {})).windows, [{ app: "notepad", title: "notes.txt" }]);
+  await run("close_window", { target: "notepad" });
+  assert.deepEqual(closed, ["notepad"]);
+  await assert.rejects(run("close_window", { target: "JARVIS" }), /won't close itself/);
+  assert.equal((await run("system_status", {})).battery, 80);
+});

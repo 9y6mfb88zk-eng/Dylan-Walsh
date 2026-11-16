@@ -1,219 +1,235 @@
-# JARVIS 3.1
+# JARVIS 4.0
 
-JARVIS is your personal AI assistant, and it runs **entirely on your Windows laptop**. There is no cloud server and no hosting bill.
-- **On the laptop** it listens for **"Hey JARVIS"**, speaks back and sits in the system tray.
-- **On your iPhone** you can reach it privately through **Tailscale**, a free private-network app. Phone and laptop share conversations, tasks, reminders, projects, money and memory.
+JARVIS is your personal AI system. It runs **entirely on your Windows laptop**, with no cloud server and no hosting bill.
+- **On the laptop** it listens for **"Hey JARVIS"** (or just **"JARVIS"**), keeps the conversation going without the wake word, rings alarms even with the window closed, and sits in the system tray.
+- **On your iPhone** you reach it privately through **Tailscale**. Phone and laptop share one account: conversations, alarms, tasks, money, projects and memory.
 
-![Laptop](docs/screenshots/laptop-home.png)
+![Command Centre](docs/screenshots/laptop-home.png)
 
 ```
                 Windows laptop (JARVIS-Setup.exe)
- ┌──────────────────────────────────────────────────────────────┐
- │ JARVIS app (tray) ── local “Hey JARVIS” wake word (on-device) │
- │      │                                                        │
- │      └── JARVIS server (bundled, 127.0.0.1 only) ── SQLite     │──► Claude, Whisper, ElevenLabs,
- │               ▲                                               │    Monzo, Google, Open-Meteo
- └───────────────┼───────────────────────────────────────────────┘
-                 │ Tailscale (free, private, HTTPS)
+ ┌───────────────────────────────────────────────────────────────────┐
+ │ JARVIS app (tray)                                                  │
+ │  ├─ wake word + speech recognition (on the laptop)                 │
+ │  ├─ background agent: alarms, laptop actions (works window-closed) │
+ │  ├─ Windows Task Scheduler task: wakes the laptop for alarms       │
+ │  └─ JARVIS server (bundled, 127.0.0.1 only) ── SQLite + backups    │──► Claude, Open-Meteo, Monzo, Google,
+ └───────────────┬───────────────────────────────────────────────────┘    ElevenLabs, Home Assistant (all optional
+                 │ Tailscale (free, private, HTTPS)                         except Claude)
              iPhone home-screen app
 ```
 
-**What it costs:** the software is free.
-- **AI:** you pay only for usage. With the default Claude Haiku 5.5, everyday use is pennies a month; you can switch to Sonnet or Opus any time.
-- **Voice input:** free. Whisper runs on your laptop; an OpenAI key is optional and only used as a backup.
-- **ElevenLabs voice:** has a free tier. Without it JARVIS uses the Windows voice.
+**What it costs.** The software is free. You pay only for AI usage on your Anthropic account. With the default Claude Haiku 5.5, everyday use costs pennies a month.
+- **Speech recognition** is free and runs on the laptop.
+- **ElevenLabs voice** is optional and has a free tier.
+- **Weather** is free (Open-Meteo).
 
-## 1. Install on your laptop (about 5 minutes)
+## What's new in 4.0
 
-1. Download **`JARVIS-Setup-3.1.0.exe`** from **[Releases → "JARVIS for Windows (latest)"](https://github.com/9y6mfb88zk-eng/Dylan-Walsh/releases/tag/desktop-latest)** and run it.
-   - SmartScreen may warn because it isn't code-signed. Click **More info → Run anyway**.
-2. JARVIS opens a **keys** window:
-   - **Anthropic API key** (required). Get it at console.anthropic.com → API Keys → Create key, and add a little credit.
-   - **OpenAI API key:** optional. JARVIS understands speech on the laptop for free.
-   - **ElevenLabs** (optional) for the British butler voice.
-   - The AI model is **Claude Haiku 5.5 (cheapest)** by default.
-   - Keys are encrypted with your Windows account and kept on the laptop.
-3. **Choose a password.** No setup code is needed; the app handles it.
-4. Allow the microphone. If Windows blocks it, go to **Settings → Privacy & security → Microphone** and turn on "Let desktop apps access your microphone".
-5. Say **"JARVIS"** or **"Hey JARVIS"** followed by your request, e.g. "JARVIS, what's the weather tomorrow?". You can also press **Ctrl+Shift+Space**.
-
-Everyday use:
-- **Close to tray:** closing the window keeps JARVIS in the system tray.
-- **Starts with Windows:** on by default.
-- **Exit JARVIS** (tray menu) stops the app *and* its server completely.
-- **Change keys or model:** tray menu → **API keys & AI model…**.
-- **Your data:** stored in `%APPDATA%\JARVIS\data`, with daily backups in `%APPDATA%\JARVIS\data\backups`.
-
-## 2. Add your iPhone (free, private)
-
-1. **On the laptop:** install **Tailscale** from tailscale.com/download/windows and sign in (a free personal account).
-2. In JARVIS, go to **Settings → Devices & pairing → Turn on iPhone access**.
-   - The first time, Tailscale may ask you to approve HTTPS for your network. JARVIS shows the link: open it, click approve, then press **Try again**.
-3. **On the iPhone:** install **Tailscale** from the App Store, sign in with the **same account** and leave it connected.
-4. On the laptop, tap **Show pairing code** and scan the QR code with the iPhone camera.
-5. In Safari, tap **Share → Add to Home Screen**. Open JARVIS from the icon, then go to **Settings → Notifications → Turn on**.
-
-Only devices signed in to your Tailscale account can reach JARVIS. Nothing is opened to the public internet.
-
-What happens when the laptop is off:
-- The phone can't reach JARVIS while the laptop is off or asleep.
-- Reminders due in that time are sent as soon as the laptop is back on.
-- For reminders to reach your phone while the laptop is off, you'd need the optional cloud server (§11).
-
-## 3. Connect Monzo (read-only, optional)
-
-1. Sign in at **developers.monzo.com** and approve the login in the Monzo app.
-2. Go to **Clients → New OAuth Client** and set:
-   - **Name:** JARVIS
-   - **Redirect URL:** `http://localhost:47823/oauth/monzo/callback`
-   - **Confidential:** yes
-3. In JARVIS, go to tray menu → **API keys & AI model** and paste the Monzo **Client ID** and **Client secret**.
-4. Go to **Money → Connect Monzo**. Sign in on Monzo's own page; JARVIS never sees your password, PIN or card.
-5. **Approve "JARVIS" in the Monzo app.** Monzo requires this extra step. Then tap **Sync now**.
-
-You can pick which accounts JARVIS may use, and **Disconnect** revokes access and deletes the stored data.
-
-For an accurate "money left", add your bills, planned savings and debt repayments under **Money → Still to pay**. Mark each **confirmed** or **estimated**; JARVIS labels estimates as estimates.
-
-Two Monzo limits to know:
-- The developer API is for personal use with your own account, and Monzo can change it.
-- After the first 5 minutes of a connection, Monzo only returns the last 90 days of transactions.
-
-## 4. Google Calendar (optional)
-
-1. In console.cloud.google.com, create a project and enable the **Google Calendar API**.
-2. Under **OAuth consent screen**, choose External and add yourself as a test user.
-3. Under **Credentials**, create an OAuth client ID (Web application) with the redirect URI `http://localhost:47823/oauth/google/callback`.
-4. Paste the ID and secret in **API keys & AI model**.
-5. In JARVIS, go to **Agenda → Connect Google Calendar**. Without Google, JARVIS's own calendar still works.
-
-## 5. Credentials
-
-You enter all of these in the app's **keys** window (tray → API keys & AI model). The setup code and the encryption key for bank/calendar tokens are generated automatically.
-
-| Key | Needed for | Where to get it |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | **Required.** Conversation, tools, web research, briefings, ideas | console.anthropic.com → API Keys |
-| `OPENAI_API_KEY` | **Voice input in the Windows app and on iPhone** (Whisper), backup voice, semantic memory search | platform.openai.com → API keys |
-| `ELEVENLABS_API_KEY` | Natural British butler voice (recommended) | elevenlabs.io → Profile → API keys |
-| `MONZO_CLIENT_ID` / `MONZO_CLIENT_SECRET` | Monzo | developers.monzo.com (see §3) |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google Calendar (optional) | See §4 |
-
-You don't need keys for:
-- **Weather** (Open-Meteo).
-- **Push notifications.** The keys are generated automatically.
-- **The wake word.** The free openWakeWord `hey_jarvis` model ships inside the app.
-
-## 6. Configure the wake word
-
-All of this is on the laptop under **Settings → Voice & laptop**:
-- **Listen for "Hey JARVIS"** (on/off) and **Mute microphone**.
-- **Microphone:** pick a device. If it's unplugged, the service retries automatically and recovers.
-- **Detection threshold** (default 0.5): raise it if JARVIS wakes by mistake, lower it if he misses you.
-- **Consecutive frames** (default 2, about 160 ms above the threshold): this is the false-trigger protection, together with a 2.5-second cooldown.
-- **Speech sensitivity:** how loud you must be once a command has started.
-- **Live score meter:** say "Hey JARVIS" and watch it peak.
-
-**Two wake detectors, both on the laptop:**
-- The openWakeWord `hey_jarvis` model listens for "Hey JARVIS".
-- A sherpa-onnx keyword spotter listens for "JARVIS" on its own. You can switch this one off in Settings → Voice & laptop.
-
-**Your command is recorded by the same always-on listener** from the instant after the wake word, so saying it in one breath works. It is transcribed locally by Whisper base.en.
-
-**Privacy:** wake-word detection, speech recognition and the server all run on the laptop.
-- Uses the openWakeWord `hey_jarvis_v0.1` ONNX model, executed in the app via onnxruntime-web.
-- Idle audio never leaves the computer. After the wake phrase, only your command is recorded and sent for transcription.
-- While a conversation is running, the wake word pauses so JARVIS can't wake himself.
-
-## 7. What JARVIS can do
-
-| Ask | What happens |
+| Area | What you get |
 |---|---|
-| "Good morning, JARVIS" / "Brief me" | Briefing from real data: weather, calendar, tasks, reminders, money, projects (news optional). Also pushed daily at your chosen time |
-| "How much money have I got?" | Live Monzo balance, minus remaining commitments, with the working shown. Credit/overdraft limits never count |
-| "How much have I spent this month / on food?", "Can I afford £300?", "Show my subscriptions", "Compare with last month" | Finance engine over your real transactions. Transfers between your own accounts are excluded |
-| "What's the weather tomorrow?" | Open-Meteo forecast for your home location |
-| "Remind me to call my mum at six" | Server-side reminder. Arrives on your phone even with every app closed; the laptop also speaks it |
-| "Schedule a gym session tomorrow", "Move my dentist to Friday" | Creates events. Clashes and changes to existing events wait for your **yes** |
-| "I want to start a business" | Creates a project with milestones and first tasks; "continue working on my website business" picks it up |
-| "Research the best businesses to start in Larnaca" | Web search across several sources, with citations; longer reports run in the background |
-| "Open Chrome", "Open my downloads", "Open my JARVIS project", "Create a document", "Find my latest CV" | Allowlisted laptop actions. Name your own shortcuts in Settings |
-| "Remember that I prefer tea" | Saved to memory. Sensitive facts wait for approval; passwords, PINs and card numbers are refused |
+| **Design** | Black / navy / metallic-blue / electric-cyan HUD design with depth and parallax. The purple is gone. |
+| **3D core** | A Three.js JARVIS core, driven only by real events. It has eight states: idle, listening (moves with your real microphone level), thinking, speaking (moves with JARVIS's real voice audio), researching, executing, alarm and offline. A 2D fallback is used where 3D isn't available. Animation can be set to Full, Reduced or Off. |
+| **Command Centre** | Live clock, date, location, AI status, notifications and system status. A greeting ("Good morning, Sir."), a status line taken from real diagnostics, and panels for weather (UV, sunrise and sunset), schedule, alarms, tasks, notifications, priorities, projects, activity and diagnostics. Quick commands run real actions. |
+| **21 sections** | Collapsible sidebar, a **Ctrl+K** command palette (search plus actions) and a compact phone layout with a bottom bar. |
+| **Continuous conversation** | After one "Hey JARVIS", follow-up questions need no wake word. Replies are streamed and spoken sentence by sentence. Say "JARVIS" to interrupt. Local voice commands: "Stop listening", "End conversation", "Go back to standby", "Stay with me", "Listen again", "Stop speaking", "Repeat that". Live transcription shows your words as you speak. |
+| **Alarm Centre** | One-off, daily, weekday, weekend and custom-day alarms. Labels, 5 built-in sounds or your own uploads, volume, gradually louder, snooze, dismiss, history, countdown and a Test button. The full-screen alarm checks that sound is really playing and speaks "Good morning, Sir. It is 7 AM. Time to wake up." It works with the window closed, and Windows wakes the laptop from sleep for it. |
+| **Briefings & automations** | Morning (07:00), afternoon, evening review (21:00) and weekly review (Sunday 18:00), all built from real data. You can also create your own routines from safe steps. Every run is logged. |
+| **Diagnostics** | Live checks for AI (latency, errors), voice, microphone, database, backups, every integration, background services, CPU, RAM, storage and network. **Test** buttons make real requests, and there's a history and logs. Nothing shows green without evidence. |
+| **Everything else** | Calendar (day/week/month, recurring events, search); tasks with categories and progress; repeating, snoozable reminders; Intelligence (research folders, comparisons, saved sources, ideas); documents (PDF and text analysis on request); notes; Money (record spending by voice, savings goals, debts, reports, labelled projections); Business (pipeline, clients, proposals drafted by JARVIS, invoices, expenses); World (3D globe, local times, weather comparison); Focus timer; goals and habits with streaks; Smart Home (Home Assistant, allowlisted devices only); Computer control (folders, screenshots, windows, clipboard); notification centre with snooze and history. |
 
-## 8. Security
+## The 15 things to know
 
-- **Sign-in and devices.**
-  - One owner account (scrypt-hashed password) with a one-time setup code.
-  - Every device has its own session and can be signed out from **Settings → Devices**.
-  - Session tokens are random 256-bit values stored only as hashes. They rotate daily and expire after 30 idle days (180 days maximum).
-- **Request protection.** CSRF protection, rate limits (login lock-out after 8 failures in 15 minutes), a strict CSP and security headers, and an **audit log** of sign-ins, pairings, finance and calendar changes, laptop actions and memory exports.
-- **Bank and calendar access.**
-  - Tokens are encrypted with AES-256-GCM, stay on the server and are never sent to devices. Bank passwords are never seen or stored.
-  - OAuth uses single-use, expiring state values. Finance access is read-only.
+### 1. Install or update to 4.0
+Download **`JARVIS-Setup-4.0.0.exe`** from **[Releases → "JARVIS for Windows (latest)"](https://github.com/9y6mfb88zk-eng/Dylan-Walsh/releases/tag/desktop-latest)** and run it.
+- **Updating from 3.x:** your data, keys and settings are kept.
+  - Before the database is upgraded, JARVIS saves a full copy to `%APPDATA%\JARVIS\data\backups\pre-migration-007-….db`.
+- **SmartScreen or Smart App Control** may block the unsigned installer:
+  - SmartScreen: choose **More info → Run anyway**.
+  - Smart App Control: it has to be turned off in Windows Security → App & browser control.
+
+### 2. Launch JARVIS
+- **First run:** the **keys** window opens. Paste your **Anthropic API key** (console.anthropic.com → API Keys) and choose a password. No setup code is needed.
+- **After that:** JARVIS starts with Windows (in the tray), and the Command Centre opens when you click the tray icon.
+- **Microphone:** allow it when asked. If Windows blocks it, go to Settings → Privacy & security → Microphone → **Let desktop apps access your microphone**.
+
+### 3. Background services (what keeps running)
+- **Closing the window** keeps JARVIS running in the tray, along with:
+  - the server
+  - the wake word
+  - the background agent (alarms and laptop actions)
+  - the scheduler (reminders, routines, briefings, backups, diagnostics)
+- **Tray → Exit JARVIS** stops everything except the next-alarm wake-up task in Windows Task Scheduler (see §8).
+- **Start with Windows** is on by default (tray menu checkbox).
+
+### 4. "Hey JARVIS"
+- **Say it:** "Hey JARVIS" or just "JARVIS", then your request, in one breath. For example: "JARVIS, what's the weather tomorrow?"
+- **Without your voice:** **Ctrl+Shift+Space** (push-to-talk), or click the core.
+- **Mute:** **Ctrl+Shift+M**, or the mic button in the top bar or the tray.
+- **Where it runs:** wake-word detection and speech recognition run on the laptop. Idle audio never leaves it.
+- **Tuning:** Settings → **Wake word & laptop** (threshold, microphone, live meter).
+
+### 5. Continuous conversation
+After the first answer, JARVIS keeps listening for a follow-up. No wake word is needed.
+- **It returns to standby** after the silence timeout (default 8 s, set in Settings → **Voice & conversation**), or when you say "End conversation", "Stop listening", "Go back to standby" or "That's all".
+- **"Stay with me"** keeps listening for 2 minutes. **"Listen again"** restarts listening.
+- **"Repeat that"** replays the last answer. **"Stop speaking"** (or saying "JARVIS" while it talks) interrupts.
+- **When the microphone is on:** only after a wake word, a key press or a tap. It is never recording while idle. Turn continuous mode off in Settings → Voice & conversation if you prefer single questions.
+
+### 6. Talking and typing
+- **Typing:** use the box under the core, or the **Conversation** section (history follows you between laptop and phone).
+- **Ctrl+K** finds anything or runs an action. Anything else you type there is sent to JARVIS.
+- **Things JARVIS does for you:** "Wake me at seven on weekdays", "I just spent £12.50 on food", "What time is it in Tokyo?", "Start a 25-minute focus session", "Tick off reading", "Draft an invoice for Sea View Villas", "Take a note: …", "Run my evening review", "Take a screenshot".
+
+### 7. The Command Centre
+Everything on it is real and live.
+- **Status line:** says "All available systems are ready" only when diagnostics find no problems. Otherwise it says how many systems need attention.
+- **Quick commands:** each one performs a real action.
+
+### 8. Alarms: test them
+1. Open **Alarm Centre** and press **Test alarm**.
+   - A full-screen alarm appears and plays sound, and JARVIS checks that audio is actually playing.
+   - The Reliability panel then shows "Alarm audio verified".
+   - If it says it couldn't confirm sound, check the Windows volume and output device.
+2. Set a real alarm 2 minutes ahead, close the JARVIS window, and wait. It rings.
+3. **Sleep test:** set an alarm, put the laptop to sleep (not shut down) and leave it plugged in.
+   - JARVIS registers a Windows Task Scheduler task called **"JARVIS NextAlarm"** with "wake the computer to run this task".
+   - Windows must allow wake timers: Control Panel → Power Options → Change plan settings → Change advanced power settings → **Sleep → Allow wake timers → Enable**. This is on by default when plugged in; turn it on for battery too if you want.
+4. **Limits (honest):**
+   - No software alarm can ring if the laptop is **shut down, hibernating or out of battery**. Your phone still gets the alarm notification if it's connected.
+   - If JARVIS was off and an alarm is more than 15 minutes late, it is recorded as **missed** instead of ringing late.
+   - Unanswered alarms snooze themselves after 10 minutes.
+
+### 9. Briefings and automations
+- **Built-in routines:** **Automations** has Morning briefing (07:00 daily), Evening review (21:00) and Weekly review (Sunday 18:00). Switch them on or off, change the times, or **Run now**.
+- **Briefings:** read aloud and pushed to your phone. Change what goes into them under **Briefings**.
+- **Your own routines:** combine briefing, notify, speak, sync, backup and focus steps.
+
+### 10. Google Calendar (optional)
+1. In console.cloud.google.com, create a project and enable the **Google Calendar API**.
+2. Set the **OAuth consent screen** to External and add yourself as a test user.
+3. Under **Credentials**, create an OAuth client ID (Web application). Use the redirect URI shown in the keys window (`http://localhost:47823/oauth/google/callback`).
+4. Paste the ID and secret in tray → **API keys & AI model**.
+5. Go to **Calendar → Connect Google Calendar**. Sign-in opens in your normal browser; when it says "connected", go back to JARVIS.
+
+JARVIS always asks before changing or deleting anything in Google Calendar.
+
+### 11. Monzo (read-only, optional): finding your client ID and secret
+1. Go to **developers.monzo.com** and sign in with your Monzo email. Monzo emails you a login link: open it, then **approve the login in the Monzo app**.
+2. Click **Clients → New OAuth Client** and fill in:
+   - **Name:** JARVIS
+   - **Logo URL:** leave blank
+   - **Redirect URLs:** `http://localhost:47823/oauth/monzo/callback` (the keys window shows the exact address)
+   - **Description:** anything
+   - **Confidentiality:** **Confidential**
+3. Click **Submit**. The client page shows the **Client ID** (starts with `oauth2client_`) and the **Client secret**.
+4. In JARVIS, open tray → **API keys & AI model**, paste both into the Monzo fields and press **Save**.
+5. Go to **Money → Connect Monzo**.
+   1. Monzo's sign-in opens in your browser; enter your email and open the link Monzo sends.
+   2. The browser shows "Nearly there". **Approve JARVIS in the Monzo app.**
+   3. Back in JARVIS, press **Sync now**.
+
+**What JARVIS can and can't do with Monzo.** JARVIS never sees your password, PIN or card, and it can never move money.
+- **"Disconnect"** revokes access and deletes the stored bank data.
+- **Monzo's limit:** after the first 5 minutes of a connection, Monzo only returns the last 90 days of transactions.
+
+### 12. Smart home (optional, Home Assistant)
+1. In Home Assistant, go to your profile → Security → **Long-lived access tokens** → Create.
+2. Paste the token and the address (e.g. `http://homeassistant.local:8123`) in **API keys**.
+3. Go to **Smart Home → Find devices**, then allow only the devices JARVIS may control.
+
+Locks and doors ask for confirmation every time. JARVIS reads each device's state back from Home Assistant before saying it's done.
+
+### 13. Your iPhone
+1. **Laptop:** install **Tailscale** (tailscale.com) and sign in.
+2. In JARVIS, go to **Settings → Devices & pairing → Turn on iPhone access**.
+3. **iPhone:** install Tailscale and sign in with the **same account**.
+4. On the laptop press **Show pairing code** and scan the code with the iPhone camera.
+5. In Safari: **Share → Add to Home Screen**. Then go to **Settings → Notifications → Turn on**.
+
+The phone reaches JARVIS only while the laptop is on and awake.
+
+### 14. Diagnostics and troubleshooting
+- **Diagnostics** shows every check with when it ran. **Test** makes a real request; history and logs (errors, API calls, security audit) are at the bottom. On the laptop you can also test the **microphone** and **speakers**.
+- **Log files:** in `%APPDATA%\JARVIS\`: `jarvis.log` (app, wake word, alarms), `server.log` (server), `actions.log` (laptop actions).
+
+### 15. Backups, your data and updating
+- **Daily backups:** kept in `%APPDATA%\JARVIS\data\backups` (last 7).
+  - A copy is also made before every database upgrade and before any "Delete" in **Settings → Your data**.
+- **Export:** **Settings → Your data → Download my data** (JSON). It never contains passwords or bank tokens.
+- **Restore:**
+  1. Exit JARVIS.
+  2. Copy a backup over `%APPDATA%\JARVIS\data\jarvis.db`.
+  3. Start JARVIS again.
+- **Updating:** download the newest `JARVIS-Setup-x.y.z.exe` from Releases and run it over the top. Data, keys and settings are kept, and the database upgrades itself (with a backup first).
+
+## Credentials
+
+All are entered in the app's keys window (tray → API keys & AI model). They're encrypted with your Windows account (DPAPI). The setup code and the bank/calendar token encryption key are generated automatically.
+
+| Key | Needed for | Where |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | **Required.** Conversation, tools, research, briefings, documents | console.anthropic.com → API Keys |
+| `ELEVENLABS_API_KEY` | Optional British butler voice | elevenlabs.io → API keys |
+| `OPENAI_API_KEY` | Optional backup speech recognition / voice, semantic memory search | platform.openai.com |
+| `MONZO_CLIENT_ID` / `MONZO_CLIENT_SECRET` | Monzo (read-only) | §11 |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google Calendar | §10 |
+| `HOME_ASSISTANT_URL` / `HOME_ASSISTANT_TOKEN` | Smart home | §12 |
+
+## Security
+
+- **Your account and devices.**
+  - One owner account (scrypt-hashed password); every device has its own revocable session.
+  - Session tokens are stored only as hashes, rotated daily and expire after 30 idle days.
+  - CSRF protection, rate limits, a strict CSP and an audit log.
+- **Bank and calendar access.** Tokens are encrypted with AES-256-GCM and never sent to devices. Finance is read-only, and JARVIS can't make payments.
 - **Laptop actions.**
-  - Only a fixed allowlist of actions is possible, validated on the server and again on the laptop.
-  - There is no shell, no delete, no install, no settings changes and no running programs.
-  - Actions are logged to `%APPDATA%\JARVIS\actions.log` and to the audit log.
-- **Desktop app hardening.**
-  - Context isolation and sandboxing are on. The desktop bridge exists only for pages from your JARVIS server.
-  - Microphone permission is granted only to JARVIS's own windows, and Windows privacy settings are respected, never bypassed.
-- **Backups.** A daily SQLite backup goes to `/data/backups` and the last 7 are kept.
+  - Only a fixed allowlist is possible, validated on the server and again on the laptop.
+  - **No shell, no deleting files, no installing, no settings changes.** Closing a window asks first.
+  - Window control uses fixed scripts; the window name is passed as data, never as code.
+- **What leaves the laptop.**
+  - Documents go to the AI only when you press Analyse or ask a question.
+  - Screenshots stay on the laptop.
+  - Idle microphone audio is never sent anywhere.
+- **Smart home:** devices are allowlisted, and security devices need a "yes" every time.
 
-## 9. Tests and results
+## Tests
 
 ```bash
-npm ci && npm test                  # 32 tests: backend end-to-end against stand-in services, plus the finance engine
-cd desktop && npm ci && npm test    # 12 tests: real hey_jarvis model accuracy and false triggers, laptop action allowlist
-npm run test:ui                     # 14 checks: real UI in Chromium at laptop and iPhone size
-npm run test:electron               # 18 checks: the Windows app under Electron, with "Hey JARVIS" fed in as microphone audio
-cd desktop && npm run dist:linux-dir && xvfb-run -a node test/electron-local-e2e.js   # 14 checks: the PACKAGED app running its own server (laptop mode)
+npm ci && npm test                  # backend end-to-end against stand-in services, finance, alarms, automations, diagnostics, voice commands
+cd desktop && npm ci && npm test    # wake-word accuracy and false triggers, laptop-action allowlist incl. new actions
+npm run test:ui                     # real UI in Chromium: Command Centre, 3D core, all 21 sections, alarms, palette, iPhone pairing, offline sync
+cd desktop && xvfb-run -a node test/electron-e2e.js        # the Windows app under Electron: wake word → conversation → follow-up without wake word, alarm window with verified audio, agent with window closed
+cd desktop && npm run dist:linux-dir && xvfb-run -a node test/electron-local-e2e.js   # the packaged app running its own server
+node desktop/scripts/schtasks-smoke.js   # Windows only (CI): Task Scheduler accepts the alarm wake task
 ```
 
-Latest run: **all 90 checks pass.** CI runs the unit tests on Linux and Windows, then builds the installer.
+See `PROJECT_STATUS.md` for the latest results and what has and hasn't been verified on real hardware.
 
-Your 8 acceptance scenarios:
+## Limitations (honest list)
 
-| Scenario | Status |
-|---|---|
-| 1. Restart Windows → JARVIS starts in the tray and shows real status | Start-with-Windows (`--hidden`) starts the app, which starts its own server. This was tested under Electron on Linux with the packaged app; **not run on a real Windows reboot** |
-| 2. "Hey JARVIS" starts a voice session | **Passed end to end in Electron**: a recording of the phrase fed in as the microphone was detected locally, then the command was transcribed, answered, spoken and synced. **Not yet tried with your microphone and voice** |
-| 3. "What's the weather tomorrow?" | Passes against Open-Meteo's real response format. **Live Open-Meteo calls were blocked by this build environment's network**, so the first live call happens on your server |
-| 4. "How much money have I got?" | Full OAuth, pending in-app approval, sync and answer tested against a Monzo API stand-in. **Needs your Monzo client to run live** |
-| 5. "How much have I spent this month?" | Same as 4. Transfers to pots and declined payments are correctly excluded |
-| 6. "Remind me to call my mum at six" | Passes: persistent, delivered by web push and live to the laptop, and survives a server restart |
-| 7. Open JARVIS on iPhone and see the same account | QR pairing, shared conversation, tasks and reminders pass in the iPhone-sized browser test. Tailscale's `serve` step was tested against a stand-in for the Tailscale command, **not the real Tailscale app** |
-| 8. Disconnect and reconnect the internet | Passes: offline actions queue on the device and sync exactly once on reconnect. The app shows a reconnecting screen and retries with back-off |
-
-## 10. Limitations (honest list)
-
-- **Not yet tested with your real accounts, voice or microphone.** All external services were exercised against faithful stand-ins. No live Anthropic, Monzo, Google, ElevenLabs or OpenAI calls were made during development, because no keys were available.
-- **The Windows installer is built by GitHub Actions.** The same layout was packaged and tested here for Linux; the Windows build itself happens in CI.
-- **The phone needs the laptop on.** Because the server runs on the laptop, the phone can only reach JARVIS while the laptop is awake and Tailscale is connected on both. Reminders that fall due while it's asleep are sent when it wakes.
-- **Monzo developer API** access is Monzo's decision. It covers your own account; Monzo doesn't expose standing orders or direct debits, so upcoming bills come from what you enter plus detected repeating payments (labelled as estimates). **TrueLayer isn't implemented yet.**
-- **The iPhone can't listen for a wake word in the background** (an iOS rule). Push notifications on iPhone need iOS 16.4+ and the home-screen app.
-- **Voice input in the Windows app needs `OPENAI_API_KEY`.** Electron has no built-in speech recognition, so Whisper is used.
-- **Laptop actions run only while the Windows app is running and online.** Anything destructive (deleting, installing, purchases, emails, settings, payments) is deliberately not possible.
-- **Single-user design.** One owner account, one server instance (SQLite). That's right for a personal assistant, not for a shared service.
-
-## 11. Optional: run the server in the cloud instead
-
-If you'd rather have JARVIS reachable while the laptop is off, the same server deploys to Render. That costs about $7/month for the persistent disk. Click **[Deploy to Render](https://render.com/deploy?repo=https://github.com/9y6mfb88zk-eng/Dylan-Walsh)** and paste your keys. Then, in the Windows app, choose tray → Change server… and enter the Render address. The `Dockerfile` works on any host; mount `/data` and set the variables from `.env.example`.
+- **Not yet run with your accounts, voice or microphone.** Every external service was exercised against faithful stand-ins.
+- **Windows-specific behaviour is verified by CI, not on your laptop.** That covers: the installer build, the Task Scheduler wake task being accepted, always-on-top and window control. Real wake-from-sleep depends on your power settings, so **test it once (§8)**.
+- **No software alarm rings when the laptop is off, hibernating or flat.**
+- **The phone needs the laptop awake.** Alarm and reminder notifications reach the phone only while the laptop is online.
+- **Speech recognition:** live transcription uses the on-device model, so partial text appears in steps every 1.5 s rather than word by word. Barge-in uses the wake word ("JARVIS"), not any sound, so JARVIS's own voice can't interrupt itself.
+- **Monzo's API** is personal-use and limited to 90 days of history after the first 5 minutes.
+- **Single-user design.** One owner, one SQLite database.
 
 ## Project layout
 
 ```
-server/                 Backend (Node 22, Express, SQLite via node:sqlite, WebSocket)
-  migrations/           Numbered SQL migrations, applied automatically at start-up
-  security/             Auth, sessions, pairing, crypto, rate limits, audit
-  finance/              Monzo sync service, categorisation, calculation engine
-  integrations/         Monzo, Google Calendar, Open-Meteo clients
-  services/             Tasks/projects, conversations, memory, calendar, confirmations, health, laptop actions
-  brain.js              JARVIS persona, tools, research, briefing, ideas (Claude)
-public/                 iPhone/desktop web app (PWA): views, holographic core, voice, live sync
-desktop/                Windows app (Electron): tray, local server manager, keys window, Tailscale, wake word, actions
-  scripts/prepare-server.js  Bundles a checksum-verified Node 22 + the JARVIS server into the installer
-  models/               openWakeWord ONNX models (melspectrogram, embedding, hey_jarvis_v0.1)
-test/, desktop/test/    Automated tests
-render.yaml, Dockerfile Optional cloud deployment
-scripts/windows/        Run-from-source scripts for developers (setup.ps1, start-dev.ps1)
+server/            Backend (Node 22, Express 5, SQLite via node:sqlite, WebSocket hub)
+  migrations/      Numbered SQL migrations (automatic backup before upgrading an existing database)
+  services/        alarms, notify (notification centre), automations, briefings, diagnostics, money, records
+                   (notes, business, goals, habits, focus…), smarthome, calendar, work, memory, computer…
+  routes/          core, auth, finance, calendar, upgrade (all new sections + /api/chat/stream SSE)
+  brain.js         Persona, tools, streaming replies, research, briefings (Claude)
+public/            Web app / iPhone PWA
+  js/core3d.js     Three.js core (vendored in public/vendor/three) · js/core.js 2D fallback · js/corestate.js state machine
+  js/conversation.js  Streaming + continuous conversation · js/views/  the 21 sections
+  sounds/          Built-in alarm sounds (generated by scripts/make-sounds.js)
+desktop/           Windows app (Electron): tray, bundled server, wake word, agent.js (alarms, actions, Task Scheduler),
+                   alarm/ (full-screen alarm window), windows-control.js, keys window, Tailscale
+test/, desktop/test/  Automated tests
 ```

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>JARVIS</title>
-  <meta name="theme-color" content="#06030c">
+  <meta name="theme-color" content="#01040a">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -12,17 +12,18 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/icon-192.png">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="preload" href="/vendor/fonts/rajdhani-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/vendor/fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <div class="aurora" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i></div>
-  <div class="gridlines" aria-hidden="true"></div>
+  <div class="bg" aria-hidden="true"><div class="layer stars"></div><div class="layer rings"></div><div class="layer grid"></div><div class="layer scan"></div><div class="layer vignette"></div></div>
 
   <!-- Sign-in / setup / pairing -->
   <section id="auth" class="auth" hidden>
-    <div class="glass auth-card">
+    <div class="panel auth-card">
       <canvas class="auth-core" id="authCore" aria-hidden="true"></canvas>
-      <h1 id="authTitle">JARVIS</h1>
+      <h1 id="authTitle" class="glowtext">JARVIS</h1>
       <p class="muted" id="authLead">Secure sign-in</p>
       <form id="authForm" class="stack" autocomplete="on">
         <label class="field" id="codeField" hidden><span>Setup code</span><input id="authCode" autocomplete="one-time-code" placeholder="From the server log or JARVIS_SETUP_TOKEN"></label>
@@ -38,29 +39,63 @@
   </section>
 
   <div id="app" class="app" hidden>
-    <nav class="rail glass" id="rail" aria-label="Sections"></nav>
+    <aside class="sidebar" aria-label="JARVIS sections">
+      <div class="logo"><span class="logo-mark" aria-hidden="true"></span><span class="logo-text">J.A.R.V.I.S<small>Personal AI system</small></span></div>
+      <nav class="nav" id="nav"></nav>
+      <div class="side-foot"><button class="icon-btn" id="collapse" title="Collapse sidebar" aria-label="Collapse sidebar"></button><span class="txt" id="version"></span></div>
+    </aside>
 
-    <main class="main">
-      <header class="topbar">
-        <div class="brand"><span class="brand-mark"></span>J·A·R·V·I·S</div>
-        <div class="chips" id="chips"></div>
+    <div class="main">
+      <header class="sysbar" id="sysbar">
+        <span class="page" id="pageTitle"></span>
+        <div class="clock" id="clock" aria-live="off"><b id="clockTime">--:--</b><span id="clockDate"></span></div>
+        <div class="right">
+          <span class="sys-chip hide-m" id="locChip" title="Location and weather"></span>
+          <button class="sys-chip hide-m" id="aiChip" title="AI connection"></button>
+          <button class="sys-chip" id="sysChip" title="System status — open Diagnostics"></button>
+          <button class="icon-btn hide-m" id="searchBtn" title="Command palette (Ctrl+K)" aria-label="Command palette"></button>
+          <button class="icon-btn" id="muteBtn" title="Mute microphone" aria-label="Mute microphone" hidden></button>
+          <button class="icon-btn" id="bellBtn" title="Notifications" aria-label="Notifications"></button>
+          <button class="icon-btn hide-m" id="gearBtn" title="Settings" aria-label="Settings"></button>
+        </div>
       </header>
       <div id="banner" class="banner" hidden></div>
-      <div id="view" class="view"></div>
-    </main>
+      <main id="view" class="view"></main>
+    </div>
 
-    <nav class="dock glass" id="dock" aria-label="Sections"></nav>
+    <nav class="mobile-nav" id="mobileNav" aria-label="Sections"></nav>
   </div>
 
-  <!-- Persistent voice HUD (visible on every screen) -->
+  <!-- Notification centre -->
+  <div class="scrim" id="scrim" hidden></div>
+  <aside class="drawer" id="drawer" aria-label="Notification centre" aria-hidden="true">
+    <div class="spread"><h3 class="title" style="font-size:20px">Notifications</h3><button class="x" id="drawerClose" aria-label="Close">×</button></div>
+    <div class="row wrap"><button class="btn small ghost" id="readAll">Mark all read</button><button class="btn small ghost" id="dismissAll">Clear all</button><button class="btn small ghost" id="notifHistory">History</button></div>
+    <ul class="list" id="notifList"></ul>
+  </aside>
+
+  <!-- Command palette -->
+  <dialog id="palette" class="palette" aria-label="Command palette">
+    <input id="palInput" placeholder="Search JARVIS or type a command…" autocomplete="off" spellcheck="false">
+    <ul id="palList" role="listbox"></ul>
+    <div class="foot"><span><span class="kbd">↑↓</span> move</span><span><span class="kbd">Enter</span> open</span><span><span class="kbd">Esc</span> close</span><span style="margin-left:auto">Anything else is sent to JARVIS</span></div>
+  </dialog>
+
+  <!-- Voice HUD (other screens) -->
   <div id="hud" class="hud glass" hidden>
-    <canvas id="hudCore" class="hud-core"></canvas>
+    <canvas id="hudCore"></canvas>
     <div class="hud-text"><b id="hudState">Listening</b><span id="hudCaption"></span></div>
-    <button class="btn ghost small" id="hudStop">Stop</button>
+    <button class="btn small ghost" id="hudStop">Stop</button>
+  </div>
+
+  <!-- Alarm (browser / phone; the Windows app has its own full-screen alarm window) -->
+  <div id="alarmOverlay" class="alarm-overlay" hidden role="alertdialog" aria-label="Alarm">
+    <div><div class="t" id="alarmTime"></div><div class="l" id="alarmLabel"></div><p class="muted" id="alarmMsg"></p>
+      <div class="acts"><button class="btn" id="alarmSnooze">Snooze</button><button class="btn primary" id="alarmDismiss">Dismiss</button></div></div>
   </div>
 
   <div class="toast glass" id="toast" role="status"></div>
-  <dialog id="modal" class="modal glass"></dialog>
+  <dialog id="modal" class="modal"></dialog>
   <script type="module" src="/js/app.js"></script>
 </body>
 </html>

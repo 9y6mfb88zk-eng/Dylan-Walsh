@@ -47,10 +47,15 @@
     <fieldset><legend>Bank & calendar (optional, add later)</legend>
       <label><span>Monzo client ID <b class="set" id="s_MONZO_CLIENT_ID"></b></span><input name="MONZO_CLIENT_ID" autocomplete="off"></label>
       <label><span>Monzo client secret <b class="set" id="s_MONZO_CLIENT_SECRET"></b></span><input name="MONZO_CLIENT_SECRET" type="password" autocomplete="off">
-        <span class="hint">developers.monzo.com → New OAuth client (Confidential). Redirect URL: <code id="monzoRedirect">http://localhost:47823/oauth/monzo/callback</code></span></label>
+        <span class="hint">At <a data-url="https://developers.monzo.com/">developers.monzo.com</a> sign in (Monzo emails you a link, then approve in the Monzo app) → Clients → New OAuth Client: any name, Logo URL blank, Redirect URL <code id="monzoRedirect">http://localhost:47823/oauth/monzo/callback</code>, Confidentiality: Confidential → Submit. Copy the Client ID (starts oauth2client_) and the Client secret.</span></label>
       <label><span>Google client ID <b class="set" id="s_GOOGLE_CLIENT_ID"></b></span><input name="GOOGLE_CLIENT_ID" autocomplete="off"></label>
       <label><span>Google client secret <b class="set" id="s_GOOGLE_CLIENT_SECRET"></b></span><input name="GOOGLE_CLIENT_SECRET" type="password" autocomplete="off">
-        <span class="hint">Redirect URI: <code>http://localhost:47823/oauth/google/callback</code></span></label>
+        <span class="hint">Redirect URI: <code id="googleRedirect">http://localhost:47823/oauth/google/callback</code></span></label>
+    </fieldset>
+    <fieldset><legend>Smart home (optional)</legend>
+      <label><span>Home Assistant address <b class="set" id="s_HOME_ASSISTANT_URL"></b></span><input name="HOME_ASSISTANT_URL" placeholder="http://homeassistant.local:8123" autocomplete="off"></label>
+      <label><span>Home Assistant token <b class="set" id="s_HOME_ASSISTANT_TOKEN"></b></span><input name="HOME_ASSISTANT_TOKEN" type="password" autocomplete="off">
+        <span class="hint">Home Assistant → your profile → Security → Long-lived access tokens → Create token. JARVIS only controls devices you allow in Smart Home.</span></label>
     </fieldset>
     <p class="err" id="err"></p>
     <div class="row"><button type="button" class="ghost" id="later">Skip for now</button><button id="save">Save and start JARVIS</button></div>

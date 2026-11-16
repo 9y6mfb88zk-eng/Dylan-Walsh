@@ -1,6 +1,6 @@
 # JARVIS — Project status
 
-_Last updated: 2026-11-16 (Ultimate Upgrade & Redesign in progress)_
+_Last updated: 2026-11-16 — JARVIS 4.0 (Ultimate Upgrade & Redesign complete)_
 
 This file is the hand-over document for the "JARVIS — Ultimate Upgrade & Redesign" specification. It lists what is done,
 what remains, known problems, technical decisions and exactly how to continue.
@@ -37,36 +37,65 @@ what remains, known problems, technical decisions and exactly how to continue.
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Inspect app, plan, pre-migration backups | ✅ done |
-| 1b | Backend for every section: migration 007, services, routes, scheduler, AI tools, streaming chat (`/api/chat/stream`), 22 new tests | ✅ done |
-| 2 | Design system (navy/cyan HUD), shell, sidebar (21 sections), Ctrl+K palette, mobile nav | ⏳ in progress |
-| 3 | 3D JARVIS core (Three.js) with real states + dimensional effects | ⏳ |
-| 4 | Command centre homepage + live diagnostics | ⏳ |
-| 5 | Alarm engine + desktop background agent + alarm window + Task Scheduler wake | ⏳ |
-| 6 | Continuous conversation, streaming replies, barge-in, voice commands, live transcription | ⏳ |
-| 7 | AI tools + intelligence centre (folders, saved sources, documents) | ⏳ |
-| 8 | Computer control centre (folders, screenshots, running apps, clipboard, logs) | ⏳ |
-| 9 | Calendar (recurring, search), tasks (categories), reminders (recurring, snooze) | ⏳ |
-| 10 | Finance (manual transactions, goals, debts, reports) + Monzo connect flow fix | ⏳ |
-| 11 | Business & client management + project workspaces | ⏳ |
-| 12 | Memory (history, notes) | ⏳ |
-| 13 | World intelligence (3D globe, world clocks, weather comparisons) | ⏳ |
-| 14 | Automations engine + Home Assistant smart home | ⏳ |
-| 15 | Focus (Pomodoro), goals, habits | ⏳ |
-| 16 | Notification centre + mobile layouts | ⏳ |
-| 17 | Security + diagnostics completion | ⏳ |
-| 18–20 | Full test pass, fixes, installer build, docs | ⏳ |
+| 1b | Backend for every section: migration 007, services, routes, scheduler, AI tools, streaming chat (`/api/chat/stream`) | ✅ done |
+| 2 | Design system (navy/cyan HUD, vendored fonts), shell, collapsible sidebar (21 sections), Ctrl+K palette, mobile nav | ✅ done |
+| 3 | 3D JARVIS core (Three.js r170, bloom, 8 event-driven states, quality tiers, 2D fallback) + dimensional UI (parallax, tilt) | ✅ done |
+| 4 | Command Centre homepage + live diagnostics (real checks, test buttons, history, logs, laptop mic/speaker tests) | ✅ done |
+| 5 | Alarm engine + Windows background agent + full-screen alarm window (verified audio, gradual volume, speech) + Task Scheduler wake task | ✅ done (Task Scheduler verified in CI only) |
+| 6 | Continuous conversation, streamed replies spoken per sentence, barge-in, local voice commands, live (partial) transcription, Whisper silence filter | ✅ done |
+| 7 | AI tools for every section + Intelligence Centre (folders, comparisons, saved sources) + documents | ✅ done |
+| 8 | Computer control (create folder, screenshot, windows, clipboard, lock, system status, action log; close needs confirmation) | ✅ done |
+| 9 | Calendar (day/week/month, recurring, search, Google confirmation), tasks (categories, progress), reminders (repeat, snooze) | ✅ done |
+| 10 | Money (manual entries reconciled with the bank feed, goals, debts, reports, projections) + Monzo/Google connect fix | ✅ done |
+| 11 | Business (pipeline, clients, interactions, proposals with AI drafts, invoices, expenses) + project workspaces | ✅ done |
+| 12 | Memory + notes + conversation history | ✅ done |
+| 13 | World (3D globe, local times, weather comparison) | ✅ done |
+| 14 | Automations (built-in morning/evening/weekly + custom routines, run history) + Home Assistant (allowlist, read-back) | ✅ done |
+| 15 | Focus (Pomodoro), goals with milestones, habits with streaks | ✅ done |
+| 16 | Notification centre (read, snooze, dismiss, history, per-kind phone settings) + mobile layouts | ✅ done |
+| 17 | Settings (profile, personality, voice & conversation, appearance, alarms & focus, your data: export / delete with backup) | ✅ done |
+| 18–20 | Full test pass, fixes, installer build, docs | ✅ done (installer built by CI) |
+
+## Test results (latest run)
+
+| Suite | Result |
+|---|---|
+| `npm test` — backend end-to-end (stand-in services), finance engine, local Whisper, upgrade services, voice commands | 61 / 61 pass |
+| `cd desktop && npm test` — wake word accuracy/false triggers, laptop actions (incl. new ones) | 13 / 13 pass |
+| `npm run test:ui` — Chromium at laptop and iPhone size: setup, Command Centre, 3D core, streamed reply + speaking core, palette, all 21 sections, alarm dialog + ringing, notification centre, QR pairing, cross-device sync, mobile nav, offline queue | see `docs/screenshots/ui-results.json` |
+| `xvfb-run node desktop/test/electron-e2e.js` — Windows app under Electron with a recorded microphone | 28 / 28 pass |
+| `desktop/test/electron-local-e2e.js` — packaged app running its own server | see `docs/electron-local-results.json` |
+| `desktop/scripts/schtasks-smoke.js` — Windows Task Scheduler accepts the WakeToRun alarm task | runs in CI (Windows) |
+
+## Verified vs not yet verified on real hardware
+
+- **Verified here (Linux, Electron, stand-in services):**
+  - wake word → command → streamed reply → follow-up without a wake word
+  - alarm window opens with audio measured as playing (RMS)
+  - a real alarm rings on time with the main window closed; snooze is recorded
+  - laptop actions run through the background agent with the window closed
+  - every section renders without errors
+- **Verified by CI on Windows:** the installer build, the bundled server and models, and Task Scheduler accepting the wake task.
+- **Not verified on your laptop yet:**
+  - waking from real sleep (depends on "Allow wake timers")
+  - always-on-top over other apps
+  - window control (PowerShell) and screenshots on Windows
+  - your microphone and voice
+  - live Anthropic / Monzo / Google / ElevenLabs / Home Assistant calls
 
 ## How to continue (for a new session)
 
-1. `npm ci && (cd desktop && npm ci)` — then `npm test`, `cd desktop && npm test`.
-2. Read this file's phase table; continue with the first phase not marked ✅.
-3. UI check: `npm run test:ui`. Electron checks: `npm run test:electron`;
-   packaged laptop mode: `cd desktop && npm run dist:linux-dir && xvfb-run -a node test/electron-local-e2e.js`.
-4. Push to branch `claude/jarvis-prototype-spec-lpz2sl`; CI builds `JARVIS-Setup-<version>.exe` and publishes it to the
-   `desktop-latest` release.
+1. Run `npm ci && (cd desktop && npm ci)`, then `npm test` and `cd desktop && npm test`.
+2. Check the UI with `npm run test:ui` (about 6 minutes; WebGL uses SwiftShader).
+3. Run the Electron checks:
+   - `cd desktop && xvfb-run -a node test/electron-e2e.js`
+   - packaged laptop mode: `npm run dist:linux-dir && xvfb-run -a node test/electron-local-e2e.js`
+4. Regenerate assets if needed: `npm run sounds` (alarm sounds) and `npm run icons` (app icons).
+   - `desktop/scripts/sync-shared.js` copies the action allowlist and the alarm sounds into the desktop app; `npm run dist` runs it.
+5. Push to branch `claude/jarvis-prototype-spec-lpz2sl`. CI builds `JARVIS-Setup-<version>.exe` and publishes it to the `desktop-latest` release.
 
-## Known issues / open questions
+## Known issues / notes
 
-- Monzo/Google "Connect" opened the sign-in page inside the app window; Google blocks sign-in in embedded browsers and
-  Monzo's email link opens in the default browser. Fix in progress: open these in the default browser and show a
-  "connected — return to JARVIS" page.
+- **Monzo/Google sign-in now opens in the default browser.** The callback shows a clear result page when that browser isn't signed in to JARVIS, and a notification tells the app.
+- **Live transcription** in the Windows app re-transcribes the audio so far every 1.5 s with the on-device model. It never uses a paid cloud service.
+- **The Linux test runner has no window manager,** so "always on top" can only be asserted on Windows.

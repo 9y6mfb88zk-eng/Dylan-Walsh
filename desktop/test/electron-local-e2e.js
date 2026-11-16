@@ -68,7 +68,7 @@ try {
   check("cheap model by default (Claude Haiku 5.5)", mock.log.anthropic.some((r) => r.model === "claude-haiku-5-5") && mock.log.anthropic.every((r) => !r.fallbacks), mock.log.anthropic.at(-1)?.model);
 
   // iPhone access through Tailscale
-  await main.click('.rail [data-tab="settings"]');
+  await main.click('.sidebar [data-tab="settings"]');
   await main.waitForSelector("#tsOn", { timeout: 10000 });
   check("Settings shows Tailscale connected and offers iPhone access", true);
   await main.click("#tsOn");

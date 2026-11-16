@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 
-export const KEY_FIELDS = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "ELEVENLABS_API_KEY", "MONZO_CLIENT_ID", "MONZO_CLIENT_SECRET", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"];
+export const KEY_FIELDS = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "ELEVENLABS_API_KEY", "MONZO_CLIENT_ID", "MONZO_CLIENT_SECRET", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "HOME_ASSISTANT_URL", "HOME_ASSISTANT_TOKEN"];
 export const MODELS = {
   "claude-haiku-5-5": "Claude Haiku 5.5 — cheapest (pennies a month)",
   "claude-sonnet-5-5": "Claude Sonnet 5.5 — balanced",

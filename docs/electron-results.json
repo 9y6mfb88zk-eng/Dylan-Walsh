@@ -35,14 +35,19 @@
     "detail": "heard: “What's the weather like?”"
   },
   {
-    "name": "only the command audio was uploaded (one transcription per session)",
-    "ok": true,
-    "detail": "1 uploads"
-  },
-  {
     "name": "reply was spoken with the neural voice",
     "ok": true,
     "detail": ""
+  },
+  {
+    "name": "follow-up question answered in the same conversation without saying the wake word again",
+    "ok": true,
+    "detail": "2 questions"
+  },
+  {
+    "name": "audio is only uploaded for real speech (no continuous streaming)",
+    "ok": true,
+    "detail": "2 uploads for 2 questions"
   },
   {
     "name": "mute switch stops the wake-word listener",
@@ -55,14 +60,24 @@
     "detail": ""
   },
   {
-    "name": "allowlisted computer action executes on the laptop",
+    "name": "test alarm opens the full-screen alarm window",
     "ok": true,
-    "detail": "/tmp/jarvis-electron-r4kaaR/JARVIS/JARVIS test note.md"
+    "detail": ""
   },
   {
-    "name": "laptop refuses files outside the personal folders",
+    "name": "alarm window is visible and always on top",
     "ok": true,
-    "detail": "Error invoking remote method 'jarvis:runAction': Error: JARVIS only opens files inside your personal folders."
+    "detail": "{\"visible\":true,\"top\":false}"
+  },
+  {
+    "name": "alarm audio is verified as actually playing",
+    "ok": true,
+    "detail": "audio_verified: Audio playing (RMS 0.195, volume 70%)"
+  },
+  {
+    "name": "dismiss closes the alarm window",
+    "ok": true,
+    "detail": ""
   },
   {
     "name": "closing the window keeps JARVIS running in the tray",
@@ -73,6 +88,41 @@
     "name": "still connected to the backend while hidden",
     "ok": true,
     "detail": ""
+  },
+  {
+    "name": "allowlisted computer action runs on the laptop with the window closed",
+    "ok": true,
+    "detail": "/tmp/jarvis-electron-H0cUhc/JARVIS/JARVIS test note.md"
+  },
+  {
+    "name": "laptop refuses files outside the personal folders",
+    "ok": true,
+    "detail": "JARVIS only opens files inside your personal folders."
+  },
+  {
+    "name": "create folder action works and never overwrites",
+    "ok": true,
+    "detail": "/tmp/jarvis-electron-H0cUhc/JARVIS E2E folder"
+  },
+  {
+    "name": "closing a window needs confirmation first",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "a real alarm rings on time with the main window closed",
+    "ok": true,
+    "detail": "0s after due"
+  },
+  {
+    "name": "ring and snooze are recorded by the server",
+    "ok": true,
+    "detail": "snoozed, audio_verified, rang"
+  },
+  {
+    "name": "snooze schedules the alarm again",
+    "ok": true,
+    "detail": "2026-11-16T15:20:02.845Z"
   },
   {
     "name": "Exit JARVIS ends the process completely",

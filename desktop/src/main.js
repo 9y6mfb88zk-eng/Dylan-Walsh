@@ -1,7 +1,7 @@
 // JARVIS for Windows — main process.
 // Tray app with close-to-tray, start with Windows, an always-on local wake-word service (hidden audio window),
 // push-to-talk and mute shortcuts, crash/sleep recovery, and allowlisted computer actions.
-import { app, BrowserWindow, safeStorage, utilityProcess, Tray, Menu, ipcMain, globalShortcut, shell, nativeImage, Notification, powerMonitor, session, systemPreferences, dialog } from "electron";
+import { app, BrowserWindow, safeStorage, utilityProcess, Tray, Menu, ipcMain, globalShortcut, shell, nativeImage, Notification, powerMonitor, session, systemPreferences, dialog, powerSaveBlocker, screen, clipboard, desktopCapturer } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -10,6 +10,8 @@ import { createActions } from "./actions.js";
 import { ServerManager, locateServer } from "./server-manager.js";
 import { createSecrets } from "./secrets.js";
 import * as tailscale from "./tailscale.js";
+import { createAgent } from "./agent.js";
+import { windowsControl, lockScreen, systemStatus } from "./windows-control.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, "..");
@@ -79,7 +81,7 @@ function startKws() {
 // ---------------------------------------------------------------- Local server (JARVIS on this laptop)
 let server = null, secretsStore = null;   // secretsStore is created once Electron is ready (needs safeStorage)
 function serverEnv() {
-  return { ...secretsStore.env(), ...(settings.phoneAccess && settings.phoneUrl ? { PUBLIC_URL: settings.phoneUrl } : {}), JARVIS_TZ: Intl.DateTimeFormat().resolvedOptions().timeZone, JARVIS_ASR_DIR: modelDir("asr") };
+  return { ...secretsStore.env(), ...(settings.phoneAccess && settings.phoneUrl ? { PUBLIC_URL: settings.phoneUrl } : {}), JARVIS_TZ: Intl.DateTimeFormat().resolvedOptions().timeZone, JARVIS_ASR_DIR: modelDir("asr"), JARVIS_VERSION: VERSION };
 }
 async function startLocalServer() {
   const loc = locateServer({ appRoot: root, resourcesPath: process.resourcesPath, packaged: app.isPackaged });
@@ -95,20 +97,25 @@ async function startLocalServer() {
 // ---------------------------------------------------------------- State
 let win = null, audioWin = null, setupWin = null, tray = null, quitting = false;
 let status = { wakeWord: "starting", mic: "unknown", muted: false, lastScore: 0, lastWake: null, error: null, version: VERSION, computer: settings.computerEnabled };
-let sessionActive = false;
+let sessionActive = false, voiceState = "idle", serverVoice = { bargeIn: true };
+let listenReq = null;          // { id, resolve, timer } — a follow-up capture requested by the conversation
 const startHidden = process.argv.includes("--hidden");
 const log = (...a) => { try { fs.appendFileSync(path.join(app.getPath("userData"), "jarvis.log"), `${new Date().toISOString()} ${a.join(" ")}\n`); } catch {} if (process.env.JARVIS_DEBUG) console.log(...a); };
 
 // ---------------------------------------------------------------- Single instance
 if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
-app.on("second-instance", () => showMain());
+app.on("second-instance", (_e, argv) => {
+  // Task Scheduler starts "JARVIS.exe --alarm-check" for the next alarm; if JARVIS is already running, just check alarms.
+  if (argv.includes("--alarm-check")) { log("alarm check (second instance)"); agent?.check(); agent?.sync().catch(() => {}); return; }
+  showMain();
+});
 
 // ---------------------------------------------------------------- Windows
 function iconPath(name = "icon.png") { return path.join(root, "build", name); }
 
 function createMain() {
   win = new BrowserWindow({
-    width: 1400, height: 900, minWidth: 380, minHeight: 600, show: false, backgroundColor: "#06030c", title: "JARVIS",
+    width: 1400, height: 900, minWidth: 380, minHeight: 600, show: false, backgroundColor: "#01040a", title: "JARVIS",
     icon: iconPath(), autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(here, "preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false,
@@ -152,14 +159,22 @@ function createAudio() {
   audioWin.on("closed", () => { audioWin = null; });
 }
 function restartAudio() { try { audioWin?.destroy(); } catch {} createAudio(); }
+const bargeInAllowed = () => sessionActive && serverVoice.bargeIn !== false && voiceState !== "listening";
 function audioConfig() {
-  return { enabled: settings.wakeEnabled && !status.muted, paused: sessionActive || suspended, threshold: settings.threshold, minFrames: settings.minFrames, micDeviceId: settings.micDeviceId, vadThreshold: settings.vadThreshold };
+  // The microphone runs while the wake word is on, or while you're in a conversation (follow-ups), never when muted.
+  // Wake-word detection is off during a conversation, except to interrupt JARVIS while it's talking (barge-in).
+  const micOn = !status.muted && !suspended && (settings.wakeEnabled || sessionActive || !!listenReq);
+  return {
+    enabled: micOn, paused: false, micOn, muted: status.muted, wakeEnabled: settings.wakeEnabled,
+    detect: settings.wakeEnabled && !status.muted && (!sessionActive || bargeInAllowed()),
+    threshold: settings.threshold, minFrames: settings.minFrames, micDeviceId: settings.micDeviceId, vadThreshold: settings.vadThreshold,
+  };
 }
 function sendAudioConfig() { audioWin?.webContents.send("audio:config", audioConfig()); }
 
 function createSetup() {
   setupWin = new BrowserWindow({
-    width: 520, height: 560, resizable: false, backgroundColor: "#06030c", title: "Connect JARVIS", icon: iconPath(), autoHideMenuBar: true,
+    width: 520, height: 560, resizable: false, backgroundColor: "#01040a", title: "Connect JARVIS", icon: iconPath(), autoHideMenuBar: true,
     webPreferences: { preload: path.join(here, "setup-preload.cjs"), contextIsolation: true, sandbox: true },
   });
   setupWin.loadFile(path.join(here, "setup.html"), { query: { url: settings.serverUrl } });
@@ -170,7 +185,7 @@ let keysWin = null;
 function createKeys({ firstRun = false } = {}) {
   if (keysWin) return keysWin.show();
   keysWin = new BrowserWindow({
-    width: 560, height: 760, backgroundColor: "#06030c", title: "JARVIS — keys", icon: iconPath(), autoHideMenuBar: true,
+    width: 560, height: 760, backgroundColor: "#01040a", title: "JARVIS — keys", icon: iconPath(), autoHideMenuBar: true,
     webPreferences: { preload: path.join(here, "keys-preload.cjs"), contextIsolation: true, sandbox: true },
   });
   keysWin.loadFile(path.join(here, "keys.html"), { query: { firstRun: firstRun ? "1" : "" } });
@@ -192,7 +207,7 @@ function pushStatus() {
 function trayLabel() {
   if (status.muted) return "Microphone muted";
   if (!settings.wakeEnabled) return "Wake word off";
-  return { listening: "Listening for “Hey JARVIS”", starting: "Starting…", loading: "Loading wake-word model…", paused: "In conversation", asleep: "Paused (sleep)", error: `Problem: ${status.error || "microphone"}` }[status.wakeWord] || status.wakeWord;
+  return { listening: "Listening for “Hey JARVIS”", starting: "Starting…", loading: "Loading wake-word model…", paused: "In conversation", conversation: "In conversation", asleep: "Paused (sleep)", error: `Problem: ${status.error || "microphone"}` }[status.wakeWord] || status.wakeWord;
 }
 function updateTray() {
   if (!tray) return;
@@ -206,6 +221,7 @@ function updateTray() {
     { label: status.muted ? "Unmute microphone" : "Mute microphone", accelerator: settings.muteShortcut, click: () => setMuted(!status.muted) },
     { label: "Listen for “Hey JARVIS”", type: "checkbox", checked: settings.wakeEnabled, click: (m) => saveSettings({ wakeEnabled: m.checked }) },
     { label: "Start with Windows", type: "checkbox", checked: settings.autoStart, click: (m) => saveSettings({ autoStart: m.checked }) },
+    { label: agent?.status?.ringing ? "Dismiss the alarm" : `Alarms: ${agent?.status?.scheduled ?? 0} scheduled`, enabled: !!agent?.status?.ringing, click: () => agent?.dismiss() },
     ...(isLocal() ? [{ label: "API keys & AI model…", click: () => createKeys() }] : [{ label: "Change server…", click: () => { win?.hide(); createSetup(); } }]),
     { type: "separator" },
     { label: "Exit JARVIS", click: quitFully },
@@ -252,6 +268,7 @@ async function quitFully() {
   tray?.destroy(); tray = null;
   for (const w of BrowserWindow.getAllWindows()) w.destroy();
   try { kws?.kill(); } catch {}
+  agent?.stop();
   await server?.stop();          // the local JARVIS server stops with the app — nothing keeps running secretly
   server = null;
   app.quit();
@@ -264,7 +281,18 @@ const runAction = createActions({
   openPath: (p) => shell.openPath(p),
   openExternal: (u) => shell.openExternal(u),
   settings: () => settings,
-  log: (e) => { try { fs.appendFileSync(actionLog, JSON.stringify(e) + "\n"); } catch {} },
+  log: (e) => { try { fs.appendFileSync(actionLog, JSON.stringify({ ...e, args: e.action === "clipboard_write" ? { text: `(${e.args?.text?.length || 0} characters)` } : e.args }) + "\n"); } catch {} },
+  async screenshot() {
+    const d = screen.getPrimaryDisplay();
+    const size = { width: Math.round(d.size.width * d.scaleFactor), height: Math.round(d.size.height * d.scaleFactor) };
+    const [src] = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: size });
+    if (!src) throw new Error("Couldn't capture the screen.");
+    return src.thumbnail.toPNG();
+  },
+  clipboard: { readText: () => clipboard.readText(), writeText: (t) => clipboard.writeText(t) },
+  windows: windowsControl(),
+  lock: () => lockScreen(),
+  systemStatus: () => systemStatus({ displays: screen.getAllDisplays().length }),
   async launch(_key, def) {
     // Fixed executable names from the allowlist only; arguments never come from the AI.
     const opts = { detached: true, stdio: "ignore", windowsHide: true };
@@ -293,11 +321,27 @@ ipcMain.handle("jarvis:setSettings", (_e, patch) => {
 });
 ipcMain.handle("jarvis:setMuted", (_e, m) => { setMuted(m); return status; });
 ipcMain.handle("jarvis:runAction", (_e, action, args) => runAction(action, args));
-ipcMain.on("jarvis:sessionActive", (_e, active) => { sessionActive = !!active; sendAudioConfig(); });
+ipcMain.on("jarvis:sessionActive", (_e, active) => { sessionActive = !!active; sendAudioConfig(); pushStatus(); });
+// Follow-up listening in a conversation: record one utterance from the always-on stream (no wake word needed).
+ipcMain.handle("jarvis:listen", (_e, opts = {}) => {
+  if (status.muted) return null;
+  if (!audioWin) return null;
+  if (listenReq) { listenReq.resolve(null); clearTimeout(listenReq.timer); }
+  const id = `l${Date.now().toString(36)}`;
+  const noSpeechMs = Math.max(1500, Math.min(900_000, Number(opts.noSpeechMs) || 8000)), maxMs = Math.max(3000, Math.min(60_000, Number(opts.maxMs) || 20_000));
+  return new Promise((resolve) => {
+    listenReq = { id, resolve, timer: setTimeout(() => { if (listenReq?.id === id) { listenReq = null; resolve(null); sendAudioConfig(); } }, noSpeechMs + maxMs + 5000) };
+    sendAudioConfig();
+    capturing = true;
+    audioWin.webContents.send("audio:capture", { id, preRoll: false, noSpeechMs, maxMs });
+  });
+});
+ipcMain.on("jarvis:cancelListen", () => { audioWin?.webContents.send("audio:cancel"); });
+ipcMain.handle("jarvis:alarmStatus", () => agent?.status || null);
 ipcMain.on("jarvis:notify", (_e, title, body) => notify(String(title).slice(0, 120), String(body || "").slice(0, 300)));
-ipcMain.on("jarvis:voiceState", (_e, s) => { if (s === "idle" && sessionActive) { sessionActive = false; sendAudioConfig(); } });
+ipcMain.on("jarvis:voiceState", (_e, s) => { voiceState = String(s); sendAudioConfig(); });
 ipcMain.on("jarvis:quit", quitFully);
-ipcMain.on("jarvis:signedIn", () => pushStatus());
+ipcMain.on("jarvis:signedIn", () => { pushStatus(); agent?.reconnect(); });
 
 // From the hidden audio window
 ipcMain.handle("audio:getConfig", () => audioConfig());
@@ -308,45 +352,54 @@ ipcMain.on("audio:status", (_e, s) => {
 });
 ipcMain.on("audio:score", (_e, score) => { status.lastScore = score; });
 ipcMain.on("audio:wake", (_e, score) => onWake("hey_jarvis_model", score));
-ipcMain.on("audio:pcm", (_e, pcm) => { if (kws && !capturing && !status.muted && settings.wakeEnabled && !sessionActive && !suspended) kws.postMessage({ type: "pcm", pcm }); });
+ipcMain.on("audio:pcm", (_e, pcm) => { if (kws && !capturing && !status.muted && settings.wakeEnabled && (!sessionActive || bargeInAllowed()) && !suspended) kws.postMessage({ type: "pcm", pcm }); });
+ipcMain.on("audio:progress", (_e, wav) => win?.webContents.send("jarvis:captureProgress", wav));
+ipcMain.on("audio:level", (_e, l) => win?.webContents.send("jarvis:level", Number(l) || 0));
 let lastWakeAt = 0, capturing = false;
 // The command recorded by the audio service after a wake word: pause wake detection while JARVIS thinks and speaks.
-ipcMain.on("audio:captured", (_e, wav) => {
+ipcMain.on("audio:captured", (_e, wav, id) => {
   capturing = false;
+  if (listenReq && id === listenReq.id) {           // a follow-up the conversation asked for
+    const r = listenReq; listenReq = null; clearTimeout(r.timer);
+    r.resolve(wav || null); sendAudioConfig();
+    log("follow-up captured", wav ? `${wav.length} bytes` : "(silence)");
+    return;
+  }
   if (wav) { sessionActive = true; sendAudioConfig(); }
   win?.webContents.send("jarvis:wakeAudio", wav || null);
   log("command captured", wav ? `${wav.length} bytes` : "(no speech)");
 });
 function onWake(source, score) {
-  if (status.muted || !settings.wakeEnabled || sessionActive || suspended || capturing) return;
+  if (status.muted || !settings.wakeEnabled || suspended || capturing) return;
+  if (sessionActive && !bargeInAllowed()) return;    // in a conversation: only "JARVIS" to interrupt while it talks
   if (Date.now() - lastWakeAt < 2500) return;          // both detectors may fire for one phrase
   lastWakeAt = Date.now();
   status.lastWake = new Date().toISOString();
   status.lastWakeSource = source;
   log("wake word detected", source, Number(score).toFixed(3));
   capturing = true;
-  audioWin?.webContents.send("audio:capture");      // the always-on stream records the command immediately
+  if (source !== "hey_jarvis_model") audioWin?.webContents.send("audio:capture", { id: "wake", preRoll: true });   // the openWakeWord detector starts its own capture
   setTimeout(() => { if (capturing) { capturing = false; win?.webContents.send("jarvis:wakeAudio", null); } }, 20_000);
   showMain();
   win?.webContents.send("jarvis:wake", { score, source, capture: true });
-  setTimeout(() => { if (sessionActive) { sessionActive = false; sendAudioConfig(); } }, 60_000);   // safety: never stay paused
+
   kws?.postMessage({ type: "reset" });
   pushStatus();
 }
 
 // Laptop-hosted server: keys, setup code, Tailscale
-ipcMain.handle("keys:get", () => secretsStore.view());
+ipcMain.handle("keys:get", () => ({ ...secretsStore.view(), port: server?.port || 47823 }));
 ipcMain.handle("keys:save", async (_e, patch) => {
   secretsStore.update(patch);
   log("keys updated", Object.keys(patch || {}).filter((k) => patch[k]).join(","));
-  if (server && win) { await server.restart(serverEnv()); win.webContents.reload(); }
+  if (server && win) { await server.restart(serverEnv()); win.webContents.reload(); agent?.reconnect(); }
   return secretsStore.view();
 });
 ipcMain.handle("keys:open", (_e, url) => { if (/^https:\/\//.test(url)) shell.openExternal(url); });
 ipcMain.on("keys:close", () => keysWin?.close());
 ipcMain.on("jarvis:openKeys", () => createKeys());
 ipcMain.handle("jarvis:setupCode", () => (isLocal() ? secretsStore.get("JARVIS_SETUP_TOKEN") : null));
-ipcMain.handle("jarvis:local", () => ({ local: isLocal(), url: currentUrl, port: server?.port, phoneAccess: settings.phoneAccess, phoneUrl: settings.phoneUrl, server: status.server, encrypted: secretsStore?.encrypted() }));
+ipcMain.handle("jarvis:local", () => ({ local: isLocal(), url: currentUrl, port: server?.port, redirectBase: server ? `http://localhost:${server.port}` : null, phoneAccess: settings.phoneAccess, phoneUrl: settings.phoneUrl, server: status.server, encrypted: secretsStore?.encrypted() }));
 ipcMain.handle("tailscale:status", () => (server ? tailscale.status(server.port) : { installed: false }));
 ipcMain.handle("tailscale:enable", async () => {
   if (!server) return { ok: false, error: "Only available when JARVIS runs on this laptop." };
@@ -380,9 +433,64 @@ ipcMain.handle("setup:save", (_e, url) => {
   return true;
 });
 
+// ---------------------------------------------------------------- Background agent + full-screen alarm window
+let agent = null, alarmWin = null, ringingAlarm = null, alarmBlocker = null;
+async function sessionCookie() {
+  const base = serverOrigin(); if (!base) return null;
+  const c = await session.defaultSession.cookies.get({ url: base, name: "jarvis_session" });
+  return c[0]?.value || null;
+}
+function startAgent() {
+  if (agent) return;
+  agent = createAgent({
+    getBase: serverOrigin, getCookie: sessionCookie, userAgent: `JARVIS-Desktop/${VERSION} (Windows agent)`,
+    runAction: (action, args) => (settings.computerEnabled ? runAction(action, args) : Promise.reject(new Error("Computer control is switched off in the desktop app."))),
+    onRing: showAlarm, onStopRing: closeAlarm,
+    onStatus: (s) => { status.alarms = s; pushStatus(); win?.webContents.send("jarvis:alarm", { ringing: !!s.ringing }); },
+    onSettings: (st) => { serverVoice = st.voice || {}; sendAudioConfig(); },
+    log, dataDir: app.getPath("userData"), exePath: process.execPath,
+  });
+  agent.start();
+}
+function showAlarm(a) {
+  ringingAlarm = { ...a, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone };
+  if (!alarmBlocker) alarmBlocker = powerSaveBlocker.start("prevent-display-sleep");
+  if (alarmWin) { alarmWin.webContents.reload(); alarmWin.show(); alarmWin.focus(); return; }
+  const d = screen.getPrimaryDisplay();
+  alarmWin = new BrowserWindow({
+    x: d.bounds.x, y: d.bounds.y, width: d.bounds.width, height: d.bounds.height, fullscreen: true, frame: false, alwaysOnTop: true, skipTaskbar: false,
+    backgroundColor: "#01040a", title: "JARVIS — Alarm", icon: iconPath(), show: true, focusable: true,
+    webPreferences: { preload: path.join(here, "alarm", "preload-alarm.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false, autoplayPolicy: "no-user-gesture-required" },
+  });
+  alarmWin.setAlwaysOnTop(true, "screen-saver");
+  alarmWin.setVisibleOnAllWorkspaces(true);
+  alarmWin.loadFile(path.join(here, "alarm", "alarm.html"));
+  alarmWin.once("ready-to-show", () => { alarmWin?.show(); alarmWin?.focus(); });
+  alarmWin.on("closed", () => { alarmWin = null; });
+  alarmWin.webContents.on("render-process-gone", () => { log("alarm window crashed — reopening"); alarmWin?.destroy(); alarmWin = null; if (ringingAlarm) showAlarm(ringingAlarm); });
+  notify(`⏰ ${a.label || "Alarm"}`, a.message || "Your alarm is ringing.");
+}
+function closeAlarm() {
+  ringingAlarm = null;
+  if (alarmBlocker != null) { try { powerSaveBlocker.stop(alarmBlocker); } catch {} alarmBlocker = null; }
+  if (alarmWin) { alarmWin.webContents.send("alarm:close"); const w = alarmWin; setTimeout(() => w.destroy(), 150); alarmWin = null; }
+}
+ipcMain.handle("alarm:get", () => {
+  if (!ringingAlarm) return null;
+  // Hand the sound to the alarm window as bytes: built-in sounds ship with the app, custom ones were cached by the agent.
+  let audio = null;
+  try { audio = fs.readFileSync(ringingAlarm.file || path.join(here, "alarm", "sounds", `${/^[a-z]+$/.test(ringingAlarm.builtin || "") ? ringingAlarm.builtin : "chime"}.wav`)); }
+  catch { try { audio = fs.readFileSync(path.join(here, "alarm", "sounds", "chime.wav")); } catch {} }
+  return { ...ringingAlarm, audio };
+});
+ipcMain.on("alarm:snooze", (_e, minutes) => agent?.snooze(minutes));
+ipcMain.on("alarm:dismiss", () => agent?.dismiss());
+ipcMain.on("alarm:audio", (_e, ok, detail) => { agent?.audioResult(ok, detail); log("alarm audio", ok ? "verified" : "FAILED", detail); });
+
 // ---------------------------------------------------------------- Permissions (never bypass the OS)
 function configurePermissions() {
   const isTrusted = (wc, url) => wc === audioWin?.webContents || (url && serverOrigin() && url.startsWith(serverOrigin()));
+  // Notifications from the alarm window are allowed; it never gets the microphone.
   session.defaultSession.setPermissionRequestHandler((wc, permission, cb, details) => {
     if (permission === "media") return cb(isTrusted(wc, details.requestingUrl) && (details.mediaTypes || ["audio"]).every((t) => t === "audio"));
     if (["notifications", "clipboard-sanitized-write"].includes(permission)) return cb(isTrusted(wc, details.requestingUrl));
@@ -403,6 +511,7 @@ async function bootLocal() {
   const ok = await startLocalServer();
   if (!ok) log("local server failed to start; see server.log");
   createMain();
+  startAgent();
   booting = false;
 }
 app.whenReady().then(() => {
@@ -418,7 +527,8 @@ app.whenReady().then(() => {
     secretsStore = createSecrets(path.join(app.getPath("userData"), "secrets.json"), safeStorage);
     if (!secretsStore.get("ANTHROPIC_API_KEY") && !process.env.ANTHROPIC_API_KEY) createKeys({ firstRun: true });
     else bootLocal();
-  } else if (!settings.serverUrl) createSetup(); else createMain();
+  } else if (!settings.serverUrl) createSetup(); else { createMain(); startAgent(); }
+  if (process.argv.includes("--alarm-check")) log("started by the alarm wake task");
 
   powerMonitor.on("suspend", () => { suspended = true; status.wakeWord = "asleep"; sendAudioConfig(); pushStatus(); log("suspend"); });
   powerMonitor.on("resume", () => {
@@ -426,6 +536,7 @@ app.whenReady().then(() => {
     sendAudioConfig();
     setTimeout(() => { if (status.wakeWord !== "listening" && settings.wakeEnabled && !status.muted) restartAudio(); }, 4000);
     win?.webContents.send("jarvis:resumed");
+    agent?.check(); agent?.reconnect();                // ring anything that came due while asleep (up to 15 minutes late)
   });
 });
 app.on("window-all-closed", (e) => { if (!quitting) e.preventDefault?.(); });

@@ -67,21 +67,27 @@ function scheduleRetry() { clearTimeout(retryTimer); retryTimer = setTimeout(() 
 // the microphone), starting with the last 0.5 s so nothing said straight after "JARVIS" is clipped.
 const RING = 16000 * 0.5;
 let ring = new Int16Array(0);
-let capture = null;   // { chunks, spoke, quietSince, started, floor }
-function startCapture() {
-  if (capture) return;
-  capture = { chunks: [ring.slice()], spoke: false, quietSince: Date.now(), started: Date.now(), floor: 0.008 };
+let capture = null;   // { id, chunks, spoke, quietSince, started, floor, noSpeechMs, maxMs, lastProgress, lastLevel }
+// A capture starts after a wake word (with the 0.5 s pre-roll, so nothing said right after "JARVIS" is lost) or when the
+// conversation asks for a follow-up (no pre-roll, so the tail of JARVIS's own voice isn't included).
+function startCapture({ id = "wake", preRoll = true, noSpeechMs = 6000, maxMs = 15000 } = {}) {
+  if (capture) { if (id !== "wake") { const prev = capture; capture = null; bridge.captured(null, prev.id); } else return; }
+  capture = { id, chunks: preRoll ? [ring.slice()] : [], spoke: false, quietSince: Date.now(), started: Date.now(), floor: 0.008, noSpeechMs, maxMs, lastProgress: 0, lastLevel: 0 };
 }
+function cancelCapture() { if (!capture) return; const id = capture.id; capture = null; bridge.captured(null, id); }
 function rms(pcm) { let s = 0; for (let i = 0; i < pcm.length; i++) { const v = pcm[i] / 32768; s += v * v; } return Math.sqrt(s / Math.max(1, pcm.length)); }
 function captureChunk(pcm) {
   const c = capture; c.chunks.push(pcm);
   const l = rms(pcm), now = Date.now();
   if (!c.spoke) c.floor = c.floor * 0.9 + l * 0.1;
   if (l > Math.max(cfg.vadThreshold || 0.03, c.floor * 2.2)) { c.spoke = true; c.quietSince = now; }
+  if (now - c.lastLevel > 66) { c.lastLevel = now; bridge.level?.(Math.min(1, rms(pcm) * 6)); }
+  // Live transcription: while you talk, hand the audio so far to the app every 1.5 s.
+  if (c.spoke && now - c.lastProgress > 1500 && now - c.started > 1200) { c.lastProgress = now; bridge.progress?.(wav16k(c.chunks)); }
   const doneSpeaking = c.spoke && now - c.quietSince > 1200;
-  if (doneSpeaking || now - c.started > 15000 || (!c.spoke && now - c.started > 6000)) {
-    const spoke = c.spoke; capture = null;
-    bridge.captured(spoke ? wav16k(c.chunks) : null);
+  if (doneSpeaking || now - c.started > c.maxMs || (!c.spoke && now - c.started > c.noSpeechMs)) {
+    const spoke = c.spoke, id = c.id; capture = null;
+    bridge.captured(spoke ? wav16k(c.chunks) : null, id);
   }
 }
 function wav16k(chunks) {
@@ -93,7 +99,8 @@ function wav16k(chunks) {
   const out = new Int16Array(buf, 44); let o = 0; for (const c of chunks) { out.set(c, o); o += c.length; }
   return new Uint8Array(buf);
 }
-bridge.onCapture?.(() => startCapture());
+bridge.onCapture?.((opts) => startCapture(opts || {}));
+bridge.onCancel?.(() => cancelCapture());
 
 async function pump() {
   if (busy || !engine || !ctx) return;
@@ -107,12 +114,13 @@ async function pump() {
       merged.set(pcm.subarray(Math.max(0, pcm.length - RING)), merged.length - Math.min(pcm.length, RING));
       ring = merged;
       if (capture) { captureChunk(pcm); continue; }   // recording a command: don't look for wake words
+      if (!cfg?.detect) continue;            // in a conversation (and JARVIS isn't talking): the mic is only kept warm
       bridge.pcm(pcm);                       // also feed the "JARVIS" keyword spotter (local, separate process)
       const scores = await engine.push(pcm);
       for (const s of scores) {
         const now = Date.now();
         if (now - lastScoreSent > 100) { bridge.score(s); lastScoreSent = now; }
-        if (detector.update(s, now)) { startCapture(); bridge.wake(s); engine.reset(); await engine.prime(); break; }
+        if (detector.update(s, now)) { startCapture({ id: "wake" }); bridge.wake(s); engine.reset(); await engine.prime(); break; }
       }
     }
   } catch (e) { report({ wakeWord: "error", error: `Wake-word engine: ${e.message}` }); }
@@ -122,14 +130,15 @@ async function pump() {
 async function apply(c) {
   const prev = cfg; cfg = c;
   if (!engine) return;
-  if (!c.enabled) { stopMic(); return report({ wakeWord: "disabled", mic: "off", error: null }); }
-  if (c.paused) { capture = null; stopMic(); return report({ wakeWord: "paused" }); }
+  const micOn = c.micOn ?? (c.enabled && !c.paused);
+  if (!micOn) { cancelCapture(); stopMic(); return report({ wakeWord: c.muted ? "muted" : c.wakeEnabled === false ? "disabled" : "paused", mic: "off", error: null }); }
   if (detector) Object.assign(detector, { threshold: c.threshold, minFrames: c.minFrames });
   const deviceChanged = prev && prev.micDeviceId !== c.micDeviceId;
-  if (!stream || deviceChanged || state.wakeWord !== "listening") await startMic();
+  if (!stream || deviceChanged || state.mic !== "ok") await startMic();
+  report({ wakeWord: c.detect === false ? (c.wakeEnabled === false ? "disabled" : "conversation") : "listening" });
 }
 
-navigator.mediaDevices.addEventListener("devicechange", () => { if (cfg?.enabled && !cfg.paused && state.wakeWord !== "listening") apply(cfg); });
+navigator.mediaDevices.addEventListener("devicechange", () => { if ((cfg?.micOn ?? cfg?.enabled) && state.mic !== "ok") apply(cfg); });
 bridge.onConfig((c) => apply(c));
 
 (async () => {

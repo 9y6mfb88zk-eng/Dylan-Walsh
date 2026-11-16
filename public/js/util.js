@@ -31,17 +31,27 @@ export function confirmDialog(title, body, { ok = "Confirm", danger = false } = 
 }
 export function formDialog(title, fields, { ok = "Save" } = {}) {
   const d = $("#modal");
-  d.innerHTML = `<form method="dialog" class="stack"><h3>${esc(title)}</h3>${fields.map((f) => `<label class="field"><span>${esc(f.label)}</span>${
-    f.type === "select" ? `<select class="inp" name="${f.name}">${f.options.map((o) => `<option value="${esc(o[0])}" ${o[0] === f.value ? "selected" : ""}>${esc(o[1])}</option>`).join("")}</select>`
+  d.innerHTML = `<form method="dialog" class="stack"><h3>${esc(title)}</h3>${fields.map((f) => f.type === "checkbox"
+    ? `<label class="set-row" style="padding:4px 0"><span>${esc(f.label)}</span><span class="switch"><input type="checkbox" name="${f.name}" ${f.value ? "checked" : ""}><span></span></span></label>`
+    : f.type === "days" ? `<div class="field"><span>${esc(f.label)}</span><div class="seg" data-days="${f.name}">${["S", "M", "T", "W", "T", "F", "S"].map((l, i) => `<button type="button" data-d="${i}" class="${(f.value || []).includes(i) ? "active" : ""}" aria-label="${["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][i]}">${l}</button>`).join("")}</div><input type="hidden" name="${f.name}" value="${esc((f.value || []).join(","))}"></div>`
+    : `<label class="field"><span>${esc(f.label)}</span>${
+    f.type === "select" ? `<select class="inp" name="${f.name}">${f.options.map((o) => `<option value="${esc(o[0])}" ${String(o[0]) === String(f.value) ? "selected" : ""}>${esc(o[1])}</option>`).join("")}</select>`
     : f.type === "textarea" ? `<textarea class="inp" name="${f.name}" placeholder="${esc(f.placeholder || "")}">${esc(f.value || "")}</textarea>`
-    : `<input class="inp" name="${f.name}" type="${f.type || "text"}" value="${esc(f.value ?? "")}" placeholder="${esc(f.placeholder || "")}" ${f.required ? "required" : ""} ${f.step ? `step="${f.step}"` : ""}>`}</label>`).join("")}
+    : `<input class="inp" name="${f.name}" type="${f.type || "text"}" value="${esc(f.value ?? "")}" placeholder="${esc(f.placeholder || "")}" ${f.required ? "required" : ""} ${f.step ? `step="${f.step}"` : ""} ${f.min != null ? `min="${f.min}"` : ""} ${f.max != null ? `max="${f.max}"` : ""} ${f.accept ? `accept="${esc(f.accept)}"` : ""}>`}${f.hint ? `<span class="hint">${esc(f.hint)}</span>` : ""}</label>`).join("")}
     <div class="row" style="justify-content:flex-end"><button class="btn ghost" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok">${esc(ok)}</button></div></form>`;
+  d.querySelectorAll("[data-days]").forEach((seg) => seg.querySelectorAll("button").forEach((b) => b.onclick = () => {
+    b.classList.toggle("active");
+    seg.nextElementSibling.value = [...seg.querySelectorAll("button.active")].map((x) => x.dataset.d).join(",");
+  }));
   return new Promise((resolve) => {
     const form = d.querySelector("form");
     form.onsubmit = (e) => {
       const v = e.submitter?.value;
       if (v !== "ok") { resolve(null); return; }
-      resolve(Object.fromEntries(new FormData(form)));
+      const out = Object.fromEntries(new FormData(form));
+      for (const f of fields) if (f.type === "checkbox") out[f.name] = !!form.elements[f.name].checked;
+      for (const f of fields) if (f.type === "days") out[f.name] = out[f.name] ? out[f.name].split(",").map(Number) : [];
+      resolve(out);
     };
     d.onclose = () => resolve(null);
     d.showModal();
@@ -50,20 +60,7 @@ export function formDialog(title, fields, { ok = "Save" } = {}) {
 const WX = { 0: "☀️", 1: "🌤️", 2: "⛅", 3: "☁️", 45: "🌫️", 48: "🌫️", 51: "🌦️", 53: "🌦️", 55: "🌧️", 61: "🌧️", 63: "🌧️", 65: "🌧️", 66: "🌧️", 67: "🌧️", 71: "🌨️", 73: "🌨️", 75: "❄️", 77: "❄️", 80: "🌦️", 81: "🌧️", 82: "⛈️", 85: "🌨️", 86: "❄️", 95: "⛈️", 96: "⛈️", 99: "⛈️" };
 export const wxIcon = (code, day = true) => (code === 0 && !day ? "🌙" : WX[code] || "🌡️");
 
-export const ICONS = {
-  home: '<circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".5"/>',
-  talk: '<path d="M4 5h16v10H9l-5 4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>',
-  agenda: '<rect x="4" y="5" width="16" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 10h16M9 3v4M15 3v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
-  money: '<rect x="3" y="6" width="18" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3 10h18M7 15h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
-  projects: '<path d="M4 7h6l2 2h8v10H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>',
-  intel: '<circle cx="11" cy="11" r="6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 16l4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
-  memory: '<path d="M12 4a5 5 0 0 0-5 5c0 2 1 3 1 5v2h8v-2c0-2 1-3 1-5a5 5 0 0 0-5-5zM10 20h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>',
-  settings: '<circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
-  more: '<circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/>',
-  mic: '<rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
-  send: '<path d="M4 12h13M12 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
-};
-export const icon = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ""}</svg>`;
+export { ICONS, icon } from "./icons.js";
 
 /** Tiny SVG bar chart. data: [{label, value}] */
 export function barChart(data, { height = 140, fmt = (v) => v } = {}) {
@@ -72,6 +69,46 @@ export function barChart(data, { height = 140, fmt = (v) => v } = {}) {
   const w = 100 / data.length;
   return `<svg class="chart" viewBox="0 0 100 ${height / 3}" preserveAspectRatio="none" style="height:${height}px" role="img" aria-label="Chart">
     ${data.map((d, i) => { const bh = (d.value / max) * (height / 3 - 6); return `<rect x="${i * w + w * 0.18}" y="${height / 3 - bh}" width="${w * 0.64}" height="${bh}" rx="0.8" fill="url(#gv)"><title>${esc(d.label)}: ${esc(fmt(d.value))}</title></rect>`; }).join("")}
-    <defs><linearGradient id="gv" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#c4b5fd"/><stop offset="1" stop-color="#7c3aed" stop-opacity=".5"/></linearGradient></defs></svg>
+    <defs><linearGradient id="gv" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#67e8f9"/><stop offset="1" stop-color="#2f7fe0" stop-opacity=".45"/></linearGradient></defs></svg>
     <div class="row" style="justify-content:space-between;font-size:11px;color:var(--muted)">${data.map((d) => `<span>${esc(d.label)}</span>`).join("")}</div>`;
 }
+
+// ---------------------------------------------------------------- More helpers
+export const pounds = (p) => (p == null ? "" : (p / 100).toFixed(2));
+export const toPence = (v) => Math.round(Number(String(v).replace(/[£,\s]/g, "")) * 100);
+export function fmtRel(iso) {
+  const d = new Date(iso); if (Number.isNaN(d.getTime())) return "";
+  const s = Math.round((d - Date.now()) / 1000), a = Math.abs(s);
+  const t = a < 60 ? `${a}s` : a < 3600 ? `${Math.round(a / 60)} min` : a < 86400 ? `${Math.round(a / 3600)} h` : `${Math.round(a / 86400)} d`;
+  return s >= 0 ? `in ${t}` : `${t} ago`;
+}
+export const localDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+export function debounce(fn, ms = 250) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+/** Inline SVG sparkline for a series of numbers. */
+export function sparkline(values, { height = 36, stroke = "#22d3ee" } = {}) {
+  if (!values?.length) return "";
+  const max = Math.max(...values, 1), min = Math.min(...values, 0), n = values.length;
+  const pts = values.map((v, i) => `${(i / Math.max(1, n - 1)) * 100},${height - 3 - ((v - min) / (max - min || 1)) * (height - 6)}`).join(" ");
+  return `<svg class="spark" viewBox="0 0 100 ${height}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="${stroke}" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>`;
+}
+export const statusDot = (s) => `<span class="dot ${({ ok: "ok", warn: "warn", error: "bad", bad: "bad", off: "off", unknown: "unknown", live: "live" })[s] || "unknown"}"></span>`;
+export const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+/** The UTC ISO string for a wall-clock date + time in a time zone (DST-safe). */
+export function zonedToISO(dateStr, hm = "00:00", tz) {
+  const [y, m, d] = dateStr.split("-").map(Number), [h, mi] = hm.split(":").map(Number);
+  const target = Date.UTC(y, m - 1, d, h, mi);
+  let guess = target;
+  for (let i = 0; i < 4; i++) {
+    const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date(guess)).map((x) => [x.type, x.value]));
+    const seen = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute);
+    if (seen === target) break;
+    guess += target - seen;
+  }
+  return new Date(guess).toISOString();
+}
+/** Local date (YYYY-MM-DD) and time (HH:MM) of an instant in a time zone. */
+export function zonedParts(iso, tz) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date(iso)).map((x) => [x.type, x.value]));
+  return { date: `${p.year}-${p.month}-${p.day}`, time: `${String(+p.hour % 24).padStart(2, "0")}:${p.minute}` };
+}
+export const addDaysStr = (dateStr, n) => { const [y, m, d] = dateStr.split("-").map(Number); const t = new Date(Date.UTC(y, m - 1, d + n)); return t.toISOString().slice(0, 10); };

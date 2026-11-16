@@ -1,6 +1,6 @@
 // JARVIS service worker: offline shell + web push.
-const CACHE = "jarvis-v3";
-const SHELL = ["/", "/index.html", "/styles.css", "/js/app.js", "/js/api.js", "/js/sync.js", "/js/voice.js", "/js/core.js", "/js/util.js", "/js/views/home.js", "/js/views/talk.js", "/js/views/agenda.js", "/js/views/money.js", "/js/views/projects.js", "/js/views/intel.js", "/js/views/memory.js", "/js/views/settings.js", "/js/views/more.js", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/apple-touch-icon.png"];
+const CACHE = "jarvis-v4";
+const SHELL = ["/", "/index.html", "/styles.css", "/js/app.js", "/js/api.js", "/js/sync.js", "/js/voice.js", "/js/core.js", "/js/core3d.js", "/js/corestate.js", "/js/conversation.js", "/js/voicecommands.js", "/js/icons.js", "/js/util.js", "/js/views/home.js", "/js/views/talk.js", "/js/views/briefings.js", "/js/views/notifications.js", "/js/views/alarms.js", "/js/views/calendar.js", "/js/views/tasks.js", "/js/views/focus.js", "/js/views/goals.js", "/js/views/projects.js", "/js/views/business.js", "/js/views/money.js", "/js/views/intelligence.js", "/js/views/documents.js", "/js/views/memory.js", "/js/views/world.js", "/js/views/automations.js", "/js/views/computer.js", "/js/views/smarthome.js", "/js/views/diagnostics.js", "/js/views/settings.js", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/apple-touch-icon.png", "/vendor/fonts/rajdhani-latin-600-normal.woff2", "/vendor/fonts/inter-latin-400-normal.woff2", "/sounds/chime.wav"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -32,7 +32,8 @@ self.addEventListener("push", (e) => {
     icon: "/icons/icon-192.png",
     badge: "/icons/icon-192.png",
     data: { url: data.url || "/" },
-    requireInteraction: data.kind === "reminder",
+    requireInteraction: data.kind === "reminder" || data.kind === "alarm",
+    vibrate: data.kind === "alarm" ? [500, 200, 500, 200, 900] : undefined,
   }));
 });
 

@@ -3,6 +3,7 @@
 // and the streaming conversation endpoint.
 import express from "express";
 import fs from "node:fs";
+import path from "node:path";
 import { db, getSettings, kvGet } from "../db.js";
 import { config } from "../config.js";
 import { mountCrud } from "../services/crud.js";
@@ -21,7 +22,7 @@ import { chat, client, friendlyAiError, startResearch, brainReady } from "../bra
 import { getWeather, geocode } from "../integrations/weather.js";
 import { rateLimit } from "../security/ratelimit.js";
 import { auditFromReq } from "../security/audit.js";
-import { changed, broadcast } from "../realtime.js";
+import { changed, broadcast, sendToDevice } from "../realtime.js";
 import { localDate, describeLocal, partOfDay } from "../services/time.js";
 import * as finance from "../finance/service.js";
 import * as pending from "../services/pending.js";
@@ -75,7 +76,7 @@ router.get("/api/home", wrap(async (req, res) => {
     focus: { active: R.focus.active(), stats: R.focus.stats() },
     habits: R.habits.list({ active: true }).map((h) => ({ id: h.id, name: h.name, doneToday: h.doneToday, streak: h.streak, frequency: h.frequency, today: h.today, target: h.target })),
     pending: pending.list(),
-    money: fin.connected ? { testData: fin.testData, available: fin.balances.available, projected: fin.projectedDisposable, perDay: fin.perDay, lastSync: fin.lastSync } : { connected: false, manualEntriesOnly: !!fin.manualEntriesOnly },
+    money: fin.connected ? (() => { const p = finance.position(); return { connected: true, testData: fin.testData, available: p.balances.available, projected: p.projectedDisposable, perDay: p.perDay, lastSync: fin.lastSync }; })() : { connected: false, manualEntriesOnly: !!fin.manualEntriesOnly },
     briefing: kvGet("briefing.latest"),
     business: (() => { const b = R.businessSummary(); return { followUps: b.followUps.filter((c) => c.next_follow_up <= today).length, overdueInvoices: b.overdue.length }; })(),
   });
@@ -133,9 +134,11 @@ router.post("/api/alarms/:id/event", (req, res) => {
 router.post("/api/alarms/test", (req, res) => {
   const d = getSettings().alarms;
   const test = { alarmId: 0, label: "Test alarm", sound: req.body?.sound || d.defaultSound, volume: Number(req.body?.volume ?? d.defaultVolume), gradual: !!(req.body?.gradual ?? false), message: "This is a test of the JARVIS alarm system.", snoozeMinutes: 1, at: new Date().toISOString(), test: true };
-  broadcast({ type: "alarm.test", alarm: test, speech: alarms.speech({ label: "Test alarm", message: test.message }) });
-  alarms.event(0, "test", `sound ${test.sound}`, dev(req));
-  res.json({ ok: true, sent: true });
+  // Rings on the device you pressed it on (the Windows app's agent shares the app's session), or everywhere if asked.
+  const msg = { type: "alarm.test", alarm: test, speech: alarms.speech({ label: "Test alarm", message: test.message }) };
+  const sent = req.body?.everywhere ? (broadcast(msg), true) : sendToDevice(req.auth.deviceId, msg);
+  alarms.event(0, "test", `sound ${test.sound}${req.body?.everywhere ? " (all devices)" : ""}`, dev(req));
+  res.json({ ok: true, sent });
 });
 
 // ---------------------------------------------------------------- Notifications & activity
@@ -299,3 +302,45 @@ export function onSettingsChanged(patch) {
   if (patch.timezone) Promise.all([import("../services/alarms.js"), import("../services/automations.js")]).then(([a, b]) => { a.recomputeAll(); b.recomputeRoutines(); changed("alarms", "routines"); });
 }
 void memory;
+
+// ---------------------------------------------------------------- Your data: export everything / delete by category (backup first)
+const EXPORT_TABLES = ["tasks", "reminders", "projects", "milestones", "events", "memories", "notes", "documents", "saved_sources", "research", "ideas", "alarms", "alarm_events",
+  "savings_goals", "debts", "bills", "budgets", "businesses", "clients", "proposals", "invoices", "business_expenses", "interactions", "saved_locations", "routines", "routine_runs",
+  "focus_sessions", "goals", "goal_milestones", "habits", "habit_checks", "briefings", "notifications", "activity", "conversations", "messages"];
+router.get("/api/export", (req, res) => {
+  const out = { exportedAt: new Date().toISOString(), app: "JARVIS", settings: getSettings(), tables: {} };
+  for (const t of EXPORT_TABLES) { try { out.tables[t] = db.prepare(`SELECT * FROM ${t}`).all(); } catch {} }
+  // Hand-entered money only (bank data stays with the bank); never tokens or passwords.
+  try { out.tables.manual_transactions = db.prepare("SELECT * FROM fin_transactions WHERE account_id = 'manual-entries'").all(); } catch {}
+  auditFromReq(req, "data.exported");
+  res.setHeader("content-disposition", `attachment; filename="jarvis-export-${new Date().toISOString().slice(0, 10)}.json"`);
+  res.json(out);
+});
+const WIPE = {
+  conversations: ["messages", "conversations"], memories: ["memories"], notes: ["notes"], documents: ["documents"], research: ["saved_sources", "research", "ideas"],
+  tasks: ["tasks", "reminders"], alarms: ["alarm_events", "alarms", "alarm_sounds"], money: ["savings_goals", "debts"], business: ["interactions", "invoices", "proposals", "business_expenses", "clients", "businesses"],
+  productivity: ["habit_checks", "habits", "goal_milestones", "goals", "focus_sessions"], activity: ["notifications", "activity", "briefings"],
+};
+router.post("/api/data/wipe", (req, res) => {
+  const scope = String(req.body?.scope || "");
+  if (req.body?.confirm !== "DELETE") return res.status(400).json({ error: "Confirmation missing" });
+  const scopes = scope === "everything" ? Object.keys(WIPE) : WIPE[scope] ? [scope] : null;
+  if (!scopes) return res.status(400).json({ error: "Unknown category" });
+  const dir = path.join(config.dataDir, "backups");
+  fs.mkdirSync(dir, { recursive: true });
+  const backup = `pre-delete-${scope}-${new Date().toISOString().replace(/[:.]/g, "-")}.db`;
+  db.exec(`VACUUM INTO '${path.join(dir, backup).replace(/'/g, "''")}'`);
+  let rows = 0;
+  db.exec("BEGIN");
+  try {
+    for (const s of scopes) for (const t of WIPE[s]) rows += db.prepare(`DELETE FROM ${t}`).run().changes;
+    if (scopes.includes("money")) rows += db.prepare("DELETE FROM fin_transactions WHERE account_id = 'manual-entries'").run().changes;
+    if (scopes.includes("conversations")) db.prepare("DELETE FROM kv WHERE k = 'currentConversation'").run();
+    db.exec("COMMIT");
+  } catch (e) { db.exec("ROLLBACK"); throw e; }
+  if (scopes.includes("documents")) { try { for (const f of fs.readdirSync(path.join(config.dataDir, "documents"))) fs.unlinkSync(path.join(config.dataDir, "documents", f)); } catch {} }
+  if (scopes.includes("alarms")) { try { for (const f of fs.readdirSync(path.join(config.dataDir, "sounds"))) fs.unlinkSync(path.join(config.dataDir, "sounds", f)); } catch {} }
+  auditFromReq(req, "data.deleted", { scope, rows });
+  changed("tasks", "reminders", "notes", "memories", "alarms", "business", "finance", "habits", "goals", "focus", "notifications", "activity", "research", "documents", "conversations", "briefing");
+  res.json({ ok: true, rows, backup });
+});

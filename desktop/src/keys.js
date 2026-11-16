@@ -4,6 +4,7 @@ const $ = (s) => document.querySelector(s);
   const v = await window.keys.get();
   $("#model").innerHTML = Object.entries(v.models).map(([k, l]) => `<option value="${k}" ${k === v.model ? "selected" : ""}>${l}</option>`).join("");
   for (const [k, set] of Object.entries(v.set)) { const el = document.getElementById(`s_${k}`); if (el && set) el.textContent = "✓ saved"; const inp = document.querySelector(`[name="${k}"]`); if (inp && set) inp.placeholder = "Saved — leave blank to keep"; }
+  if (v.port) { $("#monzoRedirect").textContent = `http://localhost:${v.port}/oauth/monzo/callback`; $("#googleRedirect").textContent = `http://localhost:${v.port}/oauth/google/callback`; }
   $("#enc").textContent = v.encrypted ? "Keys are encrypted with your Windows account (DPAPI) and never leave this laptop except to call each service." : "Keys are stored in your JARVIS profile folder (system encryption unavailable on this machine).";
   if (!first) { $("#lead").textContent = "Update keys or the AI model. Blank fields keep their saved value."; $("#later").textContent = "Close"; $("#save").textContent = "Save"; }
 })();
