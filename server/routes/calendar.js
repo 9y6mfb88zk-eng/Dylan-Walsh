@@ -1,11 +1,11 @@
 import express from "express";
-import { publicBase } from "../config.js";
+import { oauthBase } from "../config.js";
 import * as calendar from "../services/calendar.js";
 import { auditFromReq } from "../security/audit.js";
 
 export const router = express.Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
-const redirectUri = (req) => `${publicBase(req)}/oauth/google/callback`;
+const redirectUri = (req) => `${oauthBase(req)}/oauth/google/callback`;
 
 router.get("/api/calendar", (req, res) => {
   const from = req.query.from ? new Date(req.query.from).toISOString() : new Date(Date.now() - 86400_000).toISOString();

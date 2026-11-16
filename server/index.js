@@ -69,8 +69,8 @@ export const server = http.createServer(app);
 attachRealtime(server);
 
 if (isProd && demoAllowed()) console.warn("[config] Demo finance requested but refused in production.");
-server.listen(config.port, () => {
-  console.log(`JARVIS backend listening on http://localhost:${config.port} (${config.env})`);
+server.listen(config.port, config.host, () => {
+  console.log(`JARVIS backend listening on http://${config.host === "0.0.0.0" ? "localhost" : config.host}:${config.port} (${config.env}, ${config.hosting})`);
   console.log(`  AI: ${brainReady() ? config.model : "OFF — set ANTHROPIC_API_KEY"} · voice: ${ttsProvider() || "browser"} · Whisper: ${config.openaiKey ? "on" : "off"} · Monzo: ${config.monzoClientId ? "configured" : "not configured"} · Google: ${config.googleClientId ? "configured" : "not configured"}`);
   if (!isSetupComplete()) {
     console.log("\n  ┌──────────────────────────────────────────────────────────┐");
@@ -78,7 +78,7 @@ server.listen(config.port, () => {
     console.log("  │  Open JARVIS in your browser and enter this code.        │");
     console.log("  └──────────────────────────────────────────────────────────┘\n");
   }
-  if (!config.publicUrl) console.log("  PUBLIC_URL not set: OAuth redirects and pairing links will use the request's own address.");
+  if (!config.publicUrl && config.hosting !== "laptop") console.log("  PUBLIC_URL not set: OAuth redirects and pairing links will use the request's own address.");
 });
 const stop = startScheduler();
 let closing = false;

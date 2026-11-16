@@ -183,6 +183,10 @@ function showAuth(mode, { pairCode } = {}) {
   $("#authPairToggle").hidden = mode === "setup";
   $("#authPairToggle").textContent = mode === "pair" ? "Sign in with password instead" : "Pair with a code instead";
   if (desktop && !$("#authDevice").value) $("#authDevice").value = "Windows laptop";
+  // JARVIS running on this laptop: the app knows the setup code, so nothing to copy.
+  if (mode === "setup" && desktop?.mode === "local") {
+    desktop.setupCode().then((c) => { if (c) { $("#authCode").value = c; $("#codeField").hidden = true; $("#authLead").textContent = "JARVIS runs on this laptop. Choose a password to protect it (you'll use it if you ever sign in from a browser)."; } });
+  }
   if (pairCode) $("#authPair").dataset.full = pairCode;
   if (!$("#authCore").dataset.mounted) { mountCore($("#authCore")); $("#authCore").dataset.mounted = "1"; }
 }

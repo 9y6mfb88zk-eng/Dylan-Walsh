@@ -36,7 +36,7 @@ jobs:
       - name: Wake-word and action tests on Windows
         working-directory: desktop
         run: npm test
-      - name: Build JARVIS-Setup.exe
+      - name: Build JARVIS-Setup.exe (bundles Node 22 + the JARVIS server)
         working-directory: desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
@@ -51,4 +51,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete desktop-latest --yes --cleanup-tag || true
-          gh release create desktop-latest desktop/dist/*.exe --title "JARVIS for Windows (latest)" --notes "Built from ${GITHUB_SHA::7}. Download JARVIS-Setup-*.exe and run it. Windows SmartScreen may warn because the installer isn't code-signed: choose More info → Run anyway." --target "$GITHUB_SHA"
+          gh release create desktop-latest desktop/dist/*.exe --title "JARVIS for Windows (latest)" --notes "Built from ${GITHUB_SHA::7}. Download JARVIS-Setup-*.exe and run it — JARVIS runs entirely on your laptop. Windows SmartScreen may warn because the installer isn't code-signed: choose More info → Run anyway." --target "$GITHUB_SHA"

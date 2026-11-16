@@ -5,11 +5,20 @@ const { contextBridge, ipcRenderer } = require("electron");
 const arg = (name) => (process.argv.find((a) => a.startsWith(`--${name}=`)) || "").split("=").slice(1).join("=");
 const origin = arg("jarvis-origin");
 const version = arg("jarvis-version");
+const mode = arg("jarvis-mode") || "remote";
 
 if (origin && location.origin === origin) {
   const on = (channel) => (fn) => { const h = (_e, d) => fn(d); ipcRenderer.on(channel, h); return () => ipcRenderer.removeListener(channel, h); };
   contextBridge.exposeInMainWorld("jarvisDesktop", {
-    version, platform: process.platform,
+    version, platform: process.platform, mode,
+    // Laptop-hosted JARVIS
+    setupCode: () => ipcRenderer.invoke("jarvis:setupCode"),
+    local: () => ipcRenderer.invoke("jarvis:local"),
+    openKeys: () => ipcRenderer.send("jarvis:openKeys"),
+    tailscaleStatus: () => ipcRenderer.invoke("tailscale:status"),
+    tailscaleEnable: () => ipcRenderer.invoke("tailscale:enable"),
+    tailscaleDisable: () => ipcRenderer.invoke("tailscale:disable"),
+    tailscaleOpen: (url) => ipcRenderer.invoke("tailscale:openLink", String(url)),
     onWake: on("jarvis:wake"),
     onPushToTalk: on("jarvis:ptt"),
     onStatus: on("jarvis:status"),

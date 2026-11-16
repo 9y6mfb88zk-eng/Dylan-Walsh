@@ -1,12 +1,12 @@
 import express from "express";
-import { publicBase } from "../config.js";
+import { oauthBase } from "../config.js";
 import * as finance from "../finance/service.js";
 import { auditFromReq } from "../security/audit.js";
 import { rateLimit } from "../security/ratelimit.js";
 
 export const router = express.Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
-const redirectUri = (req) => `${publicBase(req)}/oauth/monzo/callback`;
+const redirectUri = (req) => `${oauthBase(req)}/oauth/monzo/callback`;
 
 router.get("/api/finance", (req, res) => res.json(finance.overview()));
 router.get("/api/finance/position", (req, res) => res.json(finance.position()));

@@ -1,8 +1,8 @@
 {
   "name": "jarvis-desktop",
   "productName": "JARVIS",
-  "version": "3.0.0",
-  "description": "JARVIS for Windows: local Hey JARVIS wake word, tray app and laptop control for your JARVIS backend.",
+  "version": "3.1.0",
+  "description": "JARVIS for Windows: runs your whole JARVIS on this laptop \u2014 local Hey JARVIS wake word, private server, tray app.",
   "author": "JARVIS",
   "license": "UNLICENSED",
   "private": true,
@@ -13,7 +13,9 @@
     "dev": "electron . --dev",
     "test": "node --test test/*.test.js",
     "sync-shared": "node scripts/sync-shared.js",
-    "dist": "npm run sync-shared && electron-builder --win --x64 --publish never"
+    "dist": "npm run sync-shared && node scripts/prepare-server.js && electron-builder --win --x64 --publish never",
+    "prepare-server": "node scripts/prepare-server.js",
+    "dist:linux-dir": "npm run sync-shared && node scripts/prepare-server.js && electron-builder --linux dir --publish never"
   },
   "dependencies": {
     "onnxruntime-web": "1.20.1"
@@ -61,6 +63,16 @@
       "createStartMenuShortcut": true,
       "shortcutName": "JARVIS",
       "runAfterFinish": true
-    }
+    },
+    "extraResources": [
+      {
+        "from": "bundle/server-app",
+        "to": "server-app"
+      },
+      {
+        "from": "bundle/node",
+        "to": "node"
+      }
+    ]
   }
 }

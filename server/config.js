@@ -5,6 +5,12 @@ const bool = (v, d) => (v === undefined || v === "" ? d : !["0", "false", "no", 
 export const config = {
   env: env.NODE_ENV || "development",
   port: Number(env.PORT || 3000),
+  // 127.0.0.1 when JARVIS runs on your laptop (only the laptop itself and Tailscale's local proxy can reach it).
+  host: env.HOST || "0.0.0.0",
+  // Base for OAuth redirect URLs. On the laptop this is http://localhost:<port>; in the cloud it's PUBLIC_URL.
+  oauthBaseUrl: (env.OAUTH_BASE_URL || "").replace(/\/$/, ""),
+  // "laptop" when started by the Windows app.
+  hosting: env.JARVIS_HOSTING || "server",
   // Public HTTPS address of this backend (used for OAuth redirects and pairing QR codes).
   publicUrl: (env.PUBLIC_URL || env.RENDER_EXTERNAL_URL || "").replace(/\/$/, ""),
   dataDir: env.JARVIS_DATA_DIR || "./data",
@@ -15,6 +21,7 @@ export const config = {
   // AI
   anthropicKey: env.ANTHROPIC_API_KEY || "",
   model: env.JARVIS_MODEL || "claude-opus-5-5",
+  researchModel: env.JARVIS_RESEARCH_MODEL || env.JARVIS_MODEL || "claude-opus-5-5",
   webSearch: bool(env.JARVIS_WEB_SEARCH, true),
 
   // Voice
@@ -82,8 +89,23 @@ export function ttsProvider() {
   return null;
 }
 
-/** Public URL for building redirect links; falls back to the request's own origin. */
+/** Public URL for links other devices open (pairing QR); falls back to the request's own origin. */
 export function publicBase(req) {
   if (config.publicUrl) return config.publicUrl;
   return `${req.protocol}://${req.get("host")}`;
+}
+/** Base for OAuth redirects (must exactly match what you registered with Monzo/Google). */
+export function oauthBase(req) {
+  return config.oauthBaseUrl || publicBase(req);
+}
+
+/** Per-model request options: features differ between model families. */
+export function modelOptions(model) {
+  const haiku = /haiku/.test(model);
+  return {
+    // Server-side refusal fallback exists for Opus/Sonnet/Fable, not Haiku.
+    fallback: haiku ? {} : { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" },
+    // Haiku uses the basic web search tool; newer large models get dynamic filtering.
+    webSearch: (max) => ({ type: haiku ? "web_search_20250305" : "web_search_20260209", name: "web_search", max_uses: max }),
+  };
 }

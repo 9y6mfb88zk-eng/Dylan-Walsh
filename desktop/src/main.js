@@ -1,12 +1,15 @@
 // JARVIS for Windows — main process.
 // Tray app with close-to-tray, start with Windows, an always-on local wake-word service (hidden audio window),
 // push-to-talk and mute shortcuts, crash/sleep recovery, and allowlisted computer actions.
-import { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, shell, nativeImage, Notification, powerMonitor, session, systemPreferences, dialog } from "electron";
+import { app, BrowserWindow, safeStorage, Tray, Menu, ipcMain, globalShortcut, shell, nativeImage, Notification, powerMonitor, session, systemPreferences, dialog } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createActions } from "./actions.js";
+import { ServerManager, locateServer } from "./server-manager.js";
+import { createSecrets } from "./secrets.js";
+import * as tailscale from "./tailscale.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, "..");
@@ -20,14 +23,17 @@ app.commandLine.appendSwitch("disable-background-timer-throttling");
 // ---------------------------------------------------------------- Settings (persisted in %APPDATA%\JARVIS)
 const SETTINGS_FILE = path.join(app.getPath("userData"), "settings.json");
 const DEFAULTS = {
+  mode: "local",                 // "local" = JARVIS server runs on this laptop; "remote" = connect to a cloud server
   serverUrl: process.env.JARVIS_SERVER_URL || "",
+  phoneAccess: false, phoneUrl: null,
   wakeEnabled: true, threshold: 0.5, minFrames: 2, vadThreshold: 0.035, micDeviceId: null,
   autoStart: true, closeToTray: true, computerEnabled: true, bookmarks: {},
   pttShortcut: "CommandOrControl+Shift+Space", muteShortcut: "CommandOrControl+Shift+M",
 };
 let settings = { ...DEFAULTS };
 try { settings = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8")) }; } catch {}
-if (process.env.JARVIS_SERVER_URL) settings.serverUrl = process.env.JARVIS_SERVER_URL;
+if (process.env.JARVIS_SERVER_URL) { settings.serverUrl = process.env.JARVIS_SERVER_URL; settings.mode = "remote"; }
+const isLocal = () => settings.mode !== "remote";
 function saveSettings(patch) {
   settings = { ...settings, ...patch };
   fs.mkdirSync(path.dirname(SETTINGS_FILE), { recursive: true });
@@ -35,7 +41,24 @@ function saveSettings(patch) {
   applySettings(patch);
   return settings;
 }
-const serverOrigin = () => { try { return new URL(settings.serverUrl).origin; } catch { return null; } };
+let currentUrl = isLocal() ? null : settings.serverUrl;   // what the main window loads
+const serverOrigin = () => { try { return new URL(currentUrl).origin; } catch { return null; } };
+
+// ---------------------------------------------------------------- Local server (JARVIS on this laptop)
+let server = null, secretsStore = null;   // secretsStore is created once Electron is ready (needs safeStorage)
+function serverEnv() {
+  return { ...secretsStore.env(), ...(settings.phoneAccess && settings.phoneUrl ? { PUBLIC_URL: settings.phoneUrl } : {}), JARVIS_TZ: Intl.DateTimeFormat().resolvedOptions().timeZone };
+}
+async function startLocalServer() {
+  const loc = locateServer({ appRoot: root, resourcesPath: process.resourcesPath, packaged: app.isPackaged });
+  server = new ServerManager({
+    ...loc, dataDir: path.join(app.getPath("userData"), "data"), logFile: path.join(app.getPath("userData"), "server.log"),
+    onState: (st, detail) => { status.server = st; status.serverError = detail || null; pushStatus(); log("server", st, detail || ""); },
+  });
+  const ok = await server.start(serverEnv());
+  currentUrl = server.url;
+  return ok;
+}
 
 // ---------------------------------------------------------------- State
 let win = null, audioWin = null, setupWin = null, tray = null, quitting = false;
@@ -57,11 +80,11 @@ function createMain() {
     icon: iconPath(), autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(here, "preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false,
-      backgroundThrottling: false, additionalArguments: [`--jarvis-origin=${serverOrigin()}`, `--jarvis-version=${VERSION}`],
+      backgroundThrottling: false, additionalArguments: [`--jarvis-origin=${serverOrigin()}`, `--jarvis-version=${VERSION}`, `--jarvis-mode=${isLocal() ? "local" : "remote"}`],
     },
   });
   win.webContents.setUserAgent(`${win.webContents.getUserAgent()} JARVIS-Desktop/${VERSION}`);
-  win.loadURL(settings.serverUrl);
+  win.loadURL(currentUrl);
   win.once("ready-to-show", () => { if (!startHidden) win.show(); });
   win.on("close", (e) => { if (!quitting && settings.closeToTray) { e.preventDefault(); win.hide(); notifyOnce("JARVIS is still running", "Find me in the system tray. Say “Hey JARVIS” any time."); } });
   win.on("closed", () => { win = null; });
@@ -83,7 +106,7 @@ function createMain() {
   win.webContents.on("did-fail-load", (_e, code, desc, url) => {
     if (code === -3) return; // aborted (navigation)
     log("load failed", code, desc, url);
-    win.webContents.loadFile(path.join(here, "offline.html"), { query: { url: settings.serverUrl, error: desc } });
+    win.webContents.loadFile(path.join(here, "offline.html"), { query: { url: currentUrl, error: desc } });
   });
 }
 
@@ -109,6 +132,17 @@ function createSetup() {
   });
   setupWin.loadFile(path.join(here, "setup.html"), { query: { url: settings.serverUrl } });
   setupWin.on("closed", () => { setupWin = null; if (!win && !quitting) app.quit(); });
+}
+
+let keysWin = null;
+function createKeys({ firstRun = false } = {}) {
+  if (keysWin) return keysWin.show();
+  keysWin = new BrowserWindow({
+    width: 560, height: 760, backgroundColor: "#06030c", title: "JARVIS — keys", icon: iconPath(), autoHideMenuBar: true,
+    webPreferences: { preload: path.join(here, "keys-preload.cjs"), contextIsolation: true, sandbox: true },
+  });
+  keysWin.loadFile(path.join(here, "keys.html"), { query: { firstRun: firstRun ? "1" : "" } });
+  keysWin.on("closed", () => { keysWin = null; if (firstRun && !win && !quitting) bootLocal(); });
 }
 
 function showMain() {
@@ -140,7 +174,7 @@ function updateTray() {
     { label: status.muted ? "Unmute microphone" : "Mute microphone", accelerator: settings.muteShortcut, click: () => setMuted(!status.muted) },
     { label: "Listen for “Hey JARVIS”", type: "checkbox", checked: settings.wakeEnabled, click: (m) => saveSettings({ wakeEnabled: m.checked }) },
     { label: "Start with Windows", type: "checkbox", checked: settings.autoStart, click: (m) => saveSettings({ autoStart: m.checked }) },
-    { label: "Change server…", click: () => { win?.hide(); createSetup(); } },
+    ...(isLocal() ? [{ label: "API keys & AI model…", click: () => createKeys() }] : [{ label: "Change server…", click: () => { win?.hide(); createSetup(); } }]),
     { type: "separator" },
     { label: "Exit JARVIS", click: quitFully },
   ]));
@@ -177,12 +211,15 @@ function registerShortcuts() {
   try { globalShortcut.register(settings.muteShortcut, () => setMuted(!status.muted)); } catch (e) { log("shortcut failed", e.message); }
 }
 
-function quitFully() {
+async function quitFully() {
+  if (quitting && !server) return;
   quitting = true;
   log("exit requested");
   globalShortcut.unregisterAll();
   tray?.destroy(); tray = null;
   for (const w of BrowserWindow.getAllWindows()) w.destroy();
+  await server?.stop();          // the local JARVIS server stops with the app — nothing keeps running secretly
+  server = null;
   app.quit();
 }
 
@@ -247,6 +284,34 @@ ipcMain.on("audio:wake", (_e, score) => {
   pushStatus();
 });
 
+// Laptop-hosted server: keys, setup code, Tailscale
+ipcMain.handle("keys:get", () => secretsStore.view());
+ipcMain.handle("keys:save", async (_e, patch) => {
+  secretsStore.update(patch);
+  log("keys updated", Object.keys(patch || {}).filter((k) => patch[k]).join(","));
+  if (server && win) { await server.restart(serverEnv()); win.webContents.reload(); }
+  return secretsStore.view();
+});
+ipcMain.handle("keys:open", (_e, url) => { if (/^https:\/\//.test(url)) shell.openExternal(url); });
+ipcMain.on("keys:close", () => keysWin?.close());
+ipcMain.on("jarvis:openKeys", () => createKeys());
+ipcMain.handle("jarvis:setupCode", () => (isLocal() ? secretsStore.get("JARVIS_SETUP_TOKEN") : null));
+ipcMain.handle("jarvis:local", () => ({ local: isLocal(), url: currentUrl, port: server?.port, phoneAccess: settings.phoneAccess, phoneUrl: settings.phoneUrl, server: status.server, encrypted: secretsStore?.encrypted() }));
+ipcMain.handle("tailscale:status", () => (server ? tailscale.status(server.port) : { installed: false }));
+ipcMain.handle("tailscale:enable", async () => {
+  if (!server) return { ok: false, error: "Only available when JARVIS runs on this laptop." };
+  const r = await tailscale.enable(server.port);
+  if (r.ok) { saveSettings({ phoneAccess: true, phoneUrl: r.url }); await server.restart(serverEnv()); win?.webContents.reload(); log("iPhone access on", r.url); }
+  return r;
+});
+ipcMain.handle("tailscale:disable", async () => {
+  const r = await tailscale.disable();
+  saveSettings({ phoneAccess: false });
+  if (server) { await server.restart(serverEnv()); win?.webContents.reload(); }
+  return r;
+});
+ipcMain.handle("tailscale:openLink", (_e, url) => { if (/^https:\/\/(login\.)?tailscale\.com\//.test(url)) shell.openExternal(url); });
+
 // Setup window
 ipcMain.handle("setup:test", async (_e, url) => {
   try {
@@ -257,7 +322,8 @@ ipcMain.handle("setup:test", async (_e, url) => {
   } catch (e) { return { ok: false, error: e.message }; }
 });
 ipcMain.handle("setup:save", (_e, url) => {
-  saveSettings({ serverUrl: new URL(url).origin });
+  saveSettings({ serverUrl: new URL(url).origin, mode: "remote" });
+  currentUrl = settings.serverUrl;
   setupWin?.removeAllListeners("closed"); setupWin?.close(); setupWin = null;
   if (win) { win.destroy(); win = null; }
   createMain(); showMain();
@@ -281,6 +347,14 @@ function configurePermissions() {
 
 // ---------------------------------------------------------------- Lifecycle
 let suspended = false;
+let booting = false;
+async function bootLocal() {
+  if (booting || win) return; booting = true;
+  const ok = await startLocalServer();
+  if (!ok) log("local server failed to start; see server.log");
+  createMain();
+  booting = false;
+}
 app.whenReady().then(() => {
   configurePermissions();
   tray = new Tray(nativeImage.createFromPath(iconPath("tray.png")));
@@ -289,7 +363,11 @@ app.whenReady().then(() => {
   registerShortcuts();
   app.setLoginItemSettings({ openAtLogin: !!settings.autoStart, args: ["--hidden"] });
   createAudio();
-  if (!settings.serverUrl) createSetup(); else createMain();
+  if (isLocal()) {
+    secretsStore = createSecrets(path.join(app.getPath("userData"), "secrets.json"), safeStorage);
+    if (!secretsStore.get("ANTHROPIC_API_KEY") && !process.env.ANTHROPIC_API_KEY) createKeys({ firstRun: true });
+    else bootLocal();
+  } else if (!settings.serverUrl) createSetup(); else createMain();
 
   powerMonitor.on("suspend", () => { suspended = true; status.wakeWord = "asleep"; sendAudioConfig(); pushStatus(); log("suspend"); });
   powerMonitor.on("resume", () => {

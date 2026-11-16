@@ -29,11 +29,14 @@ async function draw(ctx) {
 const SECTIONS = {
   async devices(el, ctx) {
     const devs = await api("/api/devices");
+    const local = ctx.desktop?.mode === "local" ? await ctx.desktop.local() : null;
     el.innerHTML = `<div class="grid cols-2">
+      ${local ? `<article class="glass panel" style="grid-column:1/-1"><div class="panel-head"><span class="label">iPhone access (free, private)</span><span id="tsBadge"></span></div><div id="ts"><p class="muted">Checking Tailscale…</p></div></article>` : ""}
       <article class="glass panel"><div class="panel-head"><span class="label">Pair your iPhone</span></div>
-        <ol style="padding-left:18px;margin:0 0 12px;font-size:14px"><li>Tap <b>Show pairing code</b>.</li><li>Point your iPhone camera at the QR code and open the link in Safari.</li><li>In Safari: Share → <b>Add to Home Screen</b>, then open JARVIS from the icon and enable notifications.</li></ol>
-        <button class="btn primary" id="pair">Show pairing code</button><div id="pairOut" style="margin-top:12px"></div></article>
+        <ol style="padding-left:18px;margin:0 0 12px;font-size:14px">${local ? "<li>Turn on <b>iPhone access</b> above first.</li>" : ""}<li>Tap <b>Show pairing code</b>.</li><li>Point your iPhone camera at the QR code and open the link in Safari.</li><li>In Safari: Share → <b>Add to Home Screen</b>, then open JARVIS from the icon and enable notifications.</li></ol>
+        <button class="btn primary" id="pair" ${local && !local.phoneAccess ? "disabled" : ""}>Show pairing code</button><div id="pairOut" style="margin-top:12px"></div></article>
       <article class="glass panel"><div class="panel-head"><span class="label">Signed-in devices</span></div><ul class="list">${devs.map((d) => `<li class="item" style="${d.revoked_at ? "opacity:.45" : ""}"><span class="dot ${d.revoked_at ? "" : "ok"}"></span><div class="grow"><div>${esc(d.name)} ${d.current ? '<span class="pill ok">this device</span>' : ""}</div><div class="meta">${d.kind} · ${d.revoked_at ? `signed out ${ago(d.revoked_at)}` : `last seen ${ago(d.last_seen)}`}</div></div>${d.revoked_at ? "" : `<button class="btn small ghost" data-ren="${d.id}">Rename</button><button class="btn small danger" data-rev="${d.id}">Sign out</button>`}</li>`).join("")}</ul></article></div>`;
+    if (local) drawTailscale(ctx, local);
     $("#pair").onclick = async () => {
       const p = await api("/api/pair/create", { method: "POST" });
       $("#pairOut").innerHTML = `<div class="row wrap" style="align-items:flex-start"><div class="qr">${p.qrSvg}</div><div><div class="label">Or type this code</div><div class="mid mono" style="letter-spacing:.1em">${esc(p.shortCode)}</div><p class="muted" style="font-size:13px">at ${esc(p.url.split("#")[0])}<br>Expires ${fmtWhen(p.expiresAt)}. Works once.</p></div></div>`;
@@ -71,6 +74,7 @@ const SECTIONS = {
         ${row("Close to tray", "Closing the window keeps JARVIS running. Use Exit JARVIS in the tray to quit.", sw("tray", s.closeToTray))}
         ${row("Push-to-talk shortcut", "Works from any app", `<span class="mono">${esc(s.pttShortcut)}</span>`)}
         ${row("Computer control", "Let JARVIS open allowlisted apps, folders and documents", sw("computer", s.computerEnabled))}
+        ${d.mode === "local" ? row("API keys & AI model", "JARVIS runs on this laptop; keys are stored encrypted by Windows", '<button class="btn small" id="keys">Open</button>') : ""}
         ${row("Voice output", ctx.session.tts ? `Neural (${ctx.session.tts})` : "Windows voice (add a TTS key on the server for the butler voice)", '<button class="btn small" id="test">Test</button>')}
         <div class="label" style="margin-top:12px">Named shortcuts</div><p class="muted" style="font-size:13px;margin:4px 0 8px">“Open my JARVIS project” opens the shortcut called “JARVIS project”.</p>
         <ul class="list" id="bm">${Object.entries(s.bookmarks || {}).map(([k, v]) => `<li class="item"><div class="grow"><div>${esc(k)}</div><div class="meta mono">${esc(v)}</div></div><button class="x" data-bm="${esc(k)}" aria-label="Remove">×</button></li>`).join("") || '<li class="faint" style="font-size:13px">None yet.</li>'}</ul>
@@ -89,6 +93,7 @@ const SECTIONS = {
     $("#tray").onchange = (e) => set({ closeToTray: e.target.checked });
     $("#computer").onchange = (e) => set({ computerEnabled: e.target.checked });
     $("#test").onclick = () => { voice.ensureAudio(); voice.speak("Good evening, sir. I'm online, and all available systems are operational."); };
+    $("#keys")?.addEventListener("click", () => d.openKeys());
     $("#exit").onclick = async () => { if (await confirmDialog("Exit JARVIS?", "The wake word and background services on this laptop will stop until you start JARVIS again.", { ok: "Exit", danger: true })) d.quit(); };
     $("#addBm").onclick = async () => {
       const v = await formDialog("New shortcut", [{ name: "name", label: "Name (what you'll say)", required: true, placeholder: "JARVIS project" }, { name: "target", label: "Folder, file or https link", required: true, placeholder: "C:\\Users\\you\\Projects\\jarvis" }]);
@@ -153,11 +158,12 @@ const SECTIONS = {
     }, () => toast("Location permission was declined."), { timeout: 10000 });
   },
 
-  async integrations(el) {
+  async integrations(el, ctx) {
     const h = await api("/api/health");
     const i = h.integrations;
+    const localMode = ctx.desktop?.mode === "local";
     const item = (name, ok, detail, how) => `<li class="item"><span class="dot ${ok === true ? "ok" : ok === "warn" ? "warn" : "bad"}"></span><div class="grow"><div><b>${name}</b></div><div class="meta">${detail}</div>${how ? `<div class="meta faint">${how}</div>` : ""}</div></li>`;
-    el.innerHTML = `<article class="glass panel"><ul class="list">
+    el.innerHTML = `<article class="glass panel">${localMode ? '<div class="spread" style="margin-bottom:10px"><span class="muted">JARVIS runs on this laptop. Add or change keys in the keys window.</span><button class="btn small primary" id="openKeys">API keys & AI model</button></div>' : ""}<ul class="list">
       ${item("AI (Claude)", i.ai.configured, i.ai.configured ? `Model ${esc(i.ai.model)}` : "Not configured", i.ai.configured ? "" : "Server needs ANTHROPIC_API_KEY.")}
       ${item("Web research", i.webSearch && i.ai.configured, i.webSearch ? "Claude web search with citations" : "Disabled (JARVIS_WEB_SEARCH=false)")}
       ${item("Voice output", i.voice.tts ? true : "warn", i.voice.tts ? `Neural voice via ${i.voice.tts}` : "Browser voices only", i.voice.tts ? "" : "Add ELEVENLABS_API_KEY (recommended) or OPENAI_API_KEY.")}
@@ -166,6 +172,7 @@ const SECTIONS = {
       ${item("Google Calendar", i.google.connection ? true : i.google.configured ? "warn" : false, i.google.connection ? `Connected · synced ${ago(i.google.connection.last_sync_at)}` : i.google.configured ? "Configured — connect from Agenda" : "Not configured (JARVIS's own calendar works)", i.google.configured ? "" : "Create an OAuth client in Google Cloud and add GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET.")}
       ${item("Weather", true, "Open-Meteo (no key required)")}
     </ul></article>`;
+    $("#openKeys")?.addEventListener("click", () => ctx.desktop.openKeys());
   },
 
   async notify(el, ctx) {
@@ -229,5 +236,38 @@ const SECTIONS = {
         <p class="faint" style="font-size:12px">While the laptop sleeps or is offline, the wake word is unavailable. Reminders and briefings still arrive on your phone from the server.</p></article></div>`;
   },
 };
+
+async function drawTailscale(ctx, local) {
+  const el = $("#ts"); if (!el) return;
+  const d = ctx.desktop;
+  const st = await d.tailscaleStatus();
+  const badge = $("#tsBadge");
+  if (local.phoneAccess && st.serving) {
+    badge.innerHTML = '<span class="pill ok">on</span>';
+    el.innerHTML = `<p style="margin-top:0">Your iPhone reaches JARVIS at <b class="mono">${esc(local.phoneUrl)}</b> through Tailscale. Only devices signed in to your Tailscale account can open it.</p>
+      <ol style="padding-left:18px;font-size:14px"><li>On the iPhone, install <b>Tailscale</b> from the App Store and sign in with the same account. Leave it connected.</li><li>Below, tap <b>Show pairing code</b> and scan it with the iPhone camera.</li></ol>
+      <p class="faint" style="font-size:13px">When this laptop is off or asleep, the phone can't reach JARVIS; reminders wait until it's back.</p>
+      <button class="btn small ghost" id="tsOff">Turn off iPhone access</button>`;
+    $("#tsOff").onclick = async () => { await d.tailscaleDisable(); toast("iPhone access turned off."); };
+    return;
+  }
+  badge.innerHTML = '<span class="pill">off</span>';
+  const steps = !st.installed
+    ? `<p style="margin-top:0">To use JARVIS on your iPhone for free, install <b>Tailscale</b> (a free private network) on this laptop and your iPhone. Nothing is opened to the public internet.</p><div class="row wrap"><button class="btn small primary" id="tsGet">Download Tailscale for Windows</button><button class="btn small" id="tsCheck">I've installed it</button></div>`
+    : !st.running
+      ? `<p style="margin-top:0">Tailscale is installed. Open it from the system tray and <b>sign in</b> (a free personal account is fine), then:</p><button class="btn small" id="tsCheck">Check again</button>`
+      : `<p style="margin-top:0">Tailscale is connected as <b class="mono">${esc(st.dnsName)}</b>. Turn on iPhone access to give your own devices a private HTTPS address for JARVIS.</p><button class="btn small primary" id="tsOn">Turn on iPhone access</button><p class="error" id="tsErr"></p>`;
+  el.innerHTML = steps;
+  $("#tsGet")?.addEventListener("click", () => d.tailscaleOpen("https://tailscale.com/download/windows"));
+  $("#tsCheck")?.addEventListener("click", () => drawTailscale(ctx, local));
+  $("#tsOn")?.addEventListener("click", async (e) => {
+    e.target.disabled = true; e.target.textContent = "Turning on…";
+    const r = await d.tailscaleEnable();
+    if (r.ok) { toast("iPhone access is on."); return; }   // app reloads with the new address
+    $("#tsErr").innerHTML = `${esc(r.error)}${r.enableUrl ? ' <button class="btn small" id="tsLink">Open approval page</button>' : ""}`;
+    $("#tsLink")?.addEventListener("click", () => d.tailscaleOpen(r.enableUrl));
+    e.target.disabled = false; e.target.textContent = "Try again";
+  });
+}
 
 try { voice.micDeviceId = localStorage.getItem("jarvis.mic") || null; } catch {}

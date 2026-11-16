@@ -1,114 +1,108 @@
-# JARVIS 3.0
+# JARVIS 3.1
 
-JARVIS is your personal AI assistant. It runs on a small cloud server and is used from two places:
-- **Windows app on your laptop.** It listens for **"Hey JARVIS"**, speaks back with a British voice and sits in the system tray.
-- **iPhone home-screen app.** It shares the same account: conversations, tasks, reminders, projects, money and memory.
+JARVIS is your personal AI assistant, and it runs **entirely on your Windows laptop**. There is no cloud server and no hosting bill.
+- **On the laptop** it listens for **"Hey JARVIS"**, speaks back and sits in the system tray.
+- **On your iPhone** you can reach it privately through **Tailscale**, a free private-network app. Phone and laptop share conversations, tasks, reminders, projects, money and memory.
 
 ![Laptop](docs/screenshots/laptop-home.png)
 
 ```
-iPhone (home-screen app) ─┐                       ┌─ Claude (reasoning, web research)
-                          ├─ HTTPS + WebSocket ─ JARVIS backend ─┼─ Monzo (read-only)
-Windows app ──────────────┘    (one account,     │   (Render)    ├─ Google Calendar
-  └ local “Hey JARVIS” wake word  live sync)     │               ├─ Open-Meteo weather
-  └ allowlisted laptop actions                   └─ SQLite + daily backups, ElevenLabs/Whisper voice
+                Windows laptop (JARVIS-Setup.exe)
+ ┌──────────────────────────────────────────────────────────────┐
+ │ JARVIS app (tray) ── local “Hey JARVIS” wake word (on-device) │
+ │      │                                                        │
+ │      └── JARVIS server (bundled, 127.0.0.1 only) ── SQLite     │──► Claude, Whisper, ElevenLabs,
+ │               ▲                                               │    Monzo, Google, Open-Meteo
+ └───────────────┼───────────────────────────────────────────────┘
+                 │ Tailscale (free, private, HTTPS)
+             iPhone home-screen app
 ```
 
----
+**What it costs:** the software is free.
+- **AI:** you pay only for usage. With the default Claude Haiku 5.5, everyday use is pennies a month; you can switch to Sonnet or Opus any time.
+- **Voice input (Whisper):** about £0.005 a minute.
+- **ElevenLabs voice:** has a free tier. Without it JARVIS uses the Windows voice.
 
-## 1. Put the backend online (about 10 minutes, no terminal)
+## 1. Install on your laptop (about 5 minutes)
 
-1. Click **[Deploy to Render](https://render.com/deploy?repo=https://github.com/9y6mfb88zk-eng/Dylan-Walsh)** and sign in with GitHub.
-   - Render needs permission to read this repository.
-   - It uses the **Starter** plan (about $7/month), which includes the persistent disk that stores your data.
-2. When asked for the secret values, paste your keys (see **§5 Credentials**). Only `ANTHROPIC_API_KEY` is essential to start. You can add the rest later under **Environment**.
-3. Wait for the first deploy to finish, then open the address Render gives you, e.g. `https://jarvis-xxxx.onrender.com`.
-4. **First-time setup:**
-   - In Render, open **Environment** and copy the value of `JARVIS_SETUP_TOKEN`.
-   - Enter it on the JARVIS page and choose a password of 10 or more characters.
-   - That browser becomes your first signed-in device.
+1. Download **`JARVIS-Setup-3.1.0.exe`** from **[Releases → "JARVIS for Windows (latest)"](https://github.com/9y6mfb88zk-eng/Dylan-Walsh/releases/tag/desktop-latest)** and run it.
+   - SmartScreen may warn because it isn't code-signed. Click **More info → Run anyway**.
+2. JARVIS opens a **keys** window:
+   - **Anthropic API key** (required). Get it at console.anthropic.com → API Keys → Create key, and add a little credit.
+   - **OpenAI API key** (needed to understand your voice). Get it at platform.openai.com → API keys.
+   - **ElevenLabs** (optional) for the British butler voice.
+   - The AI model is **Claude Haiku 5.5 (cheapest)** by default.
+   - Keys are encrypted with your Windows account and kept on the laptop.
+3. **Choose a password.** No setup code is needed; the app handles it.
+4. Allow the microphone. If Windows blocks it, go to **Settings → Privacy & security → Microphone** and turn on "Let desktop apps access your microphone".
+5. Say **"Hey JARVIS"**, or press **Ctrl+Shift+Space**.
 
-Prefer Railway, Fly.io or your own server? The included `Dockerfile` works anywhere. Mount a volume at `/data` and set the variables from `.env.example`.
+Everyday use:
+- **Close to tray:** closing the window keeps JARVIS in the system tray.
+- **Starts with Windows:** on by default.
+- **Exit JARVIS** (tray menu) stops the app *and* its server completely.
+- **Change keys or model:** tray menu → **API keys & AI model…**.
+- **Your data:** stored in `%APPDATA%\JARVIS\data`, with daily backups in `%APPDATA%\JARVIS\data\backups`.
 
-## 2. Install the Windows app
+## 2. Add your iPhone (free, private)
 
-1. Open **[Releases → "JARVIS for Windows (latest)"](https://github.com/9y6mfb88zk-eng/Dylan-Walsh/releases/tag/desktop-latest)** and download `JARVIS-Setup-3.0.0.exe`.
-   - GitHub Actions builds it automatically on every push.
-   - The installer isn't code-signed, so SmartScreen may warn you. Choose **More info → Run anyway**.
-2. Run the installer. On first launch, enter your server address (`https://jarvis-xxxx.onrender.com`) and sign in.
-3. Allow the microphone when asked. If Windows blocks it, go to **Settings → Privacy & security → Microphone** and turn on "Let desktop apps access your microphone".
-4. Say **"Hey JARVIS"**.
+1. **On the laptop:** install **Tailscale** from tailscale.com/download/windows and sign in (a free personal account).
+2. In JARVIS, go to **Settings → Devices & pairing → Turn on iPhone access**.
+   - The first time, Tailscale may ask you to approve HTTPS for your network. JARVIS shows the link: open it, click approve, then press **Try again**.
+3. **On the iPhone:** install **Tailscale** from the App Store, sign in with the **same account** and leave it connected.
+4. On the laptop, tap **Show pairing code** and scan the QR code with the iPhone camera.
+5. In Safari, tap **Share → Add to Home Screen**. Open JARVIS from the icon, then go to **Settings → Notifications → Turn on**.
 
-What the Windows app gives you:
-- **Tray app.** Closing the window keeps JARVIS running. Choose **Exit JARVIS** in the tray menu (or Settings) to quit completely.
-- **Start with Windows.** On by default; change it in the tray menu or in Settings → Voice & laptop. It starts hidden in the tray and begins listening.
-- **Push-to-talk:** `Ctrl+Shift+Space` from any app.
-- **Mute microphone:** `Ctrl+Shift+M`. You can also use the mic chip in the top bar or the tray menu.
-- **Sleep and resume.** While the laptop sleeps the wake word is genuinely unavailable, and the health panel says so. It restarts on resume.
+Only devices signed in to your Tailscale account can reach JARVIS. Nothing is opened to the public internet.
 
-Developers can run from source instead:
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\windows\setup.ps1      # installs Node if needed, deps, creates .env
-powershell -ExecutionPolicy Bypass -File scripts\windows\start-dev.ps1  # backend on localhost:3000 + the Windows app
-```
+What happens when the laptop is off:
+- The phone can't reach JARVIS while the laptop is off or asleep.
+- Reminders due in that time are sent as soon as the laptop is back on.
+- For reminders to reach your phone while the laptop is off, you'd need the optional cloud server (§11).
 
-## 3. Add JARVIS to your iPhone
+## 3. Connect Monzo (read-only, optional)
 
-1. On the laptop, go to **Settings → Devices & pairing → Show pairing code**.
-2. Point the iPhone **Camera** at the QR code and open the link in Safari. The phone is signed in to the same account.
-3. In Safari, tap **Share → Add to Home Screen**. Open JARVIS from the new icon.
-4. Go to **Settings → Notifications → Turn on**. Reminders, briefings and research results will now arrive even when every app is closed.
-
-iOS doesn't let web apps listen in the background, so the phone has no wake word. Tap the core or the mic to talk (this uses Whisper, so `OPENAI_API_KEY` is needed). The laptop is the always-listening device.
-
-## 4. Connect Monzo (read-only)
-
-1. Sign in at **developers.monzo.com** with your Monzo account and approve the login in the Monzo app.
+1. Sign in at **developers.monzo.com** and approve the login in the Monzo app.
 2. Go to **Clients → New OAuth Client** and set:
    - **Name:** JARVIS
-   - **Logo URL:** leave blank
-   - **Redirect URLs:** `https://YOUR-SERVER/oauth/monzo/callback`
-   - **Confidentiality:** Confidential
-3. Copy the **Client ID** and **Client secret** into Render as `MONZO_CLIENT_ID` and `MONZO_CLIENT_SECRET`. Save; Render redeploys.
-4. In JARVIS, go to **Money → Connect Monzo**. Sign in on Monzo's own page. JARVIS never sees your password, PIN or card.
-5. **Approve "JARVIS" in the Monzo app.** Monzo requires this extra step. Until then the status reads *Waiting for approval*. Then tap **Sync now**.
-6. Under **Money → Bank connection**, choose which accounts JARVIS may use. **Disconnect** revokes access and deletes the stored data.
+   - **Redirect URL:** `http://localhost:47823/oauth/monzo/callback`
+   - **Confidential:** yes
+3. In JARVIS, go to tray menu → **API keys & AI model** and paste the Monzo **Client ID** and **Client secret**.
+4. Go to **Money → Connect Monzo**. Sign in on Monzo's own page; JARVIS never sees your password, PIN or card.
+5. **Approve "JARVIS" in the Monzo app.** Monzo requires this extra step. Then tap **Sync now**.
 
-About the Monzo developer API:
-- It is meant for **personal use with your own account**, which is exactly this use case. Monzo can change or limit it.
-- Monzo only returns the last 90 days of transactions after the first 5 minutes of a connection.
+You can pick which accounts JARVIS may use, and **Disconnect** revokes access and deletes the stored data.
 
-If it doesn't suit you, the calculations accept any provider. TrueLayer's Data API is the documented alternative, but it needs its own approval for live access. It isn't built yet; see **Limitations**.
+For an accurate "money left", add your bills, planned savings and debt repayments under **Money → Still to pay**. Mark each **confirmed** or **estimated**; JARVIS labels estimates as estimates.
 
-For an accurate "money left", add your bills, planned savings and debt repayments under **Money → Still to pay**.
-- Mark each one **confirmed** or **estimated**. JARVIS labels estimates as estimates.
-- Fill in "text in the bank description" so a bill is ticked off once it is paid.
+Two Monzo limits to know:
+- The developer API is for personal use with your own account, and Monzo can change it.
+- After the first 5 minutes of a connection, Monzo only returns the last 90 days of transactions.
+
+## 4. Google Calendar (optional)
+
+1. In console.cloud.google.com, create a project and enable the **Google Calendar API**.
+2. Under **OAuth consent screen**, choose External and add yourself as a test user.
+3. Under **Credentials**, create an OAuth client ID (Web application) with the redirect URI `http://localhost:47823/oauth/google/callback`.
+4. Paste the ID and secret in **API keys & AI model**.
+5. In JARVIS, go to **Agenda → Connect Google Calendar**. Without Google, JARVIS's own calendar still works.
 
 ## 5. Credentials
 
-| Variable | Needed for | Where to get it |
+You enter all of these in the app's **keys** window (tray → API keys & AI model). The setup code and the encryption key for bank/calendar tokens are generated automatically.
+
+| Key | Needed for | Where to get it |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | **Required.** Conversation, tools, web research, briefings, ideas | console.anthropic.com → API Keys |
-| `JARVIS_SETUP_TOKEN` | Claiming your fresh install (one time) | Render generates it; otherwise any long random string |
-| `JARVIS_ENCRYPTION_KEY` | Encrypting bank and calendar tokens at rest | Render generates it. Never change it after connecting accounts |
 | `OPENAI_API_KEY` | **Voice input in the Windows app and on iPhone** (Whisper), backup voice, semantic memory search | platform.openai.com → API keys |
 | `ELEVENLABS_API_KEY` | Natural British butler voice (recommended) | elevenlabs.io → Profile → API keys |
-| `MONZO_CLIENT_ID` / `MONZO_CLIENT_SECRET` | Monzo | developers.monzo.com (see §4) |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google Calendar (optional) | See below |
+| `MONZO_CLIENT_ID` / `MONZO_CLIENT_SECRET` | Monzo | developers.monzo.com (see §3) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google Calendar (optional) | See §4 |
 
 You don't need keys for:
 - **Weather** (Open-Meteo).
 - **Push notifications.** The keys are generated automatically.
 - **The wake word.** The free openWakeWord `hey_jarvis` model ships inside the app.
-
-**Google Calendar:**
-1. In console.cloud.google.com, create a project and enable the **Google Calendar API**.
-2. Go to **APIs & Services → OAuth consent screen**: choose External and add yourself as a test user.
-3. Go to **Credentials → Create OAuth client ID** and choose Web application. Set the authorised redirect URI to `https://YOUR-SERVER/oauth/google/callback`.
-4. Put the ID and secret into Render.
-5. In JARVIS, go to **Agenda → Connect Google Calendar**.
-
-Without Google, JARVIS's own calendar still works.
 
 ## 6. Configure the wake word
 
@@ -120,7 +114,7 @@ All of this is on the laptop under **Settings → Voice & laptop**:
 - **Speech sensitivity:** how loud you must be once a command has started.
 - **Live score meter:** say "Hey JARVIS" and watch it peak.
 
-**Privacy:** detection runs on the laptop.
+**Privacy:** detection runs on the laptop (and so does the rest of JARVIS).
 - Uses the openWakeWord `hey_jarvis_v0.1` ONNX model, executed in the app via onnxruntime-web.
 - Idle audio never leaves the computer. After the wake phrase, only your command is recorded and sent for transcription.
 - While a conversation is running, the wake word pauses so JARVIS can't wake himself.
@@ -165,33 +159,39 @@ All of this is on the laptop under **Settings → Voice & laptop**:
 npm ci && npm test                  # 32 tests: backend end-to-end against stand-in services, plus the finance engine
 cd desktop && npm ci && npm test    # 12 tests: real hey_jarvis model accuracy and false triggers, laptop action allowlist
 npm run test:ui                     # 14 checks: real UI in Chromium at laptop and iPhone size
-npm run test:electron               # 20 checks: the real Windows app under Electron, with "Hey JARVIS" fed in as microphone audio
+npm run test:electron               # 18 checks: the Windows app under Electron, with "Hey JARVIS" fed in as microphone audio
+cd desktop && npm run dist:linux-dir && xvfb-run -a node test/electron-local-e2e.js   # 14 checks: the PACKAGED app running its own server (laptop mode)
 ```
 
-Latest run: **all 78 checks pass.** CI runs the unit tests on Linux and Windows, then builds the installer.
+Latest run: **all 90 checks pass.** CI runs the unit tests on Linux and Windows, then builds the installer.
 
 Your 8 acceptance scenarios:
 
 | Scenario | Status |
 |---|---|
-| 1. Restart Windows → JARVIS starts in the tray and shows real status | Start-with-Windows (`--hidden`), tray status and the backend health panel are built. The full app was tested under Electron on Linux; **not run on a real Windows reboot** |
+| 1. Restart Windows → JARVIS starts in the tray and shows real status | Start-with-Windows (`--hidden`) starts the app, which starts its own server. This was tested under Electron on Linux with the packaged app; **not run on a real Windows reboot** |
 | 2. "Hey JARVIS" starts a voice session | **Passed end to end in Electron**: a recording of the phrase fed in as the microphone was detected locally, then the command was transcribed, answered, spoken and synced. **Not yet tried with your microphone and voice** |
 | 3. "What's the weather tomorrow?" | Passes against Open-Meteo's real response format. **Live Open-Meteo calls were blocked by this build environment's network**, so the first live call happens on your server |
 | 4. "How much money have I got?" | Full OAuth, pending in-app approval, sync and answer tested against a Monzo API stand-in. **Needs your Monzo client to run live** |
 | 5. "How much have I spent this month?" | Same as 4. Transfers to pots and declined payments are correctly excluded |
 | 6. "Remind me to call my mum at six" | Passes: persistent, delivered by web push and live to the laptop, and survives a server restart |
-| 7. Open JARVIS on iPhone and see the same account | Passes in the iPhone-sized browser test: QR pairing, shared conversation, shared tasks and reminders |
+| 7. Open JARVIS on iPhone and see the same account | QR pairing, shared conversation, tasks and reminders pass in the iPhone-sized browser test. Tailscale's `serve` step was tested against a stand-in for the Tailscale command, **not the real Tailscale app** |
 | 8. Disconnect and reconnect the internet | Passes: offline actions queue on the device and sync exactly once on reconnect. The app shows a reconnecting screen and retries with back-off |
 
 ## 10. Limitations (honest list)
 
 - **Not yet tested with your real accounts, voice or microphone.** All external services were exercised against faithful stand-ins. No live Anthropic, Monzo, Google, ElevenLabs or OpenAI calls were made during development, because no keys were available.
-- **The Windows installer is built by GitHub Actions.** It wasn't built locally (no Windows machine here). If the first CI run fails, the log in the Actions tab says why.
+- **The Windows installer is built by GitHub Actions.** The same layout was packaged and tested here for Linux; the Windows build itself happens in CI.
+- **The phone needs the laptop on.** Because the server runs on the laptop, the phone can only reach JARVIS while the laptop is awake and Tailscale is connected on both. Reminders that fall due while it's asleep are sent when it wakes.
 - **Monzo developer API** access is Monzo's decision. It covers your own account; Monzo doesn't expose standing orders or direct debits, so upcoming bills come from what you enter plus detected repeating payments (labelled as estimates). **TrueLayer isn't implemented yet.**
 - **The iPhone can't listen for a wake word in the background** (an iOS rule). Push notifications on iPhone need iOS 16.4+ and the home-screen app.
 - **Voice input in the Windows app needs `OPENAI_API_KEY`.** Electron has no built-in speech recognition, so Whisper is used.
 - **Laptop actions run only while the Windows app is running and online.** Anything destructive (deleting, installing, purchases, emails, settings, payments) is deliberately not possible.
 - **Single-user design.** One owner account, one server instance (SQLite). That's right for a personal assistant, not for a shared service.
+
+## 11. Optional: run the server in the cloud instead
+
+If you'd rather have JARVIS reachable while the laptop is off, the same server deploys to Render. That costs about $7/month for the persistent disk. Click **[Deploy to Render](https://render.com/deploy?repo=https://github.com/9y6mfb88zk-eng/Dylan-Walsh)** and paste your keys. Then, in the Windows app, choose tray → Change server… and enter the Render address. The `Dockerfile` works on any host; mount `/data` and set the variables from `.env.example`.
 
 ## Project layout
 
@@ -204,9 +204,10 @@ server/                 Backend (Node 22, Express, SQLite via node:sqlite, WebSo
   services/             Tasks/projects, conversations, memory, calendar, confirmations, health, laptop actions
   brain.js              JARVIS persona, tools, research, briefing, ideas (Claude)
 public/                 iPhone/desktop web app (PWA): views, holographic core, voice, live sync
-desktop/                Windows app (Electron): tray, wake-word audio service, actions, installer config
+desktop/                Windows app (Electron): tray, local server manager, keys window, Tailscale, wake word, actions
+  scripts/prepare-server.js  Bundles a checksum-verified Node 22 + the JARVIS server into the installer
   models/               openWakeWord ONNX models (melspectrogram, embedding, hey_jarvis_v0.1)
 test/, desktop/test/    Automated tests
-render.yaml, Dockerfile One-click cloud deployment
-scripts/windows/        Windows setup and development start scripts
+render.yaml, Dockerfile Optional cloud deployment
+scripts/windows/        Run-from-source scripts for developers (setup.ps1, start-dev.ps1)
 ```

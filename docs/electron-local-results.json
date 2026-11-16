@@ -1,0 +1,72 @@
+[
+  {
+    "name": "the app starts its own JARVIS server and opens it (no cloud)",
+    "ok": true,
+    "detail": "http://localhost:47823/"
+  },
+  {
+    "name": "server runs from the bundled Node 22 inside the installer layout",
+    "ok": true,
+    "detail": "port 47823"
+  },
+  {
+    "name": "server is private: reachable on 127.0.0.1 only",
+    "ok": true,
+    "detail": "not reachable on 192.0.2.2"
+  },
+  {
+    "name": "first-run setup needs no code (the app supplies it)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "account created and signed in on the laptop",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "AI configured from the app's key store",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "“Hey JARVIS” from the microphone is detected locally",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "voice command answered by the laptop's own server",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "cheap model by default (Claude Haiku 5.5)",
+    "ok": true,
+    "detail": "claude-haiku-5-5"
+  },
+  {
+    "name": "Settings shows Tailscale connected and offers iPhone access",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "iPhone access turned on (tailscale serve → local server)",
+    "ok": true,
+    "detail": "https://dylans-laptop.tail1234.ts.net"
+  },
+  {
+    "name": "pairing QR now points at the private Tailscale address",
+    "ok": true,
+    "detail": "https://dylans-laptop.tail1234.ts.net/pair#SOe63Ui6XQKsocjNWnkrC_tiaEuRqks9"
+  },
+  {
+    "name": "Exit JARVIS closes the app",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "…and the local server stops with it (nothing left running)",
+    "ok": true,
+    "detail": ""
+  }
+]

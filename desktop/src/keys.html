@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self'">
+<title>JARVIS — keys</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: radial-gradient(120% 80% at 50% 0%, #1b0b33, #06030c 60%) fixed, #06030c; color: #f1ecff; font: 14px/1.5 "Segoe UI", system-ui, sans-serif; }
+  main { padding: 22px 24px 28px; max-width: 560px; margin: 0 auto; }
+  .orb { width: 54px; height: 54px; border-radius: 50%; margin: 0 auto 8px; background: radial-gradient(circle at 35% 30%, #fff, #a78bfa 40%, #4c1d95); box-shadow: 0 0 30px rgba(139,92,246,.7); }
+  h1 { text-align: center; letter-spacing: .3em; font-size: 15px; color: #c4b5fd; margin: 0 0 4px; }
+  .lead { text-align: center; color: rgba(226,216,255,.7); margin: 0 0 16px; }
+  fieldset { border: 1px solid rgba(196,181,253,.2); border-radius: 14px; padding: 12px 14px 4px; margin: 0 0 12px; background: rgba(255,255,255,.04); }
+  legend { padding: 0 6px; color: #c4b5fd; font-weight: 600; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+  label { display: grid; gap: 3px; margin-bottom: 10px; }
+  label span { display: flex; justify-content: space-between; gap: 8px; }
+  .hint { color: rgba(226,216,255,.55); font-size: 12px; }
+  .set { color: #34d399; font-size: 12px; }
+  input, select { width: 100%; padding: 9px 10px; border-radius: 10px; border: 1px solid rgba(196,181,253,.3); background: rgba(255,255,255,.06); color: inherit; font: inherit; }
+  a { color: #c4b5fd; cursor: pointer; text-decoration: underline; }
+  .row { display: flex; gap: 10px; margin-top: 6px; }
+  button { flex: 1; padding: 11px; border-radius: 12px; border: 1px solid rgba(196,181,253,.45); background: linear-gradient(160deg, rgba(167,139,250,.55), rgba(124,58,237,.45)); color: #fff; font-weight: 600; font-size: 14px; cursor: pointer; }
+  button.ghost { background: transparent; }
+  .note { color: rgba(226,216,255,.6); font-size: 12px; margin-top: 10px; }
+  .err { color: #fca5a5; min-height: 1.2em; }
+</style>
+</head>
+<body>
+<main>
+  <div class="orb"></div>
+  <h1>JARVIS</h1>
+  <p class="lead" id="lead">Everything runs on this laptop. Paste your keys once; they're stored encrypted by Windows.</p>
+  <form id="f">
+    <fieldset><legend>Brain (required)</legend>
+      <label><span>Anthropic API key <b class="set" id="s_ANTHROPIC_API_KEY"></b></span><input name="ANTHROPIC_API_KEY" type="password" placeholder="sk-ant-…" autocomplete="off">
+        <span class="hint">console.anthropic.com → API Keys → Create key (add a little credit). <a data-url="https://console.anthropic.com/settings/keys">Open</a></span></label>
+      <label><span>AI model</span><select name="JARVIS_MODEL" id="model"></select><span class="hint">Haiku keeps everyday use to pennies a month. You can change this any time.</span></label>
+    </fieldset>
+    <fieldset><legend>Voice</legend>
+      <label><span>OpenAI API key <b class="set" id="s_OPENAI_API_KEY"></b></span><input name="OPENAI_API_KEY" type="password" placeholder="sk-…" autocomplete="off">
+        <span class="hint">Needed to understand your voice (Whisper, about £0.005 a minute). <a data-url="https://platform.openai.com/api-keys">Open</a></span></label>
+      <label><span>ElevenLabs API key <b class="set" id="s_ELEVENLABS_API_KEY"></b></span><input name="ELEVENLABS_API_KEY" type="password" autocomplete="off">
+        <span class="hint">Optional British butler voice (free tier available). Without it JARVIS uses the Windows voice. <a data-url="https://elevenlabs.io/app/settings/api-keys">Open</a></span></label>
+    </fieldset>
+    <fieldset><legend>Bank & calendar (optional, add later)</legend>
+      <label><span>Monzo client ID <b class="set" id="s_MONZO_CLIENT_ID"></b></span><input name="MONZO_CLIENT_ID" autocomplete="off"></label>
+      <label><span>Monzo client secret <b class="set" id="s_MONZO_CLIENT_SECRET"></b></span><input name="MONZO_CLIENT_SECRET" type="password" autocomplete="off">
+        <span class="hint">developers.monzo.com → New OAuth client (Confidential). Redirect URL: <code id="monzoRedirect">http://localhost:47823/oauth/monzo/callback</code></span></label>
+      <label><span>Google client ID <b class="set" id="s_GOOGLE_CLIENT_ID"></b></span><input name="GOOGLE_CLIENT_ID" autocomplete="off"></label>
+      <label><span>Google client secret <b class="set" id="s_GOOGLE_CLIENT_SECRET"></b></span><input name="GOOGLE_CLIENT_SECRET" type="password" autocomplete="off">
+        <span class="hint">Redirect URI: <code>http://localhost:47823/oauth/google/callback</code></span></label>
+    </fieldset>
+    <p class="err" id="err"></p>
+    <div class="row"><button type="button" class="ghost" id="later">Skip for now</button><button id="save">Save and start JARVIS</button></div>
+    <p class="note" id="enc"></p>
+  </form>
+</main>
+<script src="keys.js"></script>
+</body>
+</html>

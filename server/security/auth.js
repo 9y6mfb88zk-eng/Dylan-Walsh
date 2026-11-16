@@ -199,7 +199,9 @@ export function readToken(req) {
   return m ? { token: decodeURIComponent(m[1]), via: "cookie" } : { token: null, via: null };
 }
 export function setSessionCookie(req, res, token) {
-  const secure = req.secure || config.publicUrl.startsWith("https://");
+  // Secure when the request arrived over HTTPS (directly or via a proxy such as Tailscale Serve or Render).
+  let secure = req.secure;
+  try { if (!secure && config.publicUrl.startsWith("https://") && new URL(config.publicUrl).host === req.get("host")) secure = true; } catch {}
   res.append("set-cookie", `${COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${config.sessionIdleDays * 86400}${secure ? "; Secure" : ""}`);
 }
 export function clearSessionCookie(res) {

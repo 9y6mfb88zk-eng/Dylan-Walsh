@@ -2,7 +2,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
-import { config } from "./config.js";
+import { config, modelOptions } from "./config.js";
 import { db, getSettings } from "./db.js";
 import { tasks, reminders, projects } from "./services/work.js";
 import { conversations } from "./services/conversations.js";
@@ -18,8 +18,8 @@ import { onlineDesktop, changed } from "./realtime.js";
 
 export const client = config.anthropicKey ? new Anthropic({ apiKey: config.anthropicKey }) : null;
 export const brainReady = () => !!client;
-const FALLBACK = { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" };
-const WEB_SEARCH = (max = 5) => ({ type: "web_search_20260209", name: "web_search", max_uses: max });
+const { fallback: FALLBACK, webSearch: WEB_SEARCH } = modelOptions(config.model);
+const research = modelOptions(config.researchModel);
 
 const PERSONA = `You are JARVIS, the user's personal AI assistant, in the spirit of the assistant from Iron Man.
 Personality: calm, intelligent, professional, direct, quietly witty, British in phrasing. Address the user as "sir" naturally, not in every sentence.
@@ -288,7 +288,7 @@ async function runResearch(id, query) {
     const messages = [{ role: "user", content: `Research this thoroughly using web search and write a concise, well-structured report for the user (who lives in ${getSettings().home.place}). Compare several sources, note disagreements and uncertainty, and cite sources for every factual claim. Do not invent anything. Topic: ${query}` }];
     let out = { text: "", sources: [] };
     for (let i = 0; i < 6; i++) {
-      const msg = await client.beta.messages.create({ model: config.model, max_tokens: 16000, tools: [WEB_SEARCH(10)], messages, output_config: { effort: "medium" }, ...FALLBACK });
+      const msg = await client.beta.messages.create({ model: config.researchModel, max_tokens: 16000, tools: [research.webSearch(10)], messages, output_config: { effort: "medium" }, ...research.fallback });
       messages.push({ role: "assistant", content: msg.content });
       const part = textAndSources(msg.content);
       out = { text: (out.text + "\n" + part.text).trim(), sources: [...out.sources, ...part.sources.filter((s) => !out.sources.some((o) => o.url === s.url))] };
