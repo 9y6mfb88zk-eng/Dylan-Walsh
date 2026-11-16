@@ -1,0 +1,644 @@
+<title>JARVIS</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one-column phone app — orb stage on top, text pill + mic, glass widgets, floating glass dock. Single dark look by design. */
+:root {
+  --bg: #07040d;
+  --violet: #8b5cf6;
+  --violet-2: #a78bfa;
+  --text: #f1ecff;
+  --muted: rgba(229, 220, 255, .6);
+  --edge: rgba(255, 255, 255, .14);
+  --edge-hi: rgba(255, 255, 255, .32);
+  --good: #34d399;
+  --warn: #f59e0b;
+  --shadow: 0 10px 40px rgba(0, 0, 0, .45);
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif;
+  --level: 0;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+html { overflow-x: hidden; }
+body { margin: 0; color: var(--text); font: 15px/1.45 var(--font); -webkit-font-smoothing: antialiased;
+  background: radial-gradient(120% 80% at 50% 0%, #170a2b 0%, var(--bg) 60%) fixed, var(--bg); overflow-x: hidden; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; border: 0; background: none; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--violet-2); outline-offset: 2px; }
+.muted { color: var(--muted); }
+
+.aurora { position: fixed; inset: 0; overflow: hidden; z-index: 0; pointer-events: none; opacity: .85; }
+.aurora i { position: absolute; border-radius: 50%; filter: blur(60px); mix-blend-mode: screen; }
+.aurora .b1 { width: 55vmax; height: 55vmax; left: 5%; top: 0; background: radial-gradient(circle, rgba(124,58,237,.55), transparent 65%); animation: d1 38s ease-in-out infinite alternate; }
+.aurora .b2 { width: 45vmax; height: 45vmax; right: 0; top: 25%; background: radial-gradient(circle, rgba(192,38,211,.3), transparent 65%); animation: d2 46s ease-in-out infinite alternate; }
+.aurora .b3 { width: 50vmax; height: 50vmax; left: 15%; bottom: -5%; background: radial-gradient(circle, rgba(79,70,229,.38), transparent 65%); animation: d3 54s ease-in-out infinite alternate; }
+@keyframes d1 { to { transform: translate(18vw, 22vh) scale(1.15); } }
+@keyframes d2 { to { transform: translate(-22vw, -12vh) scale(.9); } }
+@keyframes d3 { to { transform: translate(12vw, -20vh) scale(1.1); } }
+
+.glass { position: relative; border: 1px solid var(--edge); border-radius: 22px;
+  background: linear-gradient(160deg, rgba(255,255,255,.10), rgba(255,255,255,.03) 45%, rgba(255,255,255,.05));
+  -webkit-backdrop-filter: blur(28px) saturate(170%); backdrop-filter: blur(28px) saturate(170%);
+  box-shadow: var(--shadow), inset 0 1px 0 var(--edge-hi), inset 0 0 24px rgba(167,139,250,.05); }
+.glass::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; padding: 1px;
+  background: linear-gradient(135deg, rgba(255,255,255,.45), transparent 30%, transparent 70%, rgba(196,181,253,.3));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+
+main { position: relative; z-index: 2; max-width: 520px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 8px calc(110px + env(safe-area-inset-bottom, 0px)); }
+.view { display: none; animation: up .35s ease both; }
+.view.active { display: block; }
+@keyframes up { from { opacity: 0; transform: translateY(8px); } }
+.topbar { display: flex; align-items: center; justify-content: space-between; min-height: 44px; gap: 12px; }
+.brand { letter-spacing: .38em; font-size: 12px; font-weight: 600; color: var(--violet-2); text-shadow: 0 0 18px rgba(167,139,250,.6); }
+.title { font-size: 28px; font-weight: 700; letter-spacing: -.02em; }
+.status { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); }
+.status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 10px var(--good); }
+.status.off .dot { background: var(--warn); box-shadow: 0 0 10px var(--warn); }
+.link { color: var(--violet-2); font-size: 14px; font-weight: 600; }
+
+.stage { display: flex; flex-direction: column; align-items: center; overflow-x: clip; }
+.orb-wrap { --s: min(60vw, 240px); position: relative; width: var(--s); height: var(--s); display: grid; place-items: center; margin: 8px 0 2px; }
+.ripples { position: absolute; left: -40%; top: -40%; width: 180%; height: 180%; pointer-events: none; }
+.ring { position: absolute; inset: 0; border-radius: 50%; border: 1px solid rgba(196,181,253,.28); pointer-events: none; }
+.ring.r1 { inset: 2%; border-color: rgba(196,181,253,.35) transparent rgba(167,139,250,.12) transparent; border-width: 1.5px; animation: spin 14s linear infinite; }
+.ring.r2 { inset: 9%; border-style: dashed; border-color: rgba(167,139,250,.22); animation: spin 26s linear infinite reverse; }
+.ring.r3 { inset: -4%; border-color: transparent rgba(232,121,249,.28) transparent rgba(129,140,248,.2); animation: spin 40s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.orb { position: relative; width: 64%; height: 64%; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle at 35% 30%, #e9d5ff 0%, #a78bfa 18%, #7c3aed 42%, #3b0764 75%, #12041f 100%);
+  box-shadow: 0 0 calc(40px + 60px * var(--level)) rgba(139,92,246,calc(.45 + .4 * var(--level))), 0 0 120px rgba(124,58,237,.25), inset -10px -14px 30px rgba(0,0,0,.55), inset 6px 8px 20px rgba(255,255,255,.18);
+  transform: scale(calc(1 + .07 * var(--level))); }
+.orb .core { position: absolute; inset: 30%; border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,.95), rgba(233,213,255,.5) 35%, transparent 70%);
+  opacity: calc(.35 + .65 * var(--level)); filter: blur(calc(6px - 3px * var(--level))); transform: scale(calc(.8 + .6 * var(--level))); }
+.orb .sheen { position: absolute; inset: 6% 18% 55% 18%; border-radius: 50%; background: linear-gradient(180deg, rgba(255,255,255,.45), transparent); filter: blur(2px); opacity: .55; }
+.orb-wrap[data-state="listening"] .ring.r1 { animation-duration: 6s; border-color: rgba(110,231,183,.5) transparent rgba(110,231,183,.15) transparent; }
+.orb-wrap[data-state="thinking"] .ring.r1 { animation-duration: 2.2s; }
+.orb-wrap[data-state="thinking"] .orb { animation: think 1.6s ease-in-out infinite; }
+@keyframes think { 50% { filter: brightness(1.25) hue-rotate(-12deg); } }
+
+.greeting { margin: 4px 0 0; font-size: 24px; font-weight: 600; letter-spacing: -.01em; text-align: center; text-wrap: balance; }
+.wave { display: flex; gap: 3px; align-items: center; justify-content: center; height: 30px; margin-top: 6px; opacity: 0; transition: opacity .3s; }
+.wave.on { opacity: 1; }
+.wave span { width: 3px; height: 3px; border-radius: 3px; background: linear-gradient(180deg, #e9d5ff, #8b5cf6); box-shadow: 0 0 8px rgba(167,139,250,.6); }
+.caption { min-height: 42px; max-width: 34ch; margin: 4px auto 0; text-align: center; color: var(--muted); }
+.caption.user { font-style: italic; }
+
+.controls { display: flex; gap: 10px; align-items: center; margin: 10px 0 16px; }
+.text-pill { flex: 1; min-width: 0; display: flex; align-items: center; border-radius: 999px; height: 48px; padding: 0 6px 0 18px; }
+.text-pill input { flex: 1; min-width: 0; background: none; border: 0; outline: none; font-size: 16px; }
+.text-pill input::placeholder { color: var(--muted); }
+.icon-btn { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: rgba(139,92,246,.35); font-size: 20px; flex: none; }
+.icon-btn svg { width: 18px; height: 18px; }
+.mic { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; flex: none; background: linear-gradient(160deg, rgba(167,139,250,.5), rgba(124,58,237,.35)); }
+.mic svg { width: 24px; height: 24px; }
+.mic.live { background: linear-gradient(160deg, rgba(52,211,153,.55), rgba(16,185,129,.35)); }
+
+.widgets { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.card { padding: 14px 16px; min-width: 0; }
+.card[data-go] { cursor: pointer; }
+.card-head { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 6px; }
+.big { font-size: 32px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.big.sm { font-size: 16px; line-height: 1.3; font-weight: 600; letter-spacing: 0; }
+.clip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+.pill-btn { border-radius: 999px; padding: 9px 16px; font-weight: 600; font-size: 14px; background: rgba(139,92,246,.32); border: 1px solid rgba(196,181,253,.25); white-space: nowrap; }
+.pill-btn.wide { width: 100%; padding: 14px; font-size: 15px; }
+.pill-btn:disabled { opacity: .5; }
+
+.list { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 8px; }
+.list li { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+.list li .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.meta { font-size: 12px; color: var(--muted); }
+.check { width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid rgba(196,181,253,.5); flex: none; display: grid; place-items: center; font-size: 13px; }
+.done .check { background: var(--violet); border-color: var(--violet); }
+.done .grow > div:first-child { text-decoration: line-through; color: var(--muted); }
+.del { color: var(--muted); font-size: 20px; padding: 0 4px; }
+.empty { justify-content: center; color: var(--muted); }
+.add { margin-top: 10px; }
+.rem-form { display: grid; gap: 8px; padding: 12px; margin-top: 10px; }
+.rem-form input { background: rgba(255,255,255,.06); border: 1px solid var(--edge); border-radius: 14px; padding: 11px 12px; outline: none; font-size: 16px; min-width: 0; }
+.hint { color: var(--muted); font-size: 13px; margin: 10px 4px; }
+.sub { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 22px 4px 0; font-weight: 600; }
+
+.ideas { display: grid; gap: 12px; margin-top: 8px; }
+.idea { padding: 16px; }
+.idea h3 { margin: 0 0 6px; font-size: 18px; letter-spacing: -.01em; text-wrap: balance; }
+.idea p { margin: 6px 0; }
+.idea ol { margin: 8px 0; padding-left: 20px; }
+.fm { margin-top: 10px; padding: 10px 12px; border-radius: 14px; background: rgba(139,92,246,.16); border: 1px solid rgba(196,181,253,.2); }
+.fm b { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--violet-2); margin-bottom: 2px; }
+.acts { display: flex; gap: 8px; margin-top: 12px; align-items: center; justify-content: space-between; }
+
+.settings { padding: 4px 16px; margin-top: 10px; }
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,.07); }
+.set-row:last-child { border-bottom: 0; }
+.set-row > div { min-width: 0; }
+.set-row .muted { font-size: 13px; }
+
+.dock { position: fixed; z-index: 10; left: 50%; transform: translateX(-50%); bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  display: flex; gap: 2px; padding: 6px; border-radius: 30px; width: min(calc(100% - 32px), 420px); }
+.dock button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 0 5px; border-radius: 24px; color: var(--muted); font-size: 10.5px; font-weight: 600; }
+.dock button svg { width: 22px; height: 22px; }
+.dock button.active { color: var(--text); background: rgba(255,255,255,.1); box-shadow: inset 0 1px 0 rgba(255,255,255,.18); }
+.toast { position: fixed; z-index: 60; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 20px); opacity: 0; pointer-events: none; padding: 10px 16px; border-radius: 999px; font-size: 14px; transition: .3s; max-width: calc(100% - 32px); text-align: center; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+@media (prefers-reduced-motion: reduce) { .aurora i, .ring, .orb { animation: none !important; } }
+</style>
+
+<div class="aurora" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i></div>
+
+<main>
+  <section class="view active" data-view="home">
+    <header class="topbar">
+      <div class="brand">J·A·R·V·I·S</div>
+      <div class="status" id="statusChip"><span class="dot"></span><span id="statusText">Waking up…</span></div>
+    </header>
+    <div class="stage">
+      <button class="orb-wrap" id="orb" aria-label="Talk to JARVIS" data-state="idle">
+        <canvas id="ripples" class="ripples"></canvas>
+        <div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div>
+        <div class="orb"><div class="core"></div><div class="sheen"></div></div>
+      </button>
+      <h1 class="greeting" id="greeting">Good evening, sir.</h1>
+      <div class="wave" id="wave" aria-hidden="true"></div>
+      <p class="caption" id="caption" aria-live="polite">Tap the orb or type below.</p>
+    </div>
+    <div class="controls">
+      <form class="glass text-pill" id="textForm" autocomplete="off">
+        <input id="textInput" type="text" placeholder="Talk to JARVIS…" enterkeyhint="send" aria-label="Message">
+        <button type="submit" aria-label="Send" class="icon-btn"><svg viewBox="0 0 24 24"><path d="M4 12h13M12 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </form>
+      <button class="mic glass" id="mic" aria-label="Speak">
+        <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="widgets">
+      <div class="row">
+        <article class="glass card" data-go="tasks"><div class="card-head"><span>Tasks</span></div><div class="big" id="taskCount">0</div><div class="muted clip" id="taskNext">Nothing pressing</div></article>
+        <article class="glass card" data-go="reminders"><div class="card-head"><span>Next reminder</span></div><div class="big sm clip" id="remNext">None</div><div class="muted clip" id="remWhen">&nbsp;</div></article>
+      </div>
+      <article class="glass card" data-go="ideas"><div class="card-head"><span>Latest idea</span><span id="ideaAge"></span></div><div id="ideaTeaser" class="muted">Your first idea arrives once we've spoken, sir.</div></article>
+      <button class="glass pill-btn wide" id="briefBtn">Brief me</button>
+    </div>
+  </section>
+
+  <section class="view" data-view="tasks">
+    <header class="topbar"><div class="title">Tasks</div><button class="link" id="toggleDone">Show done</button></header>
+    <form class="glass text-pill add" id="taskForm" autocomplete="off"><input id="taskInput" placeholder="Add a task…" aria-label="New task"><button class="icon-btn" aria-label="Add task">+</button></form>
+    <ul class="list" id="taskList"></ul>
+  </section>
+
+  <section class="view" data-view="reminders">
+    <header class="topbar"><div class="title">Reminders</div></header>
+    <form class="glass rem-form" id="remForm" autocomplete="off">
+      <input id="remText" placeholder="Remind me to…" required aria-label="Reminder">
+      <input id="remWhenInput" type="datetime-local" required aria-label="When">
+      <button class="pill-btn">Set reminder</button>
+    </form>
+    <p class="hint">Or just say “Remind me in twenty minutes to call Andreas.” JARVIS speaks the reminder while this page is open.</p>
+    <ul class="list" id="remList"></ul>
+    <h3 class="sub">Recently fired</h3>
+    <ul class="list" id="remRecent"></ul>
+  </section>
+
+  <section class="view" data-view="ideas">
+    <header class="topbar"><div class="title">Ideas</div><button class="link" id="genIdea">New idea now</button></header>
+    <p class="hint">Every 30 minutes while JARVIS is open, he drafts the best new AI or SaaS idea for a solo founder in Cyprus on a small budget. No repeats.</p>
+    <div class="ideas" id="ideaList"></div>
+  </section>
+
+  <section class="view" data-view="settings">
+    <header class="topbar"><div class="title">Settings</div></header>
+    <div class="glass card settings">
+      <div class="set-row"><div><b>Voice</b><div class="muted" id="voiceState">Checking…</div></div><button class="pill-btn" id="voiceTest">Test</button></div>
+      <div class="set-row"><div><b>Listening</b><div class="muted" id="sttState">Checking…</div></div></div>
+      <div class="set-row"><div><b>Saved data</b><div class="muted" id="storeState">Checking…</div></div></div>
+      <div class="set-row"><div><b>Forget conversation</b><div class="muted">Clears short-term context</div></div><button class="pill-btn" id="clearHist">Clear</button></div>
+    </div>
+    <h3 class="sub">Things JARVIS remembers</h3>
+    <ul class="list" id="memList"></ul>
+  </section>
+</main>
+
+<nav class="dock glass" aria-label="Sections">
+  <button data-tab="home" class="active"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".5"/></svg><span>Home</span></button>
+  <button data-tab="tasks"><svg viewBox="0 0 24 24"><path d="M5 7l2 2 4-4M5 15l2 2 4-4M14 8h6M14 16h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Tasks</span></button>
+  <button data-tab="reminders"><svg viewBox="0 0 24 24"><path d="M6 17V11a6 6 0 0 1 12 0v6l1.5 2h-15zM10 21h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg><span>Remind</span></button>
+  <button data-tab="ideas"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg><span>Ideas</span></button>
+  <button data-tab="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>Settings</span></button>
+</nav>
+<div class="toast glass" id="toast" role="status"></div>
+
+<script>
+(() => {
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Nicosia";
+const IDEA_EVERY_MS = 30 * 60 * 1000;
+
+function toast(msg, ms = 2800) {
+  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), ms);
+}
+const ls = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+// ---------------------------------------------------------------- Capabilities
+const cap = { sample: null, tts: null, dictation: null, db: null, uid: null };
+const C = window.claude;
+
+// ---------------------------------------------------------------- Store
+// Collections live in the viewer's private db subtree when available, else in this browser.
+const COLS = ["tasks", "reminders", "ideas", "memories"];
+const data = { tasks: [], reminders: [], ideas: [], memories: [] };
+const store = {
+  mode: "local",
+  colRef(name) { return cap.db.collection(`data/users/${cap.uid}/${name}`); },
+  async put(name, item) {
+    item.id ||= Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+    const i = data[name].findIndex((x) => x.id === item.id);
+    if (i >= 0) data[name][i] = item; else data[name].push(item);
+    render(name);
+    if (store.mode === "db") { const { id, ...body } = item; await store.colRef(name).doc(id).set(body).catch((e) => toast("Couldn't save: " + (e.message || e.code))); }
+    else ls.set(`jarvis.${name}`, data[name]);
+    return item;
+  },
+  async remove(name, id) {
+    data[name] = data[name].filter((x) => x.id !== id);
+    render(name);
+    if (store.mode === "db") await store.colRef(name).doc(id).delete().catch(() => {});
+    else ls.set(`jarvis.${name}`, data[name]);
+  },
+  loadLocal() { for (const c of COLS) data[c] = ls.get(`jarvis.${c}`, []); renderAll(); },
+  attachDb() {
+    store.mode = "db";
+    for (const c of COLS) {
+      store.colRef(c).onSnapshot((snap) => {
+        data[c] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        render(c);
+        if (c === "reminders") scheduleReminders();
+      }, () => {});
+    }
+  },
+};
+
+// ---------------------------------------------------------------- Orb + waveform
+const orbEl = $("#orb"), captionEl = $("#caption"), waveEl = $("#wave"), micBtn = $("#mic");
+let state = "idle";
+function setState(s) { state = s; orbEl.dataset.state = s; waveEl.classList.toggle("on", s !== "idle"); micBtn.classList.toggle("live", s === "listening"); }
+function setCaption(t, user = false) { captionEl.classList.toggle("user", user); captionEl.textContent = t || ""; }
+const BARS = 28;
+for (let i = 0; i < BARS; i++) waveEl.appendChild(document.createElement("span"));
+const bars = $$("span", waveEl);
+const cv = $("#ripples"), g = cv.getContext("2d");
+const ripples = [];
+let level = 0, target = 0, prev = 0, lastSpawn = 0, speakPulse = 0;
+function resize() { const r = cv.getBoundingClientRect(), d = Math.min(devicePixelRatio || 1, 2); cv.width = r.width * d; cv.height = r.height * d; g.setTransform(d, 0, 0, d, 0, 0); }
+addEventListener("resize", resize);
+function frame(t) {
+  // Speech envelope: syllable-like bursts while speaking (nudged by word boundaries), calm pulses otherwise.
+  if (state === "speaking") { if (Math.random() < 0.16 || speakPulse) { target = 0.3 + Math.random() * 0.7; speakPulse = 0; } else target *= 0.93; }
+  else if (state === "listening") target = 0.14 + 0.08 * Math.sin(t / 380);
+  else if (state === "thinking") target = 0.1 + 0.08 * Math.sin(t / 220);
+  else target = 0;
+  level += (target - level) * (target > level ? 0.45 : 0.12);
+  document.documentElement.style.setProperty("--level", level.toFixed(3));
+  for (let i = 0; i < BARS; i++) {
+    const mid = Math.abs(i - (BARS - 1) / 2) / (BARS / 2);
+    const v = level * (0.55 + 0.45 * Math.sin(t / 90 + i * 0.9)) * (1 - mid * 0.6);
+    bars[i].style.height = (state === "idle" ? 3 : 3 + v * (state === "speaking" ? 30 : 14)).toFixed(1) + "px";
+  }
+  if (state === "speaking" && level > 0.2 && level - prev > 0.03 && t - lastSpawn > 140) { ripples.push({ r: 0, a: 0.5 + level * 0.5, w: 1 + level * 2.5, h: 268 }); lastSpawn = t; }
+  if (state === "listening" && t - lastSpawn > 1100) { ripples.push({ r: 0, a: 0.35, w: 1.2, h: 160 }); lastSpawn = t; }
+  if (state === "thinking" && t - lastSpawn > 1600) { ripples.push({ r: 0, a: 0.25, w: 1, h: 285 }); lastSpawn = t; }
+  prev = level;
+  const w = cv.clientWidth, h = cv.clientHeight, base = w * 0.18, max = w * 0.5;
+  g.clearRect(0, 0, w, h);
+  for (let i = ripples.length - 1; i >= 0; i--) {
+    const p = ripples[i]; p.r += state === "speaking" ? 2.2 + level * 2 : 1.1;
+    const life = 1 - p.r / (max - base);
+    if (life <= 0) { ripples.splice(i, 1); continue; }
+    g.beginPath(); g.arc(w / 2, h / 2, base + p.r, 0, Math.PI * 2);
+    g.strokeStyle = `hsla(${p.h},90%,78%,${p.a * life})`; g.lineWidth = p.w * life + 0.3; g.stroke();
+  }
+  requestAnimationFrame(frame);
+}
+
+// ---------------------------------------------------------------- Voice out
+function britishVoice() {
+  if (!("speechSynthesis" in window)) return null;
+  const vs = speechSynthesis.getVoices();
+  for (const n of ["Daniel", "Arthur", "Google UK English Male", "Microsoft Ryan", "Oliver", "Malcolm", "Microsoft George"]) { const v = vs.find((x) => x.name.includes(n)); if (v) return v; }
+  return vs.find((v) => v.lang === "en-GB") || null;
+}
+if ("speechSynthesis" in window) speechSynthesis.onvoiceschanged = () => updateVoiceLabel();
+const speaker = {
+  gen: 0,
+  stop() { this.gen++; try { cap.tts?.stop(); } catch {} if ("speechSynthesis" in window) speechSynthesis.cancel(); },
+  async speak(text) {
+    this.stop(); const gen = this.gen;
+    if (!text) return;
+    setState("speaking");
+    const bv = britishVoice();
+    try {
+      if (bv) await this.browser(text, bv, gen);
+      else if (cap.tts) await cap.tts.speak(text, { voice: "rounded", rate: 0.97, language: "en" });
+      else await new Promise((r) => setTimeout(r, Math.min(6000, 600 + text.length * 45)));
+    } catch (e) { /* stopped or unavailable: caption already shows the words */ }
+    if (gen === this.gen) setState("idle");
+  },
+  browser(text, voice, gen) {
+    return new Promise((resolve) => {
+      const u = new SpeechSynthesisUtterance(text);
+      u.voice = voice; u.lang = voice.lang; u.rate = 0.98; u.pitch = 0.9;
+      u.onboundary = () => { speakPulse = 1; };
+      u.onend = u.onerror = () => resolve();
+      speechSynthesis.speak(u);
+      const iv = setInterval(() => { if (gen !== this.gen || !speechSynthesis.speaking) { clearInterval(iv); resolve(); } }, 300);
+    });
+  },
+};
+function updateVoiceLabel() {
+  const bv = britishVoice();
+  $("#voiceState").textContent = bv ? `British voice: ${bv.name}` : cap.tts ? "Claude voice (no British voice on this device)" : "Captions only on this device";
+}
+
+// ---------------------------------------------------------------- Voice in
+let dictText = "";
+async function startListening() {
+  if (!cap.dictation) { $("#textInput").focus(); toast("Tap the mic on your keyboard to dictate, sir."); return; }
+  dictText = "";
+  try {
+    const p = cap.dictation.start();   // must be the first thing in the click
+    setState("listening"); setCaption("Listening…");
+    await p;
+  } catch (e) {
+    setState("idle"); setCaption("");
+    if (e?.code === "not_granted") { cap.dictation = null; updateSttLabel(); toast("Microphone is off for this page. Type instead, sir."); }
+    else if (e?.code !== "stopped") toast("Couldn't start listening.");
+  }
+}
+function wireDictation() {
+  const d = cap.dictation;
+  d.onPartial(({ text }) => setCaption((dictText + " " + text).trim(), true));
+  d.onFinal(({ text }) => { dictText = (dictText + " " + text).trim(); setCaption(dictText, true); });
+  d.onState(({ state: s }) => {
+    if (s === "idle" && state === "listening") {
+      const t = dictText.trim(); dictText = "";
+      if (t) handleUtterance(t); else { setState("idle"); setCaption(""); }
+    }
+  });
+}
+function updateSttLabel() { $("#sttState").textContent = cap.dictation ? "Speak to JARVIS with the mic button" : "Type, or use your keyboard's dictation mic"; }
+
+// ---------------------------------------------------------------- Brain
+const PERSONA = `You are JARVIS, a personal assistant with the manner of a dry, composed British butler.
+Always address the user as "sir". Warm, natural, quietly witty; never obsequious or robotic.
+Your reply is SPOKEN ALOUD and shown as a one-line caption: 1 to 3 short sentences unless sir asks for detail. No markdown, lists, emoji or URLs. Say numbers and times as a person would.
+Use your tools to actually do things (tasks, reminders, memory, ideas), then confirm briefly. Never claim to have done something you did not do.
+For reminders, turn relative times into an absolute ISO 8601 timestamp with the UTC offset, from the current time given below.
+Sir lives in Dhekelia, Cyprus. You cannot see live weather here; if asked, say so briefly and suggest a glance outside.
+When sir shares a lasting preference or fact about himself, save it with remember.`;
+let history = ls.get("jarvis.history", []);
+const fmtWhen = (iso) => new Date(iso).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+function context() {
+  const now = new Date();
+  const local = new Intl.DateTimeFormat("en-GB", { dateStyle: "full", timeStyle: "short", timeZoneName: "longOffset", timeZone: TZ }).format(now);
+  const open = data.tasks.filter((t) => !t.done);
+  const up = data.reminders.filter((r) => !r.fired).sort((a, b) => a.due_at.localeCompare(b.due_at));
+  return `Current local time: ${local} (${TZ}). UTC: ${now.toISOString()}.
+Open tasks: ${open.length ? open.map((t) => `[${t.id}] ${t.title}`).join("; ") : "none"}.
+Upcoming reminders: ${up.length ? up.map((r) => `[${r.id}] "${r.text}" at ${fmtWhen(r.due_at)}`).join("; ") : "none"}.
+What you remember about sir: ${data.memories.length ? data.memories.map((m) => m.fact).join(" | ") : "nothing yet"}.
+Latest idea: ${latestIdea() ? latestIdea().title : "none yet"}.`;
+}
+const str = { type: "string" };
+const TOOLS = () => [
+  { name: "add_task", description: "Add a task to sir's list.", inputSchema: { type: "object", properties: { title: str }, required: ["title"] },
+    async execute({ title }) { const t = await store.put("tasks", { title: String(title), done: false, created_at: new Date().toISOString() }); return { ok: true, id: t.id }; } },
+  { name: "complete_task", description: "Mark a task done by its id.", inputSchema: { type: "object", properties: { id: str }, required: ["id"] },
+    async execute({ id }) { const t = data.tasks.find((x) => x.id === id); if (!t) throw new Error("No such task"); await store.put("tasks", { ...t, done: true }); return { ok: true }; } },
+  { name: "delete_task", description: "Delete a task by its id.", inputSchema: { type: "object", properties: { id: str }, required: ["id"] },
+    async execute({ id }) { await store.remove("tasks", String(id)); return { ok: true }; } },
+  { name: "add_reminder", description: "Set a reminder. due_at must be absolute ISO 8601 with UTC offset.", inputSchema: { type: "object", properties: { text: str, due_at: str }, required: ["text", "due_at"] },
+    async execute({ text, due_at }) {
+      const d = new Date(due_at); if (isNaN(d)) throw new Error("Invalid due_at");
+      if (d < Date.now() - 60000) throw new Error("That time has passed");
+      const r = await store.put("reminders", { text: String(text), due_at: d.toISOString(), fired: false });
+      scheduleReminders(); return { ok: true, id: r.id, when: fmtWhen(r.due_at) };
+    } },
+  { name: "cancel_reminder", description: "Cancel a reminder by its id.", inputSchema: { type: "object", properties: { id: str }, required: ["id"] },
+    async execute({ id }) { await store.remove("reminders", String(id)); return { ok: true }; } },
+  { name: "remember", description: "Save a lasting fact or preference about sir.", inputSchema: { type: "object", properties: { fact: str }, required: ["fact"] },
+    async execute({ fact }) { await store.put("memories", { fact: String(fact), created_at: new Date().toISOString() }); return { ok: true }; } },
+  { name: "latest_ideas", description: "Read the latest business ideas JARVIS has drafted.", inputSchema: { type: "object", properties: {} },
+    async execute() { return sortedIdeas().slice(0, 3).map((i) => ({ title: i.title, pitch: i.pitch, first_move: i.first_move })); } },
+];
+
+async function handleUtterance(text) {
+  speaker.stop();
+  setState("thinking"); setCaption(`“${text}”`, true);
+  if (!cap.sample) { setState("idle"); setCaption("My apologies, sir — I can't reach my thoughts from this view. Open me in the Claude app or claude.ai."); return; }
+  const turns = [...history.slice(-12), { role: "user", content: `${PERSONA}\n\n${context()}\n\nSir says: ${text}` }];
+  try {
+    const { text: reply } = await cap.sample(turns, { tools: TOOLS(), modelTier: "quick", cache: false });
+    const clean = reply.replace(/[*_#`>]/g, "").replace(/\s+/g, " ").trim() || "Done, sir.";
+    history.push({ role: "user", content: text }, { role: "assistant", content: clean });
+    history = history.slice(-12); ls.set("jarvis.history", history);
+    setCaption(clean);
+    await speaker.speak(clean);
+  } catch (e) {
+    setState("idle");
+    setCaption(e?.code === "rate_limited" ? "I need a moment to collect myself, sir. Try again shortly." : e?.code === "not_granted" ? "I'll need your permission to think, sir — allow Claude for this page." : "Something went awry, sir.");
+  }
+  maybeIdea();
+}
+
+async function brief() {
+  speaker.stop(); setState("thinking"); setCaption("Preparing your briefing…");
+  if (!cap.sample) { setState("idle"); setCaption("Open me in the Claude app or claude.ai for a briefing, sir."); return; }
+  try {
+    const { text } = await cap.sample(`${PERSONA}\n\n${context()}\n\nDeliver sir's briefing in 4 to 5 spoken sentences: a greeting suited to the time of day, what's on today (tasks and reminders, most important first), and one line on the latest idea if there is one. No lists.`, { modelTier: "quick", cache: false });
+    setCaption(text.trim()); await speaker.speak(text.trim());
+  } catch { setState("idle"); setCaption("I couldn't prepare the briefing just now, sir."); }
+}
+
+// ---------------------------------------------------------------- Ideas
+const sortedIdeas = () => [...data.ideas].sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+const latestIdea = () => sortedIdeas()[0];
+let ideaBusy = false, interacted = false;
+async function generateIdea({ manual = false } = {}) {
+  if (ideaBusy || !cap.sample) return null;
+  ideaBusy = true;
+  const btn = $("#genIdea"); btn.disabled = true; btn.textContent = "Thinking…";
+  try {
+    const prior = sortedIdeas().map((i) => i.title);
+    const idea = await cap.sample.json(`You are a sharp, practical startup advisor.
+Give the single best NEW AI app or SaaS idea for a solo founder based in Cyprus (Larnaca district) on a small budget (a few hundred euros, no team, no funding).
+Favour real paying customers reachable from Cyprus or online, a fast MVP with no-code or light code plus AI APIs, recurring revenue and low regulatory risk. Local angles (tourism, property, shipping, expats, Cyprus SMEs, Greek/English/Russian markets) are welcome but not required.
+It must be clearly different from every previous idea (different customer AND problem):
+${prior.length ? prior.map((t) => "- " + t).join("\n") : "(none yet)"}
+Reply with only a JSON object: {"title": "short name + what it is", "pitch": "two sentences: problem, who pays, why it works", "why_now": "one sentence on why it fits Cyprus now", "budget": "rough cost to MVP in EUR", "mvp": ["step 1", "step 2", "step 3"], "first_move": "one concrete task for this week, under 20 words"}`, { modelTier: "default", cache: false });
+    if (!idea?.title || !Array.isArray(idea.mvp)) throw new Error("bad idea");
+    const saved = await store.put("ideas", { title: String(idea.title), pitch: String(idea.pitch || ""), why_now: String(idea.why_now || ""), budget: String(idea.budget || ""),
+      mvp: idea.mvp.slice(0, 3).map(String), first_move: String(idea.first_move || ""), added: false, created_at: new Date().toISOString() });
+    ls.set("jarvis.lastIdeaAt", Date.now());
+    toast(`New idea: ${saved.title}`, 4000);
+    return saved;
+  } catch (e) { if (manual) toast(e?.code === "rate_limited" ? "Rate limited — try again shortly." : "No idea this time, sir. Try again."); return null; }
+  finally { ideaBusy = false; btn.disabled = false; btn.textContent = "New idea now"; }
+}
+function maybeIdea() {
+  if (!interacted || !cap.sample) return;
+  const last = Math.max(ls.get("jarvis.lastIdeaAt", 0), Date.parse(latestIdea()?.created_at || 0) || 0);
+  if (Date.now() - last >= IDEA_EVERY_MS) generateIdea();
+}
+setInterval(maybeIdea, 60 * 1000);
+
+// ---------------------------------------------------------------- Reminders
+let remTimer = null;
+function scheduleReminders() {
+  clearTimeout(remTimer);
+  const next = data.reminders.filter((r) => !r.fired).sort((a, b) => a.due_at.localeCompare(b.due_at))[0];
+  if (!next) return;
+  const ms = Math.max(0, Date.parse(next.due_at) - Date.now());
+  remTimer = setTimeout(fireDue, Math.min(ms, 2 ** 31 - 1));
+}
+async function fireDue() {
+  const due = data.reminders.filter((r) => !r.fired && Date.parse(r.due_at) <= Date.now() + 500);
+  for (const r of due) {
+    await store.put("reminders", { ...r, fired: true, fired_at: new Date().toISOString() });
+    const line = `Pardon the interruption, sir. A reminder: ${r.text}.`;
+    toast(`Reminder: ${r.text}`, 8000); setCaption(line); speaker.speak(line);
+  }
+  scheduleReminders();
+}
+
+// ---------------------------------------------------------------- Rendering
+function partOfDay() { const h = new Date().getHours(); return h < 5 ? "evening" : h < 12 ? "morning" : h < 18 ? "afternoon" : "evening"; }
+function renderGreeting() { $("#greeting").textContent = `Good ${partOfDay()}, sir.`; }
+const ago = (iso) => { const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 1 ? "just now" : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`; };
+let showDone = false;
+function render(name) {
+  if (name === "tasks") {
+    const all = [...data.tasks].sort((a, b) => (a.done - b.done) || (b.created_at || "").localeCompare(a.created_at || ""));
+    const open = all.filter((t) => !t.done), list = showDone ? all : open;
+    $("#taskCount").textContent = open.length;
+    $("#taskNext").textContent = open[0]?.title || "Nothing pressing";
+    $("#taskList").innerHTML = list.length ? list.map((t) => `<li class="glass ${t.done ? "done" : ""}" data-id="${esc(t.id)}">
+      <button class="check" data-act="toggle" aria-label="${t.done ? "Mark not done" : "Mark done"}">${t.done ? "✓" : ""}</button>
+      <div class="grow"><div>${esc(t.title)}</div>${t.notes ? `<div class="meta">${esc(t.notes)}</div>` : ""}</div>
+      <button class="del" data-act="del" aria-label="Delete task">×</button></li>`).join("") : `<li class="glass empty">All clear, sir.</li>`;
+  }
+  if (name === "reminders") {
+    const up = data.reminders.filter((r) => !r.fired).sort((a, b) => a.due_at.localeCompare(b.due_at));
+    const rec = data.reminders.filter((r) => r.fired).sort((a, b) => (b.fired_at || "").localeCompare(a.fired_at || "")).slice(0, 8);
+    $("#remNext").textContent = up[0]?.text || "None";
+    $("#remWhen").innerHTML = up[0] ? esc(fmtWhen(up[0].due_at)) : "&nbsp;";
+    $("#remList").innerHTML = up.length ? up.map((r) => `<li class="glass" data-id="${esc(r.id)}"><div class="grow"><div>${esc(r.text)}</div><div class="meta">${esc(fmtWhen(r.due_at))}</div></div><button class="del" aria-label="Cancel reminder">×</button></li>`).join("") : `<li class="glass empty">No reminders set.</li>`;
+    $("#remRecent").innerHTML = rec.length ? rec.map((r) => `<li class="glass" style="opacity:.6"><div class="grow"><div>${esc(r.text)}</div><div class="meta">${esc(fmtWhen(r.due_at))}</div></div></li>`).join("") : `<li class="glass empty">Nothing yet.</li>`;
+  }
+  if (name === "ideas") {
+    const ideas = sortedIdeas(), l = ideas[0];
+    $("#ideaTeaser").textContent = l ? l.title : "Your first idea arrives once we've spoken, sir.";
+    $("#ideaTeaser").classList.toggle("muted", !l);
+    $("#ideaAge").textContent = l ? ago(l.created_at) : "";
+    $("#ideaList").innerHTML = ideas.length ? ideas.map((i) => `<article class="glass idea" data-id="${esc(i.id)}">
+      <div class="meta">${esc(ago(i.created_at))}${i.budget ? " · " + esc(i.budget) : ""}</div>
+      <h3>${esc(i.title)}</h3><p>${esc(i.pitch)}</p>${i.why_now ? `<p class="muted">${esc(i.why_now)}</p>` : ""}
+      <ol>${(i.mvp || []).map((s) => `<li>${esc(s)}</li>`).join("")}</ol>
+      <div class="fm"><b>First move this week</b>${esc(i.first_move)}</div>
+      <div class="acts"><button class="pill-btn" data-act="task" ${i.added ? "disabled" : ""}>${i.added ? "Added to tasks" : "Add first move to tasks"}</button><button class="del" data-act="del" aria-label="Dismiss idea">×</button></div>
+    </article>`).join("") : `<div class="glass card muted">No ideas yet. Tap “New idea now” and JARVIS will draft one.</div>`;
+  }
+  if (name === "memories") {
+    $("#memList").innerHTML = data.memories.length ? data.memories.map((m) => `<li class="glass" data-id="${esc(m.id)}"><div class="grow">${esc(m.fact)}</div><button class="del" aria-label="Forget">×</button></li>`).join("") : `<li class="glass empty">Nothing yet. Tell me what matters to you, sir.</li>`;
+  }
+}
+function renderAll() { COLS.forEach(render); }
+
+// ---------------------------------------------------------------- Events
+function onTalk() {
+  interacted = true;
+  if (state === "listening") { cap.dictation?.stop().catch(() => {}); return; }
+  if (state === "speaking" || state === "thinking") speaker.stop();   // barge-in
+  startListening();
+}
+orbEl.addEventListener("click", onTalk);
+micBtn.addEventListener("click", onTalk);
+$("#textForm").addEventListener("submit", (e) => {
+  e.preventDefault(); interacted = true;
+  const v = $("#textInput").value.trim(); if (!v) return;
+  $("#textInput").value = ""; $("#textInput").blur(); handleUtterance(v);
+});
+$("#briefBtn").addEventListener("click", () => { interacted = true; brief(); });
+$("#genIdea").addEventListener("click", () => { interacted = true; generateIdea({ manual: true }); });
+$("#voiceTest").addEventListener("click", () => { const t = "At your service, sir. Shall I put the kettle on?"; setCaption(t); speaker.speak(t); });
+$("#clearHist").addEventListener("click", () => { history = []; ls.set("jarvis.history", []); toast("Conversation forgotten, sir."); });
+$("#toggleDone").addEventListener("click", () => { showDone = !showDone; $("#toggleDone").textContent = showDone ? "Hide done" : "Show done"; render("tasks"); });
+$("#taskForm").addEventListener("submit", (e) => {
+  e.preventDefault(); const v = $("#taskInput").value.trim(); if (!v) return;
+  $("#taskInput").value = ""; store.put("tasks", { title: v, done: false, created_at: new Date().toISOString() });
+});
+$("#taskList").addEventListener("click", (e) => {
+  const b = e.target.closest("button"), li = e.target.closest("li[data-id]"); if (!b || !li) return;
+  const t = data.tasks.find((x) => x.id === li.dataset.id); if (!t) return;
+  if (b.dataset.act === "toggle") store.put("tasks", { ...t, done: !t.done });
+  if (b.dataset.act === "del") store.remove("tasks", t.id);
+});
+$("#remForm").addEventListener("submit", async (e) => {
+  e.preventDefault(); const text = $("#remText").value.trim(), when = $("#remWhenInput").value;
+  if (!text || !when) return;
+  await store.put("reminders", { text, due_at: new Date(when).toISOString(), fired: false });
+  $("#remText").value = ""; $("#remWhenInput").value = ""; scheduleReminders(); toast("Reminder set, sir.");
+});
+$("#remList").addEventListener("click", (e) => { const li = e.target.closest("li[data-id]"); if (li && e.target.closest(".del")) store.remove("reminders", li.dataset.id); });
+$("#memList").addEventListener("click", (e) => { const li = e.target.closest("li[data-id]"); if (li && e.target.closest(".del")) store.remove("memories", li.dataset.id); });
+$("#ideaList").addEventListener("click", async (e) => {
+  const b = e.target.closest("button"), card = e.target.closest(".idea"); if (!b || !card) return;
+  const i = data.ideas.find((x) => x.id === card.dataset.id); if (!i) return;
+  if (b.dataset.act === "task") {
+    await store.put("tasks", { title: i.first_move, notes: `From idea: ${i.title}`, done: false, created_at: new Date().toISOString() });
+    await store.put("ideas", { ...i, added: true }); toast("Added to your tasks, sir.");
+  }
+  if (b.dataset.act === "del") store.remove("ideas", i.id);
+});
+function go(tab) {
+  $$(".view").forEach((v) => v.classList.toggle("active", v.dataset.view === tab));
+  $$(".dock button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  scrollTo({ top: 0 }); if (tab === "home") { renderGreeting(); resize(); }
+}
+$$(".dock button").forEach((b) => b.addEventListener("click", () => go(b.dataset.tab)));
+$$("[data-go]").forEach((c) => c.addEventListener("click", () => go(c.dataset.go)));
+setInterval(() => { renderGreeting(); render("ideas"); }, 60000);
+
+// ---------------------------------------------------------------- Boot
+renderGreeting(); resize(); store.loadLocal(); scheduleReminders(); updateVoiceLabel(); updateSttLabel();
+$("#storeState").textContent = "On this device only";
+requestAnimationFrame(frame);
+if (C?.use) {
+  C.use("sample").then((s) => {
+    cap.sample = s;
+    $("#statusChip").classList.toggle("off", !s);
+    $("#statusText").textContent = s ? "Online" : "Offline mind";
+    if (!s) setCaption("Open me in the Claude app or claude.ai for conversation, sir.");
+  });
+  C.use("tts").then((t) => { cap.tts = t; updateVoiceLabel(); });
+  C.use("dictation").then((d) => { cap.dictation = d; if (d) wireDictation(); updateSttLabel(); });
+  Promise.all([C.use("db"), C.use("user")]).then(async ([db, user]) => {
+    const id = db && user ? await user.id() : null;
+    if (!db || !id) return;
+    cap.db = db; cap.uid = id;
+    $("#storeState").textContent = "Saved to your Claude account, private to you";
+    store.attachDb();
+  });
+} else {
+  $("#statusChip").classList.add("off"); $("#statusText").textContent = "Offline mind";
+}
+})();
+</script>
