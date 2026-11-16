@@ -75,7 +75,8 @@ if (ASR.files.every((f) => fs.existsSync(path.join(asrDir, f))) && fs.existsSync
   if (!extractedOk) throw new Error("Could not extract the speech model archive");
   fs.rmSync(asrDir, { recursive: true, force: true });
   fs.mkdirSync(asrDir, { recursive: true });
-  for (const f of ASR.files) fs.renameSync(path.join(atmp, ASR.dir, f), path.join(asrDir, f));
+  // Move each file; the temp folder can be on another drive (C: vs D: on CI), where rename fails with EXDEV.
+  for (const f of ASR.files) { const from = path.join(atmp, ASR.dir, f), to = path.join(asrDir, f); try { fs.renameSync(from, to); } catch (e) { if (e.code !== "EXDEV") throw e; fs.copyFileSync(from, to); fs.unlinkSync(from); } }
   fs.writeFileSync(path.join(asrDir, ".source"), ASR.sha256);
   fs.rmSync(atmp, { recursive: true, force: true });
 }
