@@ -129,11 +129,19 @@ export async function runLevel(level = "quick", { client, record = true } = {}) 
   }
   return { level, label: L.label, overall, results, problems, narration, durationMs, at: new Date().toISOString() };
 }
+// Whole-machine CPU use since the previous call (no sampling delay; the first call has no baseline).
+let prevCpu = null;
+function cpuSince() {
+  const c = os.cpus().reduce((a, x) => { const t = x.times; a.idle += t.idle; a.total += t.user + t.nice + t.sys + t.irq + t.idle; return a; }, { idle: 0, total: 0 });
+  const p = prevCpu; prevCpu = c;
+  return p && c.total > p.total ? Math.round(100 * (1 - (c.idle - p.idle) / (c.total - p.total))) : null;
+}
 export async function performanceMetrics() {
   const p = await performanceCheck();
+  const cpuPct = cpuSince(), ramPct = Math.round((1 - os.freemem() / os.totalmem()) * 100);
   const since = new Date(Date.now() - 86400_000).toISOString();
   const lat = (prov) => { const l = db.prepare("SELECT latency_ms FROM api_calls WHERE provider LIKE ? AND ok = 1 AND at >= ? ORDER BY latency_ms").all(prov, since).map((r) => r.latency_ms); return { n: l.length, medianMs: l.length ? l[Math.floor(l.length / 2)] : null, p95Ms: l.length ? l[Math.floor(l.length * 0.95)] : null }; };
-  return { at: new Date().toISOString(), ...p.metrics, ai: lat("anthropic"), sttLocal: lat("stt-local"), sttCloud: lat("stt-openai"), uptimeSec: Math.round(process.uptime()), loadAvg: os.loadavg(), cores: os.cpus().length };
+  return { at: new Date().toISOString(), cpuPct, ramPct, ...p.metrics, ai: lat("anthropic"), sttLocal: lat("stt-local"), sttCloud: lat("stt-openai"), uptimeSec: Math.round(process.uptime()), loadAvg: os.loadavg(), cores: os.cpus().length };
 }
 export function diagnosticHistory(limit = 30) {
   return db.prepare("SELECT * FROM diagnostic_runs ORDER BY id DESC LIMIT ?").all(limit).map((r) => ({ ...r, summary: JSON.parse(r.summary), narration: JSON.parse(r.narration) }));

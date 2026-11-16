@@ -23,3 +23,18 @@ export function cleanCommand(text) {
   t = t.replace(/^\W*(jar|jarv|arvis|vis|this|is|davis|travis|harvis|service)[.,!?]\s+(?=\S)/i, "");
   return t.trim();
 }
+
+// Interface commands handled on the device straight away (no AI round trip). Diagnostics still run on the server
+// and every spoken line comes from the real result.
+const LEVEL_WORDS = { quick: "quick", full: "full", complete: "full", comprehensive: "full", voice: "voice", audio: "voice", ai: "ai", "a.i.": "ai", network: "network", security: "security", performance: "performance", hardware: "hardware", integration: "integrations", integrations: "integrations" };
+export function uiCommand(text) {
+  const t = String(text || "").toLowerCase().replace(/^(hey |ok |okay )?jarvis[,.!]?\s*/, "").replace(/[,.!?]+$/g, "").replace(/\bplease\b/g, "").replace(/\s+/g, " ").trim();
+  if (/^(activate|engage|enter|open|start|launch|initiate|go to|switch to) mission control( mode)?$/.test(t) || t === "mission control") return { kind: "mission", on: true };
+  if (/^(exit|close|leave|deactivate|disengage|end|stop|quit) mission control( mode)?$/.test(t) || /^(stand down|exit mission mode)$/.test(t)) return { kind: "mission", on: false };
+  let m = t.match(/^(?:switch to|change to|go to|use|activate|enable|engage|enter|set) (standard|normal|cinematic|concise|short|professional|focus) mode$/) || t.match(/^(standard|cinematic|concise|professional|focus) mode(?: on)?$/);
+  if (m) return { kind: "mode", mode: { normal: "standard", short: "concise" }[m[1]] || m[1] };
+  m = t.match(/^(?:run|perform|start|initiate|begin|do)(?: an?| the| me a)? ?(quick|full|complete|comprehensive|voice|audio|ai|a\.i\.|network|security|performance|hardware|integrations?)? ?(?:system |systems )?(?:diagnostics?|diagnostic check|systems? check|check)$/);
+  if (m && (m[1] || /diagnostic/.test(t))) return { kind: "diagnostics", level: LEVEL_WORDS[m[1]] || "quick" };
+  if (/^(full |complete )?(system )?status report$/.test(t) || /^are all systems (operational|online|working)$/.test(t)) return { kind: "diagnostics", level: /^(full|complete)/.test(t) ? "full" : "quick" };
+  return null;
+}

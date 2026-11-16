@@ -1,5 +1,5 @@
 // Free, private speech recognition on this machine via sherpa-onnx.
-// Preferred model: NVIDIA Parakeet TDT 0.6B v2 (int8) — measured 5.1% vs 13.6% word errors for Whisper base.en on the
+// Preferred model: NVIDIA Parakeet TDT 0.6B v2 (int8) — measured 2.6% vs 11.4% word errors for Whisper base.en on the
 // same recordings, and faster (docs/asr-benchmark.json). Whisper base.en is still supported if that's what's installed.
 // Before decoding, audio is cleaned: DC/rumble removed, quiet speech normalised, long silences trimmed, tail padded
 // (so the last word isn't cut off). A confidence estimate is returned with every transcript.

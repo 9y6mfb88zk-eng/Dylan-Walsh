@@ -7,9 +7,15 @@ const GROUPS = [["ai", "AI"], ["voice", "Voice"], ["data", "Data"], ["integratio
 const TESTABLE = ["ai", "weather", "monzo", "google", "smarthome", "tts", "stt", "database", "network", "push"];
 let logTab = "errors", CTX = null, meterStop = null;
 
-export async function render(root, ctx) {
+const LEVELS = [["quick", "Quick"], ["full", "Full system"], ["voice", "Voice"], ["ai", "AI"], ["network", "Network"], ["security", "Security"], ["performance", "Performance"], ["hardware", "Hardware"], ["integrations", "Integrations"]];
+export async function render(root, ctx, params = {}) {
   CTX = ctx;
   root.innerHTML = `<div class="page-head"><div><h2 class="title">Diagnostics</h2><p id="dsum">Running checks…</p></div><div class="row wrap"><button class="btn small primary" id="rerun">${icon("refresh")}Run again</button></div></div>
+    <article class="panel" style="margin-bottom:14px"><div class="panel-head"><span class="label">Spoken diagnostics</span><span class="faint" style="font-size:12px">Say “JARVIS, run a full system diagnostic” — every line is a real check</span></div>
+      <div class="row wrap" id="levels">${LEVELS.map(([k, l]) => `<button class="btn small" data-level="${k}">${l}</button>`).join("")}</div>
+      <div id="report" style="margin-top:12px"></div>
+      <details style="margin-top:10px"><summary class="faint" style="cursor:pointer">Previous runs</summary><ul class="list" id="runs" style="margin-top:8px"></ul></details></article>
+    <article class="panel" style="margin-bottom:14px"><div class="panel-head"><span class="label">Performance · live</span><span class="faint" id="perfAt" style="font-size:12px"></span></div><div class="grid cols-4" id="perf"></div></article>
     <div class="grid cols-4" id="gauges" style="margin-bottom:14px"></div>
     <div id="groups" class="stack"></div>
     ${ctx.desktop ? `<article class="panel" style="margin-top:14px"><div class="panel-head"><span class="label">This laptop</span></div><div class="grid cols-2">
@@ -19,12 +25,20 @@ export async function render(root, ctx) {
     <article class="panel" style="margin-top:14px"><div class="panel-head"><span class="label">History · last 24 h</span></div><div id="hist" class="stack" style="gap:6px"></div></article>
     <article class="panel" style="margin-top:14px"><div class="panel-head"><span class="label">Logs</span><div class="seg">${[["errors", "Errors"], ["api", "API calls"], ["audit", "Security audit"]].map(([k, l]) => `<button data-l="${k}">${l}</button>`).join("")}</div></div><div class="scroll-x"><table class="tbl" id="logs"></table></div></article>`;
   $("#rerun", root).onclick = load;
+  $$("[data-level]", root).forEach((b) => b.onclick = async () => {
+    $$("[data-level]", root).forEach((x) => x.disabled = true);
+    try { await ctx.handleUi({ kind: "diagnostics", level: b.dataset.level }, { speak: ctx.settings.voice?.speakReplies !== false && (!!ctx.desktop || !!voice.cfg.tts) }); }
+    catch (e) { toast(e.message); }
+    $$("[data-level]", root).forEach((x) => x.disabled = false);
+  });
+  if (params.report) drawReport(params.report);
+  drawRuns(); perf();
   $$("[data-l]", root).forEach((b) => b.onclick = () => { logTab = b.dataset.l; drawLogs(); });
   $("#micTest", root)?.addEventListener("click", micTest);
   $("#spkTest", root)?.addEventListener("click", speakerTest);
   await load();
-  const t = setInterval(load, 30_000);
-  return () => { clearInterval(t); meterStop?.(); };
+  const t = setInterval(load, 30_000), tp = setInterval(perf, 5000);
+  return () => { clearInterval(t); clearInterval(tp); meterStop?.(); };
 }
 export function refresh(e) { if (e.includes("health")) load(); }
 
@@ -119,3 +133,37 @@ async function speakerTest() {
 }
 const report = (check, status, detail) => api("/api/diagnostics/report", { method: "POST", body: { check, status, detail } }).catch(() => {});
 void fmtRel;
+
+const utc = (at) => (/[zZ]$|[+-]\d\d:\d\d$/.test(at) ? at : at.replace(" ", "T") + "Z");
+export function drawReport(r) {
+  const el = $("#report"); if (!el) return;
+  el.innerHTML = `<div class="spread" style="margin-bottom:8px"><b>${statusDot(r.overall)} ${esc(r.label)}</b><span class="faint" style="font-size:12px">${r.results.length} checks · ${(r.durationMs / 1000).toFixed(1)} s · ${esc(fmtWhen(r.at))}</span></div>
+    <div class="diag-grid">${r.results.map((x) => `<div class="check-card ${x.status}"><div class="row">${statusDot(x.status)}<b>${esc(x.label)}</b>${x.tested ? '<span class="pill info">tested</span>' : ""}</div><div class="detail">${esc(x.detail)}</div></div>`).join("")}</div>
+    <p class="muted" style="font-size:13px;margin:10px 0 0"><span class="label">Spoken</span> ${esc(r.narration.join(" "))}</p>`;
+  drawRuns();
+}
+async function drawRuns() {
+  const el = $("#runs"); if (!el) return;
+  try {
+    const runs = await api("/api/diagnostics/runs?limit=15");
+    const name = (lv) => LEVELS.find(([k]) => k === lv)?.[1] || lv;
+    el.innerHTML = runs.map((r) => `<li class="item clickable" data-run="${r.id}">${statusDot(r.overall)}<div class="grow"><b>${esc(name(r.level))}</b> <span class="faint">${r.summary.length} checks · ${(r.duration_ms / 1000).toFixed(1)} s</span><div class="meta">${esc(fmtWhen(utc(r.at)))}</div></div></li>`).join("") || '<li class="empty">No spoken diagnostics yet.</li>';
+    $$("[data-run]", el).forEach((li) => li.onclick = () => { const r = runs.find((x) => String(x.id) === li.dataset.run); drawReport({ level: r.level, label: `${name(r.level)} diagnostics`, overall: r.overall, results: r.summary, narration: r.narration, durationMs: r.duration_ms, at: utc(r.at) }); });
+  } catch {}
+}
+async function perf() {
+  const el = $("#perf"); if (!el) return;
+  try {
+    const p = await api("/api/performance");
+    const c = window.__jarvisCore || {};
+    const tile = (label, value, sub) => `<div class="stack" style="gap:2px"><span class="label">${label}</span><b class="mid" style="font-size:20px">${value}</b><span class="faint" style="font-size:11.5px">${sub}</span></div>`;
+    el.innerHTML = [
+      tile("AI response", p.ai.medianMs != null ? `${p.ai.medianMs} ms` : "—", p.ai.n ? `median of ${p.ai.n} calls · p95 ${p.ai.p95Ms} ms` : "no AI calls in 24 h"),
+      tile("Speech recognition", p.sttLocal.medianMs != null ? `${p.sttLocal.medianMs} ms` : p.sttCloud.medianMs != null ? `${p.sttCloud.medianMs} ms` : "—", p.sttLocal.n ? `on this laptop · ${p.sttLocal.n} clips` : p.sttCloud.n ? `cloud · ${p.sttCloud.n} clips` : "nothing transcribed in 24 h"),
+      tile("Database", `${p.dbMs} ms`, `event loop lag ${p.lagMs} ms`),
+      tile("Server", `${p.rssMb} MB`, `${p.cpuPct != null ? `CPU ${p.cpuPct}% · ` : ""}RAM ${p.ramPct}% · up ${Math.round(p.uptimeSec / 60)} min`),
+      tile("3D core", c.alive ? `${c.fps} fps` : "—", c.alive ? `${c.tier || ""} quality${c.idle ? " · idle mode (saving power)" : ""}` : "not on screen"),
+    ].join("");
+    $("#perfAt").textContent = `measured ${new Date(p.at).toLocaleTimeString("en-GB")}`;
+  } catch (e) { el.innerHTML = `<p class="error">${esc(e.message)}</p>`; }
+}

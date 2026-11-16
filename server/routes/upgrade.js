@@ -251,7 +251,18 @@ router.post("/api/locations/lookup", wrap(async (req, res) => res.json(await geo
 // ---------------------------------------------------------------- Automations & briefings
 router.get("/api/routines", (req, res) => res.json({ routines: routines.list(), actionTypes: ACTION_TYPES, runs: routines.allRuns(30) }));
 router.get("/api/routines/:id/runs", (req, res) => res.json(routines.runs(req.params.id)));
-router.post("/api/routines/:id/run", wrap(async (req, res) => { auditFromReq(req, "routine.run", { id: Number(req.params.id) }); res.json(await runRoutine(Number(req.params.id), { trigger: "manual" })); }));
+router.post("/api/routines/:id/run", wrap(async (req, res) => { auditFromReq(req, "routine.run", { id: Number(req.params.id) }); res.json(await runRoutine(Number(req.params.id), { trigger: req.body?.voice ? "voice" : "manual", deviceId: req.auth.deviceId, confirmed: !!req.body?.confirmed })); }));
+// Command macros: "start my working session" → the macro with that trigger phrase (null if none matches).
+router.post("/api/macros/match", (req, res) => { const r = routines.matchPhrase(String(req.body?.text || "").slice(0, 200)); res.json(r ? { id: r.id, name: r.name, actions: r.actions } : null); });
+// Session history: one timeline across conversations, commands, tasks, diagnostics, errors, automations and decisions.
+router.get("/api/history", wrap(async (req, res) => { const h = await import("../services/history.js"); res.json({ kinds: h.HISTORY_KINDS, items: h.sessionHistory({ q: req.query.q || "", kind: req.query.kind || "", limit: req.query.limit, before: req.query.before || "" }) }); }));
+router.delete("/api/history/:kind", wrap(async (req, res) => {
+  const n = (await import("../services/history.js")).clearHistory(req.params.kind);
+  if (n == null) return res.status(400).json({ error: "Conversations, tasks and memories are deleted from their own pages." });
+  auditFromReq(req, "history.cleared", { kind: req.params.kind, n }); res.json({ ok: true, deleted: n });
+}));
+// Local voice commands handled on the device (Mission Control, voice modes) are logged so they appear in session history.
+router.post("/api/activity/command", (req, res) => { logActivity("command", String(req.body?.summary || "").slice(0, 200), { text: String(req.body?.text || "").slice(0, 200) }, req.auth.deviceId); res.json({ ok: true }); });
 router.post("/api/routines", (req, res) => res.status(201).json(routines.create(req.body || {})));
 router.patch("/api/routines/:id", (req, res) => { const r = routines.update(req.params.id, req.body || {}); r ? res.json(r) : notFound(res); });
 router.delete("/api/routines/:id", (req, res) => res.json({ ok: routines.remove(req.params.id) }));

@@ -72,7 +72,7 @@
   {
     "name": "alarm audio is verified as actually playing",
     "ok": true,
-    "detail": "audio_verified: Audio playing (RMS 0.184, volume 70%)"
+    "detail": "audio_verified: Audio playing (RMS 0.195, volume 70%)"
   },
   {
     "name": "dismiss closes the alarm window",
@@ -92,7 +92,7 @@
   {
     "name": "allowlisted computer action runs on the laptop with the window closed",
     "ok": true,
-    "detail": "/tmp/jarvis-electron-5w7ecf/JARVIS/JARVIS test note.md"
+    "detail": "/tmp/jarvis-electron-IlM2cx/JARVIS/JARVIS test note.md"
   },
   {
     "name": "laptop refuses files outside the personal folders",
@@ -102,7 +102,7 @@
   {
     "name": "create folder action works and never overwrites",
     "ok": true,
-    "detail": "/tmp/jarvis-electron-5w7ecf/JARVIS E2E folder"
+    "detail": "/tmp/jarvis-electron-IlM2cx/JARVIS E2E folder"
   },
   {
     "name": "closing a window needs confirmation first",
@@ -122,7 +122,7 @@
   {
     "name": "snooze schedules the alarm again",
     "ok": true,
-    "detail": "2026-11-16T19:11:03.364Z"
+    "detail": "2026-11-16T21:11:03.786Z"
   },
   {
     "name": "Exit JARVIS ends the process completely",

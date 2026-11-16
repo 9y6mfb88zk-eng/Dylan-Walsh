@@ -69,18 +69,18 @@ export const memory = {
     const dup = db.prepare("SELECT id FROM memories WHERE lower(fact) = lower(?)").get(fact);
     if (dup) return { saved: true, duplicate: true, id: dup.id, status: "saved" };
     const emb = await embed(fact);
-    const r = db.prepare("INSERT INTO memories (fact, category, sensitive, status, source, embedding, pinned, topic, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))")
+    const r = db.prepare("INSERT INTO memories (fact, category, sensitive, status, source, embedding, pinned, topic, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f','now'))")
       .run(fact, CATEGORIES.includes(category) ? category : "fact", isSensitive ? 1 : 0, status, source, emb ? JSON.stringify(emb) : null, pinned ? 1 : 0, String(topic || "").slice(0, 80));
     changed("memories");
     return { saved: status === "saved", pending: status === "pending", id: Number(r.lastInsertRowid), status };
   },
-  approve(id) { const ok = db.prepare("UPDATE memories SET status = 'saved', updated_at = datetime('now') WHERE id = ? AND status = 'pending'").run(id).changes > 0; changed("memories"); return ok; },
+  approve(id) { const ok = db.prepare("UPDATE memories SET status = 'saved', updated_at = strftime('%Y-%m-%d %H:%M:%f','now') WHERE id = ? AND status = 'pending'").run(id).changes > 0; changed("memories"); return ok; },
   async update(id, { fact, category, pinned, topic }) {
     const m = memory.get(id); if (!m) return null;
     const f = fact !== undefined ? String(fact).trim().slice(0, 1000) : m.fact;
     if (classify(f) === "forbidden") throw Object.assign(new Error("I don't store passwords, PINs or card numbers."), { status: 400, expose: true });
     const emb = f !== m.fact ? await embed(f) : undefined;
-    db.prepare(`UPDATE memories SET fact = ?, category = ?, pinned = ?, topic = ?, updated_at = datetime('now')${emb !== undefined ? ", embedding = ?" : ""} WHERE id = ?`)
+    db.prepare(`UPDATE memories SET fact = ?, category = ?, pinned = ?, topic = ?, updated_at = strftime('%Y-%m-%d %H:%M:%f','now')${emb !== undefined ? ", embedding = ?" : ""} WHERE id = ?`)
       .run(...[f, CATEGORIES.includes(category) ? category : m.category, pinned !== undefined ? (pinned ? 1 : 0) : m.pinned ? 1 : 0, topic !== undefined ? String(topic).slice(0, 80) : m.topic || "", ...(emb !== undefined ? [emb ? JSON.stringify(emb) : null] : []), id]);
     changed("memories");
     return memory.get(id);
@@ -121,7 +121,7 @@ export const memory = {
     if (out.length > maxChars) out = out.slice(0, maxChars) + " …";
     return out;
   },
-  recent(limit = 20) { return db.prepare("SELECT * FROM memories ORDER BY COALESCE(updated_at, created_at) DESC LIMIT ?").all(limit).map(hydrate); },
+  recent(limit = 20) { return db.prepare("SELECT * FROM memories ORDER BY COALESCE(updated_at, created_at) DESC, id DESC LIMIT ?").all(limit).map(hydrate); },
   byCategory() {
     const out = {};
     for (const m of db.prepare("SELECT * FROM memories WHERE status = 'saved' ORDER BY pinned DESC, id").all().map(hydrate)) (out[m.category] ||= []).push(m);

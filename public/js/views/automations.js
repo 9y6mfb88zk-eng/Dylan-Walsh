@@ -2,12 +2,14 @@
 import { api } from "../api.js";
 import { $, $$, esc, icon, toast, formDialog, confirmDialog, fmtWhen, DAYS } from "../util.js";
 
-const SCHED = { daily: "Every day", weekdays: "Weekdays", weekends: "Weekends", weekly: "Weekly", custom: "Custom days" };
+const SCHED = { manual: "Only when asked (command macro)", daily: "Every day", weekdays: "Weekdays", weekends: "Weekends", weekly: "Weekly", custom: "Custom days" };
 const STEP_FIELDS = {
   briefing: (s) => `${s.kind || "morning"} briefing`, notify: (s) => `notify “${s.title || ""}”`, speak: (s) => `say “${s.text || ""}”`, sync: (s) => `sync ${s.target}`,
   backup: () => "back up the database", focus: (s) => `focus ${s.minutes || 25} min`, computer: (s) => `laptop: ${s.action}`, smarthome: (s) => `${s.service} ${s.entity_id}`,
+  ui: (s) => (s.action === "set_mode" ? `${s.mode} mode` : s.action === "open_section" ? `open ${s.section}` : s.action.replace(/_/g, " ")), diagnostics: (s) => `${s.level || "quick"} systems check`,
 };
-const schedText = (r) => `${SCHED[r.schedule.type] || r.schedule.type}${["weekly", "custom"].includes(r.schedule.type) ? ` (${r.schedule.days.map((d) => DAYS[d]).join(", ")})` : ""} at ${r.schedule.time}`;
+const stepLine = (a) => a.type === "ui" ? `ui: ${a.action}${a.section ? ` ${a.section}` : ""}${a.mode ? ` ${a.mode}` : ""}` : a.type === "diagnostics" ? `diagnostics: ${a.level || "quick"}` : [a.type, a.kind || a.target || a.title || a.text || a.action || a.minutes || ""].join(": ");
+const schedText = (r) => r.schedule.type === "manual" ? (r.trigger_phrase ? `Say “JARVIS, ${r.trigger_phrase}”` : "Run by hand or by voice") : `${SCHED[r.schedule.type] || r.schedule.type}${["weekly", "custom"].includes(r.schedule.type) ? ` (${r.schedule.days.map((d) => DAYS[d]).join(", ")})` : ""} at ${r.schedule.time}`;
 
 export async function render(root) {
   root.innerHTML = `<div class="page-head"><div><h2 class="title">Automations</h2><p>Routines run on the server on schedule, even when no app is open. Missed by more than two hours (laptop off) → skipped and logged.</p></div><button class="btn small primary" id="add">${icon("plus")}Routine</button></div>
@@ -32,14 +34,15 @@ async function load() {
 }
 
 async function edit(r = null) {
-  const steps = (r?.actions || [{ type: "notify", title: "", body: "" }]).map((a) => [a.type, a.kind || a.target || a.title || a.text || a.action || a.minutes || ""].join(": ")).join("\n");
+  const steps = (r?.actions || [{ type: "notify", title: "", body: "" }]).map(stepLine).join("\n");
   const v = await formDialog(r ? `Edit “${r.name}”` : "New routine", [
     { name: "name", label: "Name", value: r?.name || "", required: true },
     { name: "description", label: "Description", value: r?.description || "" },
     { name: "type", label: "When", type: "select", value: r?.schedule.type || "daily", options: Object.entries(SCHED) },
-    { name: "time", label: "Time", type: "time", value: r?.schedule.time || "08:00", required: true },
+    { name: "trigger_phrase", label: "Voice trigger (macros) — e.g. “start my working session”", value: r?.trigger_phrase || "" },
+    { name: "time", label: "Time (scheduled routines)", type: "time", value: r?.schedule.time || "08:00" },
     { name: "days", label: "Days (weekly / custom)", type: "days", value: r?.schedule.days || [] },
-    { name: "steps", label: "Steps — one per line: briefing: morning|evening|weekly · notify: text · speak: text · sync: finance|calendar|weather · backup · focus: minutes", type: "textarea", value: steps },
+    { name: "steps", label: "Steps — one per line: briefing: morning|evening|weekly · notify: text · speak: text · sync: finance|calendar|weather · backup · focus: minutes · diagnostics: quick · ui: open_section projects | set_mode focus | mission_control_on. Laptop and smart-home steps ask for a spoken yes when started by voice.", type: "textarea", value: steps },
     ...(r && !r.builtin ? [{ name: "remove", label: "Delete this routine", type: "checkbox", value: false }] : []),
   ]);
   if (!v) return;
@@ -51,8 +54,12 @@ async function edit(r = null) {
     if (t === "speak") return { type: t, text: arg };
     if (t === "sync") return { type: t, target: arg || "weather" };
     if (t === "focus") return { type: t, minutes: Number(arg) || 25 };
-    return { type: t };
+    if (t === "diagnostics") return { type: t, level: arg || "quick" };
+    if (t === "ui") { const [action, x] = arg.split(/\s+/); return { type: t, action, ...(action === "set_mode" ? { mode: x } : action === "open_section" ? { section: x } : {}) }; }
+    // Laptop / smart-home steps keep their saved details (they're created by JARVIS or the API, not typed here).
+    const orig = (r?.actions || []).find((a) => a.type === t && (a.action || a.service || "") === (arg.split(" ")[0] || a.action || a.service || ""));
+    return orig || { type: t };
   });
-  const body = { name: v.name, description: v.description, schedule: { type: v.type, time: v.time, days: v.days }, actions };
+  const body = { name: v.name, description: v.description, trigger_phrase: v.trigger_phrase, schedule: { type: v.type, time: v.time, days: v.days }, actions };
   try { r ? await api(`/api/routines/${r.id}`, { method: "PATCH", body }) : await api("/api/routines", { method: "POST", body }); toast("Saved."); } catch (e) { toast(e.message, 6000); }
 }

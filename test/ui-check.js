@@ -147,6 +147,43 @@ try {
   await P.click("[data-t=reminders]");
   check("phone shows the reminder created by voice", await P.waitForSelector("#body >> text=Call your mum", { timeout: 5000 }).then(() => true, () => false));
 
+  // ---------------- Personal intelligence, Mission Control, narrated diagnostics, start-up (laptop)
+  await L.click('[data-tab="memory"]');
+  await L.waitForSelector("#mems .panel-head h3");
+  const heads = await L.$$eval("#mems .panel-head h3", (h) => h.map((x) => x.textContent));
+  check("memory shows the personal profile grouped by category", ["Personal profile", "Career", "Ambitions", "Businesses", "Creative projects", "Preferences"].every((h) => heads.includes(h)), heads.join(", "));
+  check("profile has the website agency idea and KILL HOUSE", /website design agency/.test(await L.textContent("#mems")) && /KILL HOUSE/.test(await L.textContent("#mems")));
+  await L.screenshot({ path: path.join(out, "laptop-memory-profile.png") });
+  await L.click('[data-t="timeline"]');
+  check("session history timeline lists real events", await L.waitForSelector("#hl .item", { timeout: 5000 }).then(() => true, () => false));
+  await L.click('[data-tab="home"]'); await L.waitForSelector("#core");
+  await L.fill("#say", "Activate mission control"); await L.press("#say", "Enter");
+  check("“Activate mission control” opens Mission Control", await L.waitForSelector("#mission.in", { timeout: 15000 }).then(() => true, () => false));
+  check("Mission Control confirms in JARVIS's voice", await L.waitForFunction(() => /Mission control activated, Sir\./.test(document.querySelector("#mcCaption")?.textContent || ""), null, { timeout: 5000 }).then(() => true, () => false));
+  const tele = await L.waitForFunction(() => /\d+%/.test(document.querySelector("#mcv-cpu")?.textContent || "") && /\d+%/.test(document.querySelector("#mcv-ram")?.textContent || ""), null, { timeout: 12000 }).then(() => true, () => false);
+  check("Mission Control telemetry shows measured CPU and memory", tele, `${await L.textContent("#mcv-cpu")} / ${await L.textContent("#mcv-ram")}`);
+  check("Mission Control lists real system checks", (await L.locator("#mcChecks li .dot").count()) >= 8);
+  await sleep(1500);
+  await L.screenshot({ path: path.join(out, "laptop-mission-control.png") });
+  await L.keyboard.press("Escape");
+  check("Esc leaves Mission Control", await L.waitForSelector("#mission", { state: "detached", timeout: 3000 }).then(() => true, () => false));
+  await L.fill("#say", "Run a quick diagnostic"); await L.press("#say", "Enter");
+  check("“Run a quick diagnostic” shows the narrated report", await L.waitForSelector("#report .check-card", { timeout: 15000 }).then(() => true, () => false));
+  const spoken = await L.textContent("#report");
+  check("report's spoken lines name the real checks", /Primary database/.test(spoken) && /Spoken/.test(spoken), spoken.slice(0, 160));
+  await L.screenshot({ path: path.join(out, "laptop-diagnostics-narrated.png") });
+  check("performance panel shows live measurements", await L.waitForFunction(() => /ms/.test(document.querySelector("#perf")?.textContent || ""), null, { timeout: 8000 }).then(() => true, () => false));
+  // Cinematic start-up on a fresh window: real steps with timings, then it gets out of the way by itself.
+  const fresh = await browser.newContext({ viewport: { width: 1600, height: 960 }, storageState: await lap.storageState() });
+  const F = await fresh.newPage(); watch(F, "startup");
+  await F.goto(base);
+  check("cinematic start-up shows real steps", await F.waitForSelector(".boot .boot-steps li", { timeout: 5000 }).then(() => true, () => false));
+  await F.screenshot({ path: path.join(out, "laptop-startup.png") }).catch(() => {});
+  const labels = await F.waitForFunction(() => { const l = window.__jarvisBoot || []; return l.length >= 6 && l.every((x) => x.ok !== null) && l.map((x) => `${x.label}=${x.ok ? "ok" : "bad"} ${x.detail}${x.ms != null ? ` · ${x.ms} ms` : ""}`); }, null, { timeout: 12000 }).then((h) => h.jsonValue(), () => []);
+  check("start-up steps report real results", labels.some((l) => /Live link.*ok/.test(l)) && labels.some((l) => /System diagnostics.*ok/.test(l)), labels.join(" | "));
+  check("start-up closes by itself", await F.waitForSelector(".boot", { state: "detached", timeout: 8000 }).then(() => true, () => false));
+  await fresh.close();
+
   // ---------------- Offline → reconnect
   await P.click('[data-t="tasks"]');
   await phoneCtx.setOffline(true);

@@ -5,8 +5,8 @@
 import { api, send, uid } from "./api.js";
 import { voice } from "./voice.js";
 import { core } from "./corestate.js";
-import { localCommand, isHallucination, cleanCommand } from "./voicecommands.js";
-export { localCommand, isHallucination, cleanCommand };
+import { localCommand, isHallucination, cleanCommand, uiCommand } from "./voicecommands.js";
+export { localCommand, isHallucination, cleanCommand, uiCommand };
 
 const streamListeners = new Set();
 export const conversation = {
@@ -20,7 +20,27 @@ export const conversation = {
     const ctx = this.ctx;
     text = String(text || "").trim();
     if (!text) return null;
+    // The same request twice in quick succession (a double tap, an echoed wake) runs once.
+    if (this.inflight && this.inflight.text.toLowerCase() === text.toLowerCase() && Date.now() - this.inflight.at < 4000) return null;
+    const flight = this.inflight = { text, at: Date.now() };
+    try { return await this.askInner(text, { viaVoice, speak }); } finally { if (this.inflight === flight) this.inflight = null; }
+  },
+  async askInner(text, { viaVoice, speak }) {
+    const ctx = this.ctx;
     voice.stop();
+    // Interface commands and command macros run here, without an AI round trip.
+    const ui = uiCommand(text);
+    const local = ui && ctx.handleUi ? { run: () => ctx.handleUi(ui, { speak, text }) }
+      : ctx.tryMacro && text.split(/\s+/).length <= 8 ? await ctx.tryMacro(text, { speak }).then((m) => (m && !m.needsConfirmation ? { done: m.reply } : null)) : null;
+    if (local) {
+      ctx.caption(`“${text}”`, true);
+      streamListeners.forEach((fn) => fn({ type: "start", text }));
+      let reply;
+      try { reply = local.done ?? (await local.run()) ?? ""; } catch (e) { reply = e.message; ctx.caption(reply); }
+      this.lastReply = reply;
+      streamListeners.forEach((fn) => fn({ type: "done", reply, sources: [], local: true }));
+      return { reply, local: true };
+    }
     ctx.caption(`“${text}”`, true);
     core.set("thinking", true);
     const speaker = speak ? voice.createSpeaker() : null;

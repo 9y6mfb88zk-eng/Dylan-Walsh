@@ -1,0 +1,36 @@
+{
+  "at": "2026-11-16T20:01:14.396Z",
+  "serverStartMs": 329,
+  "viewport": "1000x640",
+  "quality": "low",
+  "homeLoadMs": 3757,
+  "active": {
+    "chromeCpuPct": 349.2,
+    "coreFps": 12
+  },
+  "idle": {
+    "chromeCpuPct": 381.4,
+    "coreFps": 23,
+    "idleClass": true
+  },
+  "background": {
+    "chromeCpuPct": 188.9,
+    "coreFps": 10
+  },
+  "jsHeapMb": 10,
+  "jsHeapMbAfterNav": 10,
+  "webglContextsAlive": 1,
+  "coreTier": "low → low",
+  "api": {
+    "home": 9,
+    "diagnostics": 258,
+    "tasks": 2,
+    "memoriesProfile": 2,
+    "performance": 23
+  },
+  "server": {
+    "eventLoopLagMs": 0.1,
+    "dbMs": 0.11,
+    "rssMb": 116
+  }
+}

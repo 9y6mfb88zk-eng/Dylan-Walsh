@@ -80,6 +80,8 @@ export function startMock() {
       ? body.messages.findLast((m) => m.role === "user" && typeof m.content === "string").content : "";
     if (Array.isArray(last.content) && last.content[0]?.type === "tool_result") {
       const results = last.content.map((r) => r.content).join(" ");
+      if (/diagnostic/i.test(firstUser)) { try { return text(JSON.parse(last.content[0].content).narration.join(" ")); } catch { return text(`Diagnostics failed: ${results}`); } }
+      if (/boxing/i.test(firstUser)) return text(/needsConfirmation/.test(results) ? "Would you like me to remember that for future conversations, Sir?" : /"ok":true/.test(results) ? "Noted for the future, Sir." : `I couldn't: ${results}`);
       if (/remind/i.test(firstUser)) return text("Very good, sir. I'll remind you to call your mum at six.");
       if (/weather/i.test(firstUser)) return text(`Tomorrow: ${results.match(/Tomorrow ([^.]+)/)?.[1] || "unknown"}.`);
       if (/i just spent/i.test(firstUser)) return text(/"ok":true/.test(results) ? "Noted, Sir: twelve pounds fifty on food." : `I couldn't record that: ${results}`);
@@ -92,7 +94,11 @@ export function startMock() {
       return text("Very good, sir. Consider it done.");
     }
     const t = typeof last.content === "string" ? last.content : "";
+    if (/business idea/i.test(t)) { const m = JSON.stringify(body.system || "").match(/#(\d+) [^#]*website design agency[^\\|]*/i); return text(m ? `That would be the website design agency for small businesses, Sir (memory #${m[1]}).` : "I don't have a business idea on file, Sir."); }
     if (body.tools) {
+      if (/yes, remember that i've started boxing/i.test(t)) return toolUse("remember", { fact: "Has started boxing training", category: "hobby", user_confirmed: true });
+      if (/i've started boxing/i.test(t)) return toolUse("remember", { fact: "Has started boxing training", category: "hobby", user_confirmed: false });
+      if (/run a full diagnostic/i.test(t)) return toolUse("run_diagnostics", { level: "full" });
       if (/remind me to call my mum at six/i.test(t)) {
         const six = new Date(Date.now() + 3 * 3600_000); six.setUTCMinutes(0, 0, 0);
         return toolUse("add_reminder", { text: "Call your mum", due_at: six.toISOString() });

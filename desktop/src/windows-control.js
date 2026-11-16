@@ -45,8 +45,19 @@ export async function lockScreen(platform = process.platform) {
   throw new Error("Locking isn't supported on this system.");
 }
 
+// The programs using the most memory right now (and their total CPU time so far). Fixed script; read-only.
+const TOP_PS = "Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 8 @{n='name';e={$_.ProcessName}},@{n='memMb';e={[math]::Round($_.WorkingSet64/1MB)}},@{n='cpuSec';e={[math]::Round($_.CPU,1)}} | ConvertTo-Json -Compress";
+export async function topProcesses(platform = process.platform) {
+  try {
+    if (platform === "win32") return [].concat(JSON.parse((await ps(TOP_PS)).trim() || "[]"));
+    const txt = await new Promise((res, rej) => execFile("ps", ["-eo", "comm=,rss=,time=", "--sort=-rss"], { timeout: 5000 }, (e, o) => (e ? rej(e) : res(String(o)))));
+    return txt.trim().split("\n").slice(0, 8).map((l) => { const [name, rss, time] = l.trim().split(/\s+/); const [h, m, sec] = time.split(":").map(Number); return { name, memMb: Math.round(+rss / 1024), cpuSec: h * 3600 + m * 60 + sec }; });
+  } catch { return null; }
+}
+
 export async function systemStatus({ displays = 1, platform = process.platform } = {}) {
   const out = { uptime: `${Math.round(os.uptime() / 3600)} h`, displays, platform: `${os.type()} ${os.release()}` };
+  const procs = topProcesses(platform);
   try {
     if (platform === "win32") {
       const j = await ps("Get-CimInstance Win32_Battery | Select-Object EstimatedChargeRemaining, BatteryStatus | ConvertTo-Json -Compress");
@@ -56,5 +67,14 @@ export async function systemStatus({ displays = 1, platform = process.platform }
       out.charging = /Charging|Full/.test(fs.readFileSync("/sys/class/power_supply/BAT0/status", "utf8"));
     }
   } catch {}
+  out.topProcesses = await procs;
+  out.cpuPct = await cpuPercent();
+  out.memory = { usedPct: Math.round((1 - os.freemem() / os.totalmem()) * 100), totalGb: +(os.totalmem() / 1e9).toFixed(1) };
   return out;
+}
+/** Whole-machine CPU use over a 400 ms sample. */
+async function cpuPercent() {
+  const snap = () => os.cpus().reduce((a, c) => { const t = c.times; a.idle += t.idle; a.total += t.user + t.nice + t.sys + t.irq + t.idle; return a; }, { idle: 0, total: 0 });
+  const a = snap(); await new Promise((r) => setTimeout(r, 400)); const b = snap();
+  return b.total > a.total ? Math.round(100 * (1 - (b.idle - a.idle) / (b.total - a.total))) : null;
 }

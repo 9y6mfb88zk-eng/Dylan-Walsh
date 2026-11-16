@@ -69,7 +69,7 @@ router.get("/api/geocode", wrap(async (req, res) => res.json(await geocode(req.q
 router.get("/api/settings", (req, res) => res.json(getSettings()));
 const clamp = (v, lo, hi, d) => (Number.isFinite(Number(v)) ? Math.max(lo, Math.min(hi, Number(v))) : d);
 router.patch("/api/settings", (req, res) => {
-  const allowed = ["home", "units", "briefing", "ideas", "finance", "memory", "computer", "timezone", "profile", "voice", "personality", "appearance", "alarms", "notifications", "focus"];
+  const allowed = ["home", "units", "briefing", "ideas", "finance", "memory", "computer", "timezone", "profile", "voice", "personality", "appearance", "alarms", "notifications", "focus", "awareness"];
   const patch = Object.fromEntries(Object.entries(req.body || {}).filter(([k]) => allowed.includes(k)));
   if (patch.timezone) { try { new Intl.DateTimeFormat("en", { timeZone: patch.timezone }); } catch { return res.status(400).json({ error: "Unknown time zone" }); } }
   if (patch.home && !(Number.isFinite(+patch.home.lat) && Number.isFinite(+patch.home.lon))) return res.status(400).json({ error: "Home needs lat and lon" });
@@ -90,6 +90,10 @@ router.patch("/api/settings", (req, res) => {
   }
   if (patch.focus) for (const k of ["workMinutes", "breakMinutes"]) if (patch.focus[k] !== undefined) patch.focus[k] = clamp(Math.round(patch.focus[k]), 1, 240, k === "workMinutes" ? 25 : 5);
   if (patch.appearance?.animation && !["full", "reduced", "off"].includes(patch.appearance.animation)) return res.status(400).json({ error: "Animation must be full, reduced or off" });
+  if (patch.appearance?.startup && !["cinematic", "instant"].includes(patch.appearance.startup)) return res.status(400).json({ error: "Startup must be cinematic or instant" });
+  if (patch.personality?.mode && !["standard", "cinematic", "concise", "professional", "focus"].includes(patch.personality.mode)) return res.status(400).json({ error: "Unknown voice mode" });
+  for (const k of ["formality", "humour", "cinematic"]) if (patch.personality?.[k] != null && typeof patch.personality[k] === "number") patch.personality[k] = clamp(patch.personality[k], 0, 3, 1);
+  if (patch.memory?.mode && !["ask", "auto", "off"].includes(patch.memory.mode)) return res.status(400).json({ error: "Memory mode must be ask, auto or off" });
   const s = updateSettings(patch);
   onSettingsChanged(patch);
   auditFromReq(req, "settings.changed", { keys: Object.keys(patch) });

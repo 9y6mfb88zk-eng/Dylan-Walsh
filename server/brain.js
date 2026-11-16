@@ -75,15 +75,17 @@ const MODES = {
   focus: "Mode: FOCUS — the user is concentrating: be brief, don't volunteer extra information, raise only what is important.",
 };
 const LEVEL = ["none", "a little", "moderate", "plenty of"];
+// 0–3; older settings stored humour as "dry" / "none".
+const lvl = (v, d) => (Number.isFinite(+v) && v !== "" && v !== null ? Math.max(0, Math.min(3, Math.round(+v))) : v === "none" ? 0 : v === "dry" ? 1 : d);
 export const persona = () => {
   const p = getSettings().personality || {};
   const mode = MODES[p.mode] ? p.mode : "standard";
   return `${PERSONA_BASE}
 Address the user as "${title()}" naturally (not in every sentence).
-${MODES[mode]} Formality: ${LEVEL[p.formality ?? 2]}. Humour: ${LEVEL[mode === "professional" || mode === "concise" ? 0 : p.humour ?? 1]}. Cinematic sci-fi flavour: ${LEVEL[mode === "cinematic" ? 3 : p.cinematic ?? 1]}.${p.verbosity === "detailed" ? " The user prefers fuller answers." : ""}
+${MODES[mode]} Formality: ${LEVEL[lvl(p.formality, 2)]}. Humour: ${LEVEL[mode === "professional" || mode === "concise" ? 0 : lvl(p.humour, 1)]}. Cinematic sci-fi flavour: ${LEVEL[mode === "cinematic" ? 3 : mode === "concise" ? 0 : lvl(p.cinematic, 1)]}.${p.verbosity === "detailed" ? " The user prefers fuller answers." : ""}
 Cinematic language is decoration only: it must never replace or contradict real results. If something is offline, untested or failed, say exactly that.
 Personal knowledge:
-- The "Personal profile" below is what the user has told you about themselves. Use it naturally when relevant (e.g. "What was that business idea?" → the website design agency). Never invent personal details, and remember older facts may be out of date — if unsure, ask.
+- The "Personal profile" below is what the user has told you about themselves. Use it naturally when relevant (e.g. "What was that business idea?" → the business idea saved in the profile). Never invent personal details, and remember older facts may be out of date — if unsure, ask.
 - For "what are my priorities/goals/projects", use the real saved goals, projects and tasks (tools) — never make them up.
 - When the user shares something lasting about themselves (a new job, a preference, a decision, an idea to keep), ask "Would you like me to remember that for future conversations, ${title()}?" unless they already asked you to remember it. Only call remember with user_confirmed=true after a clear yes or an explicit request.
 - When they correct or retract something ("I'm no longer interested in that career"), update or delete that memory with correct_memory (ids are shown as #id), then confirm briefly.
@@ -128,7 +130,7 @@ async function contextBlock({ userText, deviceKind, loc, voiceTurn = false }) {
     `Unread notifications: ${notifications.unreadCount()}. Recently: ${recentActivity(5).map((a) => a.summary).join("; ") || "nothing"}.`,
     memOn ? "" : "Memory is switched OFF by the user: don't use or save personal memories.",
     relevant.length ? `Memories relevant to this message: ${relevant.map((m) => `#${m.id} [${m.category}] ${m.fact}`).join(" | ")}` : "",
-    (() => { const n = calendar.nextEvent(); return n && Date.parse(n.start) - Date.now() < 90 * 60_000 ? `Heads-up (mention only if relevant): "${n.title}" starts ${fmtLocal(n.start, tz)}.` : ""; })(),
+    (() => { const n = s.awareness?.headsUp !== false && calendar.nextEvent(); return n && Date.parse(n.start) - Date.now() < 90 * 60_000 ? `Heads-up (mention only if relevant): "${n.title}" starts ${fmtLocal(n.start, tz)}.` : ""; })(),
     `Interface mode: ${s.personality?.mode || "standard"}.`,
   ].filter(Boolean).join("\n");
 }
@@ -152,7 +154,7 @@ const TOOLS = [
   { name: "focus", description: "Start, stop or check a focus (Pomodoro) session.", input_schema: obj({ action: { type: "string", enum: ["start", "stop", "status", "break"] }, minutes: I, label: S }, ["action"]) },
   { name: "habits_goals", description: "Habits and goals. action: list | check_habit {name} | add_habit {name, frequency, target, reminder_time} | add_goal {title, kind, target_date} | goal_progress {goal_id, progress} | add_milestone {goal_id, title, due} | complete_milestone {milestone_id}.",
     input_schema: obj({ action: { type: "string", enum: ["list", "check_habit", "add_habit", "add_goal", "goal_progress", "add_milestone", "complete_milestone"] }, name: S, frequency: { type: "string", enum: ["daily", "weekly"] }, target: I, reminder_time: S, title: S, kind: { type: "string", enum: ["short", "long", "career", "financial", "learning", "personal"] }, target_date: S, goal_id: I, milestone_id: I, progress: I, due: S }, ["action"]) },
-  { name: "routine", description: "Run an automation routine now (e.g. 'morning briefing', 'evening review', 'weekly review' or one of the user's routines), or deliver a briefing: kind morning|afternoon|evening|weekly.", input_schema: obj({ name: S, briefing: { type: "string", enum: ["morning", "afternoon", "evening", "weekly"] } }) },
+  { name: "routine", description: "Run an automation routine now (e.g. 'morning briefing', 'evening review', 'weekly review' or one of the user's routines), or deliver a briefing: kind morning|afternoon|evening|weekly.", input_schema: obj({ name: S, briefing: { type: "string", enum: ["morning", "afternoon", "evening", "weekly"] }, confirmed: B }) },
   { name: "smart_home", description: "Home Assistant devices the user has allowed. action: list | control {device (name or entity id), service (turn_on, turn_off, toggle, set_temperature, open_cover, close_cover, lock, unlock, media_play, media_pause), brightness_pct, temperature}. Locks and doors need confirmation.",
     input_schema: obj({ action: { type: "string", enum: ["list", "control"] }, device: S, service: S, brightness_pct: I, temperature: N }, ["action"]) },
   { name: "notifications", description: "Read or clear the notification centre.", input_schema: obj({ action: { type: "string", enum: ["list", "read_all", "dismiss_all"] } }, ["action"]) },
@@ -276,7 +278,8 @@ async function runTool(name, input, ctx) {
       if (input.briefing) { const { deliverBriefing } = await import("./services/briefings.js"); const b = await deliverBriefing(input.briefing, { loc: ctx.loc, trigger: "voice", speak: false }); return { ok: true, briefing: b.text, note: "Read this briefing to the user as your reply." }; }
       const r = auto.routines.find(input.name || "");
       if (!r) return { ok: false, error: `No routine called "${input.name}"`, routines: auto.routines.list().map((x) => x.name) };
-      const res = await auto.runRoutine(r.id, { trigger: "voice" });
+      const res = await auto.runRoutine(r.id, { trigger: "voice", deviceId: ctx.deviceId, confirmed: !!input.confirmed });
+      if (res.status === "needs_confirmation") return { ok: false, needsConfirmation: true, ...res, note: `Tell the user these steps change things outside JARVIS (${res.steps.join("; ")}) and ask "Shall I proceed?". Only call routine again with confirmed=true after a clear yes.` };
       return { ok: res.status === "ok", ...res };
     }
     case "smart_home": {
@@ -350,7 +353,7 @@ async function runTool(name, input, ctx) {
       if (mode === "off") return { ok: false, error: "Memory is switched off by the user (Memory & Notes)." };
       if (mode === "ask" && !input.user_confirmed) return { ok: false, needsConfirmation: true, error: `Ask first: "Would you like me to remember that for future conversations, ${title()}?" Then call remember again with user_confirmed=true if they agree.` };
       const r = await memory.save({ fact: input.fact, category: input.category, sensitive: input.sensitive, source: "conversation", topic: input.topic });
-      return r.pending ? { ok: true, pending: true, id: r.id, note: "Sensitive: stored only after the user approves. Ask them if you may keep it; if yes call confirm_pending with id 'memory:" + r.id + "'." } : r;
+      return r.pending ? { ok: true, pending: true, id: r.id, note: "Sensitive: stored only after the user approves. Ask them if you may keep it; if yes call confirm_pending with id 'memory:" + r.id + "'." } : { ok: !!r.saved, ...r };
     }
     case "recall": return (s.memory?.mode || "ask") === "off" ? { ok: false, error: "Memory is switched off by the user." } : { ok: true, memories: (await memory.search(input.query, 8)).map((m) => ({ id: m.id, fact: m.fact, category: m.category })) };
     case "correct_memory": {

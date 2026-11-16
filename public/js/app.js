@@ -6,6 +6,9 @@ import { voice } from "./voice.js";
 import { core, STATE_LABEL } from "./corestate.js";
 import { conversation, cleanCommand } from "./conversation.js";
 import { mountCore } from "./core.js";
+import { mission } from "./mission.js";
+import { handleUi, tryMacro } from "./commands.js";
+import { beginStartup } from "./startup.js";
 import { $, $$, esc, toast, icon, fmtWhen, debounce } from "./util.js";
 
 const desktop = window.jarvisDesktop || null;           // present only inside the Windows app
@@ -58,6 +61,10 @@ export const ctx = {
   home: () => homeCache,
   diag: () => diagCache,
   loc: () => null,
+  current: () => current,
+  handleUi: (cmd, opts) => handleUi(cmd, ctx, opts),
+  tryMacro: (text, opts) => tryMacro(text, ctx, opts),
+  mission,
 };
 const listeners = { caption: new Set() };
 conversation.ctx = ctx;
@@ -127,7 +134,7 @@ function renderSysbar() {
   if (desktop && ctx.agent) { mb.hidden = false; mb.innerHTML = icon(ctx.agent.muted ? "micoff" : "mic"); mb.classList.toggle("on", !ctx.agent.muted && ctx.agent.wakeWord === "listening"); mb.title = ctx.agent.muted ? "Microphone muted — click to unmute" : `Mute microphone (${ctx.agent.wakeWord === "listening" ? "“Hey JARVIS” ready" : ctx.agent.wakeWord || "starting"})`; }
 }
 async function loadHomeCache() { try { homeCache = await api("/api/home"); renderSysbar(); return homeCache; } catch { return homeCache; } }
-async function loadDiag() { try { diagCache = await api("/api/diagnostics"); renderSysbar(); } catch {} }
+async function loadDiag() { try { diagCache = await api("/api/diagnostics"); renderSysbar(); } catch {} return diagCache; }
 
 export async function refreshBadges() {
   try {
@@ -178,7 +185,11 @@ const ACTIONS = [
   { label: "Add a task", icon: "tasks", run: () => go("tasks", { new: "1" }) },
   { label: "Record spending", icon: "money", run: () => go("money", { record: "1" }) },
   { label: "New note", icon: "memory", run: () => go("memory", { note: "1" }) },
+  { label: "Session history", icon: "memory", run: () => go("memory", { history: "1" }) },
+  { label: "Personal profile (what JARVIS knows about you)", icon: "memory", run: () => go("memory") },
   { label: "Run diagnostics", icon: "diagnostics", run: () => go("diagnostics") },
+  { label: "Run full system diagnostics (spoken)", icon: "diagnostics", run: () => ctx.handleUi({ kind: "diagnostics", level: "full" }, { speak: shouldSpeakTyped() }) },
+  { label: "Mission Control", icon: "cpu", run: () => ctx.handleUi({ kind: "mission", on: !mission.open }, { speak: shouldSpeakTyped() }) },
   { label: "Talk to JARVIS", icon: "mic", run: () => startListening("palette") },
   { label: "Stop speaking", icon: "stop", run: () => { conversation.interrupt(); conversation.endSession(); } },
 ];
@@ -222,7 +233,7 @@ $("#aiChip").addEventListener("click", () => go("diagnostics"));
 $("#muteBtn").addEventListener("click", () => desktop?.setMuted(!ctx.agent?.muted));
 addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); if (!$("#app").hidden) openPalette(); }
-  if (e.key === "Escape") { closeDrawer(); if (voice.state === "speaking") conversation.interrupt(); }
+  if (e.key === "Escape") { closeDrawer(); if (voice.state === "speaking") conversation.interrupt(); else if (mission.open && !document.querySelector("dialog[open]")) ctx.handleUi({ kind: "mission", on: false }, { speak: false }); }
 });
 
 // ---------------------------------------------------------------- Voice: HUD + core state
@@ -271,6 +282,7 @@ $("#alarmDismiss").addEventListener("click", async () => { const a = ringing; hi
 sync.on("status", () => { core.set("offline", !sync.status.online); renderSysbar(); });
 sync.on("changed", (m) => {
   currentMod?.refresh?.(m.entities, ctx);
+  mission.refresh(m.entities);
   if (m.entities.some((e) => ["notifications", "alarms"].includes(e))) refreshBadges();
   if (m.entities.includes("settings")) reloadSession();
   if (m.entities.includes("health")) loadDiag();
@@ -282,12 +294,20 @@ sync.on("notify", (m) => {
   const n = m.notification;
   refreshBadges();
   if (n.kind === "alarm") return;                       // alarms have their own full-screen treatment
+  // Focus voice mode: only reminders, events and system faults interrupt; everything else waits in the notification centre.
+  if (ctx.settings.personality?.mode === "focus" && !["reminder", "event", "system"].includes(n.kind)) return;
   if (desktop) {
     desktop.notify(n.title, n.body || "");
     const v = ctx.settings.voice || {};
     const speakIt = n.speak && voice.state === "idle" && !conversation.session && (n.kind === "briefing" ? v.speakBriefings !== false : v.speakNotifications !== false);
-    if (speakIt && ["reminder", "briefing", "focus", "event", "automation", "habit"].includes(n.kind)) voice.speakShort(n.speak);
+    if (speakIt && ["reminder", "briefing", "focus", "event", "automation", "habit", "system"].includes(n.kind)) voice.speakShort(n.speak);
   } else if (document.visibilityState === "visible") toast(`${n.title}${n.body ? ` — ${n.body}` : ""}`, 6000);
+});
+// Interface requests from the AI or a macro, for this device only.
+sync.on("ui", (m) => {
+  if (m.action === "mission_control_on") mission.show(ctx);
+  else if (m.action === "mission_control_off") mission.hide();
+  else if (m.action === "open_section" && m.section) { if (mission.open) mission.hide(); go(m.section); }
 });
 sync.on("alarm.ringing", (m) => showAlarm(m.alarm, m.speech));
 sync.on("alarm.test", (m) => showAlarm({ ...m.alarm, label: "Test alarm" }, m.speech));
@@ -316,6 +336,22 @@ addEventListener("pointermove", (e) => {
     if (t) { const r = t.getBoundingClientRect(); t.style.setProperty("--ry", (((lastPtr.clientX - r.left) / r.width - 0.5) * 5).toFixed(2)); t.style.setProperty("--rx", ((0.5 - (lastPtr.clientY - r.top) / r.height) * 5).toFixed(2)); }
   });
 }, { passive: true });
+// Idle mode: after 15 s without input (or 3 s after switching to another window) while JARVIS is idle, decorative
+// animations pause — every animated frame re-composites all the blurred glass panels. Any activity resumes them.
+let idleTimer = 0;
+function wake() {
+  document.documentElement.classList.remove("idle");
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(goIdle, document.hasFocus() ? 15_000 : 3000);
+}
+function goIdle() {
+  if (voice.state !== "idle" || core.state !== "idle" || conversation.session) return wake();
+  document.documentElement.classList.add("idle");
+}
+for (const ev of ["pointermove", "pointerdown", "keydown", "wheel", "touchstart", "focus"]) addEventListener(ev, wake, { passive: true });
+addEventListener("blur", () => { clearTimeout(idleTimer); idleTimer = setTimeout(goIdle, 3000); });
+core.on(() => { if (core.state !== "idle") wake(); });
+wake();
 function applyAppearance() {
   const a = ctx.settings.appearance || {};
   document.documentElement.classList.toggle("reduce-motion", a.animation === "off" || a.animation === "reduced" || !!a.reduceMotion);
@@ -423,22 +459,38 @@ async function start() {
   await reloadSession();
   if (!ctx.session?.signedIn) return boot();
   authCore?.destroy?.(); authCore = null;
+  // Cinematic start-up (once per window): each line is a real step finishing, with its real timing or error.
+  let firstBoot = false;
+  try { firstBoot = !sessionStorage.getItem("jarvis.booted"); sessionStorage.setItem("jarvis.booted", "1"); } catch {}
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const boot = firstBoot && !reduce && (ctx.settings.appearance?.startup || "cinematic") === "cinematic" ? beginStartup({ greeting: `All systems online. Good ${partOfDayLocal()}, ${ctx.settings.profile?.title || "Sir"}.` }) : null;
+  boot?.step("Secure session", Promise.resolve(ctx.session.device?.name || "signed in"));
   $("#auth").hidden = true; $("#app").hidden = false;
   buildNav();
   core.set("offline", false);
   sync.connect();
+  boot?.step("Live link to JARVIS server", new Promise((res, rej) => { if (sync.status.online) return res("connected"); const off = sync.on("status", (st) => { if (st.online) { off(); res("connected"); } }); setTimeout(() => { off(); rej(new Error("not connected yet — working offline")); }, 6000); }));
   wireDesktop();
   tickClock(); setInterval(tickClock, 1000);
   ensurePushSubscription().catch(() => {});
-  loadHomeCache(); loadDiag(); refreshBadges();
+  const diagP = loadDiag();
+  boot?.step("System diagnostics", diagP.then((d) => { if (!d) throw new Error("couldn't run checks"); const n = (d.counts.error || 0) + (d.counts.warn || 0); return n ? `${d.checks.length} checks · ${n} need attention` : `${d.checks.length} checks · all operational`; }));
+  boot?.step("AI core", diagP.then((d) => { const a = d?.checks.find((c) => c.name === "ai"); if (!a || a.status === "off") throw new Error(a?.detail || "not set up"); if (a.status === "error") throw new Error(a.detail); return a.status === "ok" ? "online" : a.detail; }));
+  boot?.step("Voice systems", desktop ? desktop.getStatus().then((st) => { if (st.muted) return "microphone muted"; return st.wakeWord === "listening" ? "“Hey JARVIS” ready" : `wake word ${st.wakeWord || "starting"}`; }) : Promise.resolve(voice.cfg.stt ? "tap the core to talk" : "typing only on this device"));
+  if ((ctx.settings.memory?.mode || "ask") !== "off") boot?.step("Personal profile", api("/api/memories/profile").then((p) => `${Object.values(p).flat().length} facts`));
+  loadHomeCache(); refreshBadges();
   setInterval(loadHomeCache, 10 * 60_000);
   setInterval(loadDiag, 60_000);
   const u = new URL(location.href);
   const tab = u.searchParams.get("tab") || "home";
   const params = Object.fromEntries(u.searchParams);
   history.replaceState({ tab }, "", tab === "home" ? "/" : `/?tab=${ALIASES[tab] || tab}`);
-  await go(tab, params, { push: false });
+  const view = go(tab, params, { push: false });
+  boot?.step("Command centre", view.then(() => ""));
+  boot?.finish();
+  await view;
 }
+function partOfDayLocal() { const h = Number(new Date().toLocaleString("en-GB", { timeZone: ctx.settings.timezone, hour: "2-digit", hour12: false })); return h < 12 ? "morning" : h < 18 ? "afternoon" : "evening"; }
 
 async function boot() {
   let s;

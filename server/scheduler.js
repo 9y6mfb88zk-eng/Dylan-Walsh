@@ -88,6 +88,7 @@ const every = (ms, fn) => { const t = setInterval(() => fn().catch(() => {}), ms
 export function startScheduler() {
   const s = () => getSettings();
   seedRoutines();
+  import("./services/automations.js").then((a) => a.seedMacros()).catch((e) => console.error("[macros] seed failed", e.message));
   // The starting personal profile (once) and the KILL HOUSE workspace, if it doesn't exist yet.
   import("./services/memory.js").then(async ({ seedProfile }) => {
     const fresh = !kvGet("profile.seeded");

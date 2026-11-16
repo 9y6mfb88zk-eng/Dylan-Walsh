@@ -29,6 +29,17 @@ vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));p0*=n
 vec4 m=max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0);m=m*m;return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));}`;
 
 /** Mount the 3D core. Throws if WebGL isn't available (the caller then uses the 2D core). */
+// Shared live stats for the performance view and tests: frames actually drawn per second, live WebGL cores, idle mode.
+const stats = (window.__jarvisCore ||= { fps: 0, alive: 0, tier: null, idle: false });
+// Idle mode: when nothing is happening (core idle, no audio, no pointer/keys) the core draws less often.
+// Measured: under software rendering a composited frame costs ~4 CPU cores-worth at full rate (docs/performance.md).
+const IDLE_AFTER_MS = 15_000, IDLE_FPS = 30, BACKGROUND_FPS = 10;
+let lastActivity = performance.now(), windowFocused = document.hasFocus?.() ?? true;
+const touch = () => { lastActivity = performance.now(); };
+for (const ev of ["pointermove", "pointerdown", "keydown", "wheel", "touchstart"]) addEventListener(ev, touch, { passive: true });
+addEventListener("focus", () => { windowFocused = true; touch(); });
+addEventListener("blur", () => { windowFocused = false; });
+
 export async function mountCore3D(canvas, { quality = "auto", animation = "full" } = {}) {
   const THREE = await import("/vendor/three/three.module.min.js");
   const test = document.createElement("canvas");
@@ -183,8 +194,10 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
   const WHITE = new THREE.Color(1, 1, 1);
   const cur = { c1: new THREE.Color(STATES.idle[0]), c2: new THREE.Color(STATES.idle[1]), intensity: 0.85, spin: 0.25, agit: 0, pspeed: 0.35, scan: 0, sats: 0, spec: 0.25 };
   const tgt = { c1: new THREE.Color(), c2: new THREE.Color() };
+  let gone = false;
   let state = core.state, level = 0, prevLevel = 0, t = 0, lastFrame = performance.now(), raf = 0, slow = 0, frames = 0;
   const offState = core.on((s, _d, same) => {
+    touch();
     if (!same && s !== state) {
       if (s === "listening" || s === "alarm") emitWave(1.2);
       state = s;
@@ -279,19 +292,33 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
     if (composer) composer.render(); else renderer.render(scene, camera);
   }
 
+  const inMission = !!canvas.closest("#mission");
+  let drawn = 0, fpsAt = performance.now(), evalAt = 0;
+  function idleInterval(now) {
+    if (state !== "idle" || core.levels().level != null) return 0;
+    const quiet = now - lastActivity;
+    if (!windowFocused && quiet > 3000) return 1000 / BACKGROUND_FPS;   // JARVIS visible behind another window
+    if (quiet > IDLE_AFTER_MS) return 1000 / IDLE_FPS;
+    return 0;
+  }
   function loop(now) {
     raf = requestAnimationFrame(loop);
-    if (!visible || document.hidden) { lastFrame = now; return; }
-    if (reduced && now - lastFrame < 32) return;     // ~30 fps when motion is reduced
+    if (!visible || document.hidden || (!inMission && document.documentElement.classList.contains("mission-open"))) { lastFrame = now; return; }
+    const minGap = Math.max(reduced ? 32 : 0, idleInterval(now));
+    stats.idle = minGap > 32;
+    if (minGap && now - lastFrame < minGap - 2) return;
     const ft = now - lastFrame;
     draw(now);
+    drawn++;
+    if (now - fpsAt >= 1000) { stats.fps = Math.round((drawn * 1000) / (now - fpsAt)); drawn = 0; fpsAt = now; stats.tier = tier; }
     // Adaptive quality: sustained slow frames on "auto" drop to the light tier (no bloom, fewer particles).
-    if (quality === "auto" && tier === "high") {
+    if (quality === "auto" && tier === "high" && !minGap) {
       frames++; if (ft > 34) slow++;
-      if (frames > 180) { if (slow / frames > 0.5) { tier = "low"; composer = null; bloom = null; resize(); console.info("[core] switched to the light quality tier"); } frames = 0; slow = 0; }
+      if (frames >= 180 || (frames >= 20 && now - (evalAt ||= now) > 6000)) { evalAt = 0; if (slow / frames > 0.5) { tier = "low"; composer = null; bloom = null; resize(); console.info("[core] switched to the light quality tier"); } frames = 0; slow = 0; }
     }
   }
   resize();
+  stats.alive++;
   if (still) draw(performance.now()); else raf = requestAnimationFrame(loop);
 
   return {
@@ -299,6 +326,7 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
     get tier() { return tier; },
     pulse: () => emitWave(1.2),
     destroy() {
+      if (gone) return; gone = true; stats.alive--;
       cancelAnimationFrame(raf); offState(); ro.disconnect(); io.disconnect();
       removeEventListener("pointermove", onPointer);
       disposables.forEach((d) => d.dispose?.());

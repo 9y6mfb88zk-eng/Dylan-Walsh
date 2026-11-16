@@ -86,6 +86,7 @@ h1, h2, h3, h4 { font-family: var(--display); font-weight: 600; letter-spacing: 
 .bg .scan { inset: 0; background: repeating-linear-gradient(180deg, rgba(255, 255, 255, .012) 0 1px, transparent 1px 3px); }
 .bg .vignette { inset: 0; background: radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, .55)); }
 @keyframes gridflow { to { background-position: 0 56px, 0 0; } }
+html.idle .bg .grid, html.idle .logo-mark, html.idle .dot.live { animation-play-state: paused; }
 
 /* ---------------------------------------------------------------- Panels (glass, HUD brackets, depth) */
 .glass, .panel { position: relative; background: linear-gradient(160deg, var(--panel-2), var(--panel)); border: 1px solid var(--edge); border-radius: var(--r);
@@ -503,3 +504,58 @@ button.sys-chip:hover { color: var(--ice); border-color: var(--edge-2); }
   .modal { padding: 18px; }
   .qa { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* ---------------------------------------------------------------- Mission Control (immersive mode) */
+.mission { position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column; gap: 14px; padding: 18px 22px 22px; overflow: auto;
+  background: radial-gradient(circle at 50% 38%, rgba(0, 229, 255, .10), transparent 46%), linear-gradient(180deg, rgba(1, 4, 10, .97), rgba(2, 9, 18, .985));
+  opacity: 0; transform: scale(1.015); transition: opacity .25s ease, transform .25s ease; }
+.mission.in { opacity: 1; transform: none; }
+.mission::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(180deg, rgba(255, 255, 255, .012) 0 1px, transparent 1px 3px); }
+.mc-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.mc-title { font: 700 20px/1 var(--display); letter-spacing: .38em; color: var(--white); text-shadow: 0 0 16px rgba(103, 232, 249, .55); }
+.mc-sub { font: 500 12px var(--mono, monospace); margin-top: 4px; }
+.mc-grid { display: grid; grid-template-columns: minmax(250px, 1fr) minmax(360px, 1.6fr) minmax(250px, 1fr); gap: 14px; flex: 1; min-height: 0; }
+.mc-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.mc-panel { padding: 12px 14px; }
+.mc-checks, .mc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; }
+.mc-checks li, .mc-list li { display: flex; gap: 9px; align-items: flex-start; min-width: 0; }
+.mc-checks li > div, .mc-list li > div { min-width: 0; }
+.mc-checks .faint, .mc-list .faint { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; }
+.mc-checks .dot { margin-top: 4px; flex: none; }
+.mc-list svg { width: 15px; height: 15px; flex: none; color: var(--cyan-3); margin-top: 1px; }
+.mc-list li.unread b { color: var(--white); }
+.mc-time { font: 500 11px var(--mono, monospace); color: var(--cyan-3); flex: none; min-width: 48px; }
+.mc-feed { max-height: 240px; overflow: auto; }
+.mc-centre { display: flex; flex-direction: column; align-items: center; gap: 10px; min-width: 0; }
+.mc-core-wrap { position: relative; width: min(100%, 520px); aspect-ratio: 1; max-height: 52vh; }
+.mc-core-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.mc-ring { position: absolute; inset: 4%; border-radius: 50%; border: 1px dashed rgba(103, 232, 249, .18); animation: spin 60s linear infinite; pointer-events: none; }
+html.idle .mc-ring { animation-play-state: paused; }
+.mc-state { font: 600 14px var(--display); letter-spacing: .3em; text-transform: uppercase; color: var(--cyan-3); }
+.mc-caption { min-height: 22px; max-width: 640px; text-align: center; color: var(--text); font-size: 15px; }
+.mc-telemetry { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; width: 100%; }
+.mc-tile { padding: 10px 12px; border: 1px solid var(--edge); border-radius: 12px; background: var(--panel); }
+.mc-tile b { font: 600 15px var(--display); color: var(--white); }
+.mc-spark svg { width: 100%; height: 42px; display: block; margin-top: 6px; }
+.mc-spark .line { fill: none; stroke: var(--cyan-2); stroke-width: 1.4; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 3px rgba(0, 229, 255, .6)); }
+.mc-spark .fill { fill: rgba(0, 229, 255, .08); stroke: none; }
+#mcReportPanel { width: 100%; }
+#mcReport { max-height: 260px; overflow: auto; }
+@media (max-width: 1100px) { .mc-grid { grid-template-columns: 1fr; } .mc-telemetry { grid-template-columns: repeat(2, minmax(0, 1fr)); } .mc-core-wrap { max-height: 40vh; } }
+.reduce-motion .mission { transition: none; }
+
+/* ---------------------------------------------------------------- Cinematic start-up (real steps only) */
+.boot { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: radial-gradient(circle at 50% 42%, rgba(0, 229, 255, .12), transparent 50%), var(--bg-0); opacity: 0; transition: opacity .35s ease; cursor: pointer; }
+.boot.in { opacity: 1; } .boot.out { opacity: 0; pointer-events: none; }
+.boot-inner { width: min(460px, calc(100vw - 32px)); display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.boot-mark { width: 74px; height: 74px; border-radius: 50%; background: radial-gradient(circle, #fff 0 10%, var(--cyan-3) 16%, rgba(34, 211, 238, .35) 40%, transparent 62%), conic-gradient(from 0deg, transparent, rgba(0, 229, 255, .85), transparent 30%, rgba(47, 127, 224, .85), transparent 70%); box-shadow: 0 0 40px rgba(0, 229, 255, .5); animation: spin 3s linear infinite; }
+.boot-title { font: 700 22px/1 var(--display); letter-spacing: .5em; color: var(--white); text-shadow: 0 0 18px rgba(103, 232, 249, .6); margin-left: .5em; }
+.boot-steps { list-style: none; margin: 8px 0 0; padding: 0; width: 100%; display: flex; flex-direction: column; gap: 7px; font: 500 13px var(--body); }
+.boot-steps li { display: grid; grid-template-columns: 12px 1fr auto; gap: 10px; align-items: center; animation: viewin .3s ease both; }
+.boot-steps .boot-detail { font-size: 12px; text-align: right; }
+.boot-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--steel-2); box-shadow: 0 0 0 0 transparent; animation: pulse 1s ease-in-out infinite; }
+.boot-steps li.ok .boot-dot { background: var(--good); box-shadow: 0 0 8px var(--good); animation: none; }
+.boot-steps li.bad .boot-dot { background: var(--bad); box-shadow: 0 0 8px var(--bad); animation: none; }
+.boot-steps li.bad .boot-detail { color: var(--bad); }
+.boot-final { min-height: 20px; font: 600 15px var(--display); letter-spacing: .08em; color: var(--cyan-3); text-align: center; }
+.boot-skip { font-size: 11px; }

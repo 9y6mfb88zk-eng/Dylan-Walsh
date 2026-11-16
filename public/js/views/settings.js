@@ -277,6 +277,8 @@ async function drawTailscale(ctx, local) {
 try { voice.micDeviceId = localStorage.getItem("jarvis.mic") || null; } catch {}
 
 // ---------------------------------------------------------------- Ultimate upgrade sections
+const LVL = ["None", "A little", "Moderate", "Plenty"];
+const lvlOf = (v, d) => (Number.isFinite(+v) && v !== "" && v !== null ? Math.max(0, Math.min(3, Math.round(+v))) : v === "none" ? 0 : v === "dry" ? 1 : d);
 const P = (p) => api("/api/settings", { method: "PATCH", body: p }).then(() => toast("Saved.")).catch((e) => toast(e.message));
 Object.assign(SECTIONS, {
   async profile(el) {
@@ -289,11 +291,16 @@ Object.assign(SECTIONS, {
       <div class="row end"><button class="btn small primary" id="pSave">Save</button></div></div></article>
       <article class="panel"><div class="panel-head"><span class="label">Personality</span></div>
         ${row("Reply length", "Spoken replies are kept short either way", `<select class="inp" id="verb" style="width:auto"><option value="brief" ${pe.verbosity !== "detailed" ? "selected" : ""}>Brief</option><option value="detailed" ${pe.verbosity === "detailed" ? "selected" : ""}>More detail</option></select>`)}
-        ${row("Humour", "Dry, understated wit", `<select class="inp" id="hum" style="width:auto"><option value="dry" ${pe.humour !== "none" ? "selected" : ""}>Dry wit</option><option value="none" ${pe.humour === "none" ? "selected" : ""}>Strictly business</option></select>`)}
+        ${row("Voice mode", "Or say “JARVIS, switch to concise mode”", `<select class="inp" id="pMode" style="width:auto">${[["standard", "Standard"], ["cinematic", "Cinematic"], ["concise", "Concise"], ["professional", "Professional"], ["focus", "Focus (fewer interruptions)"]].map(([k, l]) => `<option value="${k}" ${(pe.mode || "standard") === k ? "selected" : ""}>${l}</option>`).join("")}</select>`)}
+        ${[["formality", "Formality", "Relaxed → very formal", 2], ["humour", "Humour", "None → plenty of dry wit", 1], ["cinematic", "Cinematic language", "Plain → film-style system phrasing", 1]].map(([k, l, sub, d]) => row(l, sub, `<div class="row" style="gap:8px"><input type="range" min="0" max="3" step="1" id="pl-${k}" value="${lvlOf(pe[k], d)}" aria-label="${l}"><b id="plv-${k}" style="min-width:64px">${LVL[lvlOf(pe[k], d)]}</b></div>`)).join("")}
         <p class="faint" style="font-size:12.5px">Whatever the setting, JARVIS only states facts from your data or cited sources, and only confirms an action once it has actually been done.</p></article></div>`;
     $("#pSave").onclick = () => P({ profile: { name: $("#pName").value, title: $("#pTitle").value, city: $("#pCity").value, country: $("#pCountry").value } });
     $("#verb").onchange = (e) => P({ personality: { verbosity: e.target.value } });
-    $("#hum").onchange = (e) => P({ personality: { humour: e.target.value } });
+    $("#pMode").onchange = (e) => P({ personality: { mode: e.target.value } });
+    for (const k of ["formality", "humour", "cinematic"]) {
+      $(`#pl-${k}`).oninput = (e) => { $(`#plv-${k}`).textContent = LVL[e.target.value]; };
+      $(`#pl-${k}`).onchange = (e) => P({ personality: { [k]: Number(e.target.value) } });
+    }
   },
   async conversation(el, ctx) {
     const s = await api("/api/settings");
@@ -328,10 +335,12 @@ Object.assign(SECTIONS, {
     el.innerHTML = `<article class="panel" style="max-width:760px"><div class="panel-head"><span class="label">Appearance</span></div>
       ${row("Animation", "Reduced slows the core and turns off parallax; Off shows a still core", `<div class="seg" id="anim">${["full", "reduced", "off"].map((k) => `<button data-a="${k}" class="${(a.animation || "full") === k ? "active" : ""}">${k[0].toUpperCase() + k.slice(1)}</button>`).join("")}</div>`)}
       ${row("3D core quality", "Automatic drops to light mode on slower laptops", `<div class="seg" id="qual">${[["auto", "Auto"], ["high", "High"], ["low", "Light"], ["2d", "2D"]].map(([k, l]) => `<button data-q="${k}" class="${(a.quality || "auto") === k ? "active" : ""}">${l}</button>`).join("")}</div>`)}
+      ${row("Startup sequence", "Cinematic shows JARVIS's real start-up checks as they happen; Instant opens straight away", `<div class="seg" id="boot">${[["cinematic", "Cinematic"], ["instant", "Instant"]].map(([k, l]) => `<button data-boot="${k}" class="${(a.startup || "cinematic") === k ? "active" : ""}">${l}</button>`).join("")}</div>`)}
       ${row("Sidebar", "", `<div class="seg" id="side"><button data-sb="expanded">Expanded</button><button data-sb="collapsed">Collapsed</button></div>`)}
       <p class="faint" style="font-size:12.5px">Your system's “reduce motion” setting is always respected.</p></article>`;
     $$("[data-a]", el).forEach((x) => x.onclick = async () => { await P({ appearance: { animation: x.dataset.a } }); location.reload(); });
     $$("[data-q]", el).forEach((x) => x.onclick = async () => { await P({ appearance: { quality: x.dataset.q } }); $$("[data-q]", el).forEach((y) => y.classList.toggle("active", y === x)); });
+    $$("[data-boot]", el).forEach((x) => x.onclick = async () => { await P({ appearance: { startup: x.dataset.boot } }); $$("[data-boot]", el).forEach((y) => y.classList.toggle("active", y === x)); });
     $$("[data-sb]", el).forEach((x) => x.onclick = () => { document.getElementById("app").classList.toggle("collapsed", x.dataset.sb === "collapsed"); try { localStorage.setItem("jarvis.sidebar", x.dataset.sb); } catch {} });
   },
   async alarmprefs(el) {
