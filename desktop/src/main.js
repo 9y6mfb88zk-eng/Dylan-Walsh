@@ -1,7 +1,7 @@
 // JARVIS for Windows — main process.
 // Tray app with close-to-tray, start with Windows, an always-on local wake-word service (hidden audio window),
 // push-to-talk and mute shortcuts, crash/sleep recovery, and allowlisted computer actions.
-import { app, BrowserWindow, safeStorage, Tray, Menu, ipcMain, globalShortcut, shell, nativeImage, Notification, powerMonitor, session, systemPreferences, dialog } from "electron";
+import { app, BrowserWindow, safeStorage, utilityProcess, Tray, Menu, ipcMain, globalShortcut, shell, nativeImage, Notification, powerMonitor, session, systemPreferences, dialog } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -26,7 +26,7 @@ const DEFAULTS = {
   mode: "local",                 // "local" = JARVIS server runs on this laptop; "remote" = connect to a cloud server
   serverUrl: process.env.JARVIS_SERVER_URL || "",
   phoneAccess: false, phoneUrl: null,
-  wakeEnabled: true, threshold: 0.5, minFrames: 2, vadThreshold: 0.035, micDeviceId: null,
+  wakeEnabled: true, wakeJarvisAlone: true, threshold: 0.5, minFrames: 2, vadThreshold: 0.035, micDeviceId: null,
   autoStart: true, closeToTray: true, computerEnabled: true, bookmarks: {},
   pttShortcut: "CommandOrControl+Shift+Space", muteShortcut: "CommandOrControl+Shift+M",
 };
@@ -44,10 +44,42 @@ function saveSettings(patch) {
 let currentUrl = isLocal() ? null : settings.serverUrl;   // what the main window loads
 const serverOrigin = () => { try { return new URL(currentUrl).origin; } catch { return null; } };
 
+// ---------------------------------------------------------------- Bundled models (outside the asar so native code can read them)
+function modelDir(name) {
+  const packaged = path.join(process.resourcesPath || "", "models", name);
+  if (app.isPackaged && fs.existsSync(packaged)) return packaged;
+  if (name === "asr") return process.env.JARVIS_ASR_DIR || path.join(root, "bundle", "asr");
+  return path.join(root, "models", name);
+}
+function sherpaPath() {
+  const loc = locateServer({ appRoot: root, resourcesPath: process.resourcesPath, packaged: app.isPackaged });
+  return path.join(loc.dir, "node_modules", "sherpa-onnx-node");
+}
+
+// ---------------------------------------------------------------- "JARVIS" keyword spotter (utility process)
+let kws = null, kwsRestarts = 0;
+function startKws() {
+  try {
+    kws = utilityProcess.fork(path.join(here, "kws-worker.cjs"), [], {
+      serviceName: "JARVIS keyword spotter", stdio: "ignore",
+      env: { ...process.env, JARVIS_SHERPA_PATH: sherpaPath(), JARVIS_KWS_DIR: modelDir("kws") },
+    });
+  } catch (e) { status.kws = "error"; status.kwsError = e.message; return; }
+  kws.on("message", (m) => {
+    if (m.type === "ready") { status.kws = "ready"; status.kwsError = null; kws.postMessage({ type: "config", jarvis: settings.wakeJarvisAlone }); pushStatus(); log("keyword spotter ready"); }
+    if (m.type === "error") { status.kws = "error"; status.kwsError = m.error; pushStatus(); log("keyword spotter error", m.error); }
+    if (m.type === "wake") onWake(`keyword:${m.keyword}`, 1);
+  });
+  kws.on("exit", (code) => {
+    kws = null; log("keyword spotter exited", code);
+    if (!quitting && status.kws !== "error" && kwsRestarts++ < 5) setTimeout(startKws, 2000);
+  });
+}
+
 // ---------------------------------------------------------------- Local server (JARVIS on this laptop)
 let server = null, secretsStore = null;   // secretsStore is created once Electron is ready (needs safeStorage)
 function serverEnv() {
-  return { ...secretsStore.env(), ...(settings.phoneAccess && settings.phoneUrl ? { PUBLIC_URL: settings.phoneUrl } : {}), JARVIS_TZ: Intl.DateTimeFormat().resolvedOptions().timeZone };
+  return { ...secretsStore.env(), ...(settings.phoneAccess && settings.phoneUrl ? { PUBLIC_URL: settings.phoneUrl } : {}), JARVIS_TZ: Intl.DateTimeFormat().resolvedOptions().timeZone, JARVIS_ASR_DIR: modelDir("asr") };
 }
 async function startLocalServer() {
   const loc = locateServer({ appRoot: root, resourcesPath: process.resourcesPath, packaged: app.isPackaged });
@@ -121,7 +153,7 @@ function createAudio() {
 }
 function restartAudio() { try { audioWin?.destroy(); } catch {} createAudio(); }
 function audioConfig() {
-  return { enabled: settings.wakeEnabled && !status.muted, paused: sessionActive || suspended, threshold: settings.threshold, minFrames: settings.minFrames, micDeviceId: settings.micDeviceId };
+  return { enabled: settings.wakeEnabled && !status.muted, paused: sessionActive || suspended, threshold: settings.threshold, minFrames: settings.minFrames, micDeviceId: settings.micDeviceId, vadThreshold: settings.vadThreshold };
 }
 function sendAudioConfig() { audioWin?.webContents.send("audio:config", audioConfig()); }
 
@@ -198,11 +230,12 @@ function pushToTalk() { showMain(); win?.webContents.send("jarvis:ptt"); }
 
 function applySettings(patch) {
   if ("autoStart" in patch) app.setLoginItemSettings({ openAtLogin: !!settings.autoStart, args: ["--hidden"] });
-  if (["wakeEnabled", "threshold", "minFrames", "micDeviceId"].some((k) => k in patch)) {
+  if (["wakeEnabled", "threshold", "minFrames", "micDeviceId", "vadThreshold"].some((k) => k in patch)) {
     if ("wakeEnabled" in patch && !settings.wakeEnabled) status.wakeWord = "disabled";
     sendAudioConfig();
   }
   if ("pttShortcut" in patch || "muteShortcut" in patch) registerShortcuts();
+  if ("wakeJarvisAlone" in patch) kws?.postMessage({ type: "config", jarvis: !!settings.wakeJarvisAlone });
   pushStatus();
 }
 function registerShortcuts() {
@@ -218,6 +251,7 @@ async function quitFully() {
   globalShortcut.unregisterAll();
   tray?.destroy(); tray = null;
   for (const w of BrowserWindow.getAllWindows()) w.destroy();
+  try { kws?.kill(); } catch {}
   await server?.stop();          // the local JARVIS server stops with the app — nothing keeps running secretly
   server = null;
   app.quit();
@@ -250,7 +284,7 @@ const runAction = createActions({
 ipcMain.handle("jarvis:getStatus", () => status);
 ipcMain.handle("jarvis:getSettings", () => settings);
 ipcMain.handle("jarvis:setSettings", (_e, patch) => {
-  const allowed = ["wakeEnabled", "threshold", "minFrames", "vadThreshold", "micDeviceId", "autoStart", "closeToTray", "computerEnabled", "bookmarks"];
+  const allowed = ["wakeEnabled", "wakeJarvisAlone", "threshold", "minFrames", "vadThreshold", "micDeviceId", "autoStart", "closeToTray", "computerEnabled", "bookmarks"];
   const clean = Object.fromEntries(Object.entries(patch || {}).filter(([k]) => allowed.includes(k)));
   if (clean.threshold != null) clean.threshold = Math.min(0.99, Math.max(0.2, Number(clean.threshold)));
   if (clean.minFrames != null) clean.minFrames = Math.min(5, Math.max(1, Math.round(clean.minFrames)));
@@ -273,16 +307,32 @@ ipcMain.on("audio:status", (_e, s) => {
   pushStatus();
 });
 ipcMain.on("audio:score", (_e, score) => { status.lastScore = score; });
-ipcMain.on("audio:wake", (_e, score) => {
-  if (status.muted || !settings.wakeEnabled || sessionActive) return;
-  status.lastWake = new Date().toISOString();
-  log("wake word detected", score.toFixed(3));
-  sessionActive = true; sendAudioConfig();
-  showMain();
-  win?.webContents.send("jarvis:wake", { score });
-  setTimeout(() => { if (sessionActive) { sessionActive = false; sendAudioConfig(); } }, 60_000);   // safety: never stay paused
-  pushStatus();
+ipcMain.on("audio:wake", (_e, score) => onWake("hey_jarvis_model", score));
+ipcMain.on("audio:pcm", (_e, pcm) => { if (kws && !capturing && !status.muted && settings.wakeEnabled && !sessionActive && !suspended) kws.postMessage({ type: "pcm", pcm }); });
+let lastWakeAt = 0, capturing = false;
+// The command recorded by the audio service after a wake word: pause wake detection while JARVIS thinks and speaks.
+ipcMain.on("audio:captured", (_e, wav) => {
+  capturing = false;
+  if (wav) { sessionActive = true; sendAudioConfig(); }
+  win?.webContents.send("jarvis:wakeAudio", wav || null);
+  log("command captured", wav ? `${wav.length} bytes` : "(no speech)");
 });
+function onWake(source, score) {
+  if (status.muted || !settings.wakeEnabled || sessionActive || suspended || capturing) return;
+  if (Date.now() - lastWakeAt < 2500) return;          // both detectors may fire for one phrase
+  lastWakeAt = Date.now();
+  status.lastWake = new Date().toISOString();
+  status.lastWakeSource = source;
+  log("wake word detected", source, Number(score).toFixed(3));
+  capturing = true;
+  audioWin?.webContents.send("audio:capture");      // the always-on stream records the command immediately
+  setTimeout(() => { if (capturing) { capturing = false; win?.webContents.send("jarvis:wakeAudio", null); } }, 20_000);
+  showMain();
+  win?.webContents.send("jarvis:wake", { score, source, capture: true });
+  setTimeout(() => { if (sessionActive) { sessionActive = false; sendAudioConfig(); } }, 60_000);   // safety: never stay paused
+  kws?.postMessage({ type: "reset" });
+  pushStatus();
+}
 
 // Laptop-hosted server: keys, setup code, Tailscale
 ipcMain.handle("keys:get", () => secretsStore.view());
@@ -363,6 +413,7 @@ app.whenReady().then(() => {
   registerShortcuts();
   app.setLoginItemSettings({ openAtLogin: !!settings.autoStart, args: ["--hidden"] });
   createAudio();
+  startKws();
   if (isLocal()) {
     secretsStore = createSecrets(path.join(app.getPath("userData"), "secrets.json"), safeStorage);
     if (!secretsStore.get("ANTHROPIC_API_KEY") && !process.env.ANTHROPIC_API_KEY) createKeys({ firstRun: true });

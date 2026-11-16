@@ -30,14 +30,24 @@
     "detail": ""
   },
   {
-    "name": "“Hey JARVIS” from the microphone is detected locally",
+    "name": "second wake-word engine (keyword spotter) loads from the installer layout",
     "ok": true,
     "detail": ""
+  },
+  {
+    "name": "just “JARVIS” (no “hey”) from the microphone wakes it, on the laptop",
+    "ok": true,
+    "detail": "keyword:JARVIS"
   },
   {
     "name": "voice command answered by the laptop's own server",
     "ok": true,
     "detail": ""
+  },
+  {
+    "name": "speech understood by local Whisper (no OpenAI key, nothing uploaded)",
+    "ok": true,
+    "detail": "heard: “this. What is the weather tomorrow?”"
   },
   {
     "name": "cheap model by default (Claude Haiku 5.5)",
@@ -57,7 +67,7 @@
   {
     "name": "pairing QR now points at the private Tailscale address",
     "ok": true,
-    "detail": "https://dylans-laptop.tail1234.ts.net/pair#SOe63Ui6XQKsocjNWnkrC_tiaEuRqks9"
+    "detail": "https://dylans-laptop.tail1234.ts.net/pair#mRhDq2V2rn3Z-5t_xAhpuoHgjmi2ZlwG"
   },
   {
     "name": "Exit JARVIS closes the app",

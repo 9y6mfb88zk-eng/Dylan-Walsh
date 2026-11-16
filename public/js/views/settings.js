@@ -50,7 +50,7 @@ const SECTIONS = {
     const mics = (await navigator.mediaDevices?.enumerateDevices?.().catch(() => []) || []).filter((x) => x.kind === "audioinput");
     if (!d) {
       el.innerHTML = `<article class="glass panel">${row("Voice output", ctx.session.tts ? `Neural British voice (${ctx.session.tts})` : "Browser voice — add ELEVENLABS_API_KEY or OPENAI_API_KEY on the server for the natural butler voice", '<button class="btn small" id="test">Test</button>')}
-        ${row("Voice input on this device", voice.sttMode() === "server" ? "Whisper transcription" : voice.sttMode() === "webspeech" ? "Browser speech recognition" : "Unavailable — type instead", "")}
+        ${row("Voice input on this device", voice.sttMode() === "server" ? (ctx.session.sttLocal ? "Whisper on your laptop (free, private)" : "OpenAI Whisper transcription") : voice.sttMode() === "webspeech" ? "Browser speech recognition" : "Unavailable — type instead", "")}
         ${row("Microphone", "Used only while you hold a conversation", `<select class="inp" id="mic" style="max-width:240px"><option value="">System default</option>${mics.map((m) => `<option value="${esc(m.deviceId)}" ${voice.micDeviceId === m.deviceId ? "selected" : ""}>${esc(m.label || "Microphone")}</option>`).join("")}</select>`)}
         ${row("Wake word", "“Hey JARVIS” runs on your Windows laptop app. iPhone apps can't listen in the background, so on the phone tap the core or mic instead.", "")}</article>`;
       $("#test").onclick = () => { voice.ensureAudio(); voice.speak("Good evening, sir. All systems are operational."); };
@@ -62,12 +62,14 @@ const SECTIONS = {
       <article class="glass panel"><div class="panel-head"><span class="label">Hey JARVIS (local wake word)</span><span class="pill ${st.wakeWord === "listening" ? "ok" : st.wakeWord === "error" ? "bad" : ""}">${esc(st.wakeWord)}</span></div>
         <p class="muted" style="font-size:13px;margin-top:0">Detection runs entirely on this laptop with the openWakeWord “hey_jarvis” model. No audio leaves the computer until the phrase is heard; then only your command is sent for transcription.</p>
         ${row("Listen for “Hey JARVIS”", "", sw("wake", s.wakeEnabled))}
+        ${row("Also wake on just “JARVIS”", st.kws === "ready" ? "Second on-device detector for the single word" : st.kws === "error" ? `Unavailable: ${esc(st.kwsError || "")}` : "Starting…", sw("wakeAlone", s.wakeJarvisAlone))}
         ${row("Mute microphone", "Stops all listening immediately (also in the tray menu and Ctrl+Shift+M)", sw("mute", st.muted))}
         ${row("Microphone", st.micDevice ? esc(st.micDevice) : "", `<select class="inp" id="mic" style="max-width:220px"><option value="">System default</option>${mics.map((m) => `<option value="${esc(m.deviceId)}" ${s.micDeviceId === m.deviceId ? "selected" : ""}>${esc(m.label || "Microphone")}</option>`).join("")}</select>`)}
         ${row("Detection threshold", "Higher = fewer false triggers, may need clearer speech", `<input type="range" id="thr" min="0.3" max="0.95" step="0.05" value="${s.threshold}"><span class="mono" id="thrV" style="width:36px">${s.threshold}</span>`)}
         ${row("Consecutive frames required", "False-trigger protection (each frame is 80 ms)", `<select class="inp" id="frames" style="width:auto">${[1, 2, 3, 4].map((n) => `<option ${n === s.minFrames ? "selected" : ""}>${n}</option>`).join("")}</select>`)}
         ${row("Speech sensitivity", "How loud speech must be to count (after the wake word)", `<input type="range" id="vad" min="0.01" max="0.12" step="0.005" value="${s.vadThreshold}">`)}
-        <div style="margin-top:10px"><div class="spread" style="font-size:13px"><span class="muted">Live wake-word score</span><span class="mono" id="score">0.00</span></div><div class="meter" style="margin-top:6px"><i id="meter" style="width:0"></i></div><p class="faint" style="font-size:12px">Say “Hey JARVIS” to see it peak. Last detection: <span id="lastWake">${st.lastWake ? fmtWhen(st.lastWake) : "none yet"}</span></p></div>
+        <div style="margin-top:10px"><div class="spread" style="font-size:13px"><span class="muted">Live wake-word score</span><span class="mono" id="score">0.00</span></div><div class="meter" style="margin-top:6px"><i id="meter" style="width:0"></i></div><p class="faint" style="font-size:12px">Say “Hey JARVIS” to see it peak. Last detection: <span id="lastWake">${st.lastWake ? fmtWhen(st.lastWake) : "none yet"}</span></p>
+        ${st.error ? `<p class="error">${esc(st.error)}</p>` : ""}</div>
       </article>
       <article class="glass panel"><div class="panel-head"><span class="label">Windows app</span><span class="faint" style="font-size:12px">v${esc(d.version)}</span></div>
         ${row("Start with Windows", "JARVIS starts in the tray when you sign in", sw("autostart", s.autoStart))}
@@ -83,6 +85,7 @@ const SECTIONS = {
       </article></div>`;
     const set = (patch) => d.setSettings(patch);
     $("#wake").onchange = (e) => set({ wakeEnabled: e.target.checked });
+    $("#wakeAlone").onchange = (e) => set({ wakeJarvisAlone: e.target.checked });
     $("#mute").onchange = (e) => d.setMuted(e.target.checked);
     $("#mic").onchange = (e) => set({ micDeviceId: e.target.value || null });
     $("#thr").oninput = (e) => { $("#thrV").textContent = e.target.value; };
@@ -167,7 +170,7 @@ const SECTIONS = {
       ${item("AI (Claude)", i.ai.configured, i.ai.configured ? `Model ${esc(i.ai.model)}` : "Not configured", i.ai.configured ? "" : "Server needs ANTHROPIC_API_KEY.")}
       ${item("Web research", i.webSearch && i.ai.configured, i.webSearch ? "Claude web search with citations" : "Disabled (JARVIS_WEB_SEARCH=false)")}
       ${item("Voice output", i.voice.tts ? true : "warn", i.voice.tts ? `Neural voice via ${i.voice.tts}` : "Browser voices only", i.voice.tts ? "" : "Add ELEVENLABS_API_KEY (recommended) or OPENAI_API_KEY.")}
-      ${item("Voice input (Whisper)", i.voice.stt ? true : "warn", i.voice.stt ? "Server transcription available" : "Only browser speech recognition", i.voice.stt ? "" : "Add OPENAI_API_KEY — required for voice on iPhone and in the Windows app.")}
+      ${item("Voice input", i.voice.stt ? true : "warn", i.voice.sttLocal?.available ? "Whisper on this laptop — free and private" : i.voice.stt ? "OpenAI Whisper" : "Not available", i.voice.stt ? "" : "Install the Windows app (built-in speech recognition) or add an OpenAI API key.")}
       ${item("Monzo", i.monzo.connection?.status === "active" ? true : i.monzo.configured ? "warn" : false, i.monzo.connection ? `Connection ${esc(i.monzo.connection.status)} · synced ${ago(i.monzo.connection.last_sync_at)}` : i.monzo.configured ? "Configured — connect from Money" : "Not configured", i.monzo.configured ? "" : "Create a confidential client at developers.monzo.com and add MONZO_CLIENT_ID / MONZO_CLIENT_SECRET.")}
       ${item("Google Calendar", i.google.connection ? true : i.google.configured ? "warn" : false, i.google.connection ? `Connected · synced ${ago(i.google.connection.last_sync_at)}` : i.google.configured ? "Configured — connect from Agenda" : "Not configured (JARVIS's own calendar works)", i.google.configured ? "" : "Create an OAuth client in Google Cloud and add GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET.")}
       ${item("Weather", true, "Open-Meteo (no key required)")}

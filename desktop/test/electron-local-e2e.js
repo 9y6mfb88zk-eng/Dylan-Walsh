@@ -26,10 +26,10 @@ fs.rmSync(path.join(os.tmpdir(), "jarvis-fake-tailscale.json"), { force: true })
 
 const mock = await startMock();
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-local-"));
-const { NODE_EXTRA_CA_CERTS, ...upstreams } = mock.env;
+const { NODE_EXTRA_CA_CERTS, OPENAI_API_KEY, ...upstreams } = mock.env;   // no OpenAI key: voice must be understood on the laptop
 const app = await pw._electron.launch({
   executablePath: exe,
-  args: ["--no-sandbox", "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", `--use-file-for-fake-audio-capture=${path.join(here, "fixtures", "mic-session.wav")}`],
+  args: ["--no-sandbox", "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", `--use-file-for-fake-audio-capture=${path.join(here, "fixtures", "mic-jarvis-alone.wav")}`],
   env: { ...process.env, ...upstreams, NODE_EXTRA_CA_CERTS, XDG_CONFIG_HOME: profile, HOME: profile, JARVIS_TAILSCALE_BIN: path.join(here, "fake-tailscale.cjs"), IDEAS_ENABLED: "false", JARVIS_SERVER_URL: "" },
 });
 let localUrl = null, port = null;
@@ -54,14 +54,17 @@ try {
   const health = (await owner.call("/api/health")).data;
   check("AI configured from the app's key store", health.integrations.ai.configured);
 
-  const woke = await until(() => main.evaluate(() => window.jarvisDesktop.getStatus().then((s) => s.lastWake)), 40000);
-  check("“Hey JARVIS” from the microphone is detected locally", !!woke);
+  const kwsReady = await until(() => main.evaluate(() => window.jarvisDesktop.getStatus().then((s) => s.kws === "ready" && s)), 20000);
+  check("second wake-word engine (keyword spotter) loads from the installer layout", !!kwsReady);
+  const woke = await until(() => main.evaluate(() => window.jarvisDesktop.getStatus().then((s) => s.lastWake && s)), 40000);
+  check("just “JARVIS” (no “hey”) from the microphone wakes it, on the laptop", woke?.lastWakeSource === "keyword:JARVIS", woke?.lastWakeSource);
   const conv = await until(async () => {
     const c = (await owner.call("/api/conversations")).data;
     const msgs = (await owner.call(`/api/conversations/${c.current}/messages`)).data;
     return msgs.find((m) => m.role === "user" && /weather/i.test(m.content)) && msgs.find((m) => m.role === "assistant") && msgs;
   }, 40000);
   check("voice command answered by the laptop's own server", !!conv);
+  check("speech understood by local Whisper (no OpenAI key, nothing uploaded)", !!conv && mock.log.stt === 0 && /weather tomorrow/i.test(conv.find((m) => m.role === "user").content), conv ? `heard: “${conv.find((m) => m.role === "user").content}”` : "");
   check("cheap model by default (Claude Haiku 5.5)", mock.log.anthropic.some((r) => r.model === "claude-haiku-5-5") && mock.log.anthropic.every((r) => !r.fallbacks), mock.log.anthropic.at(-1)?.model);
 
   // iPhone access through Tailscale

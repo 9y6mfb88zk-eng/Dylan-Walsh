@@ -95,6 +95,7 @@ export function startMock() {
     const json = (code, obj) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(obj)); };
     const p = url.pathname;
 
+    if (p === "/anthropic-401/v1/messages") return json(401, { type: "error", error: { type: "authentication_error", message: "invalid x-api-key" } });
     if (p === "/v1/messages") { const body = JSON.parse(raw.toString()); log.anthropic.push(body); return json(200, anthropicReply(body)); }
 
     if (p === "/v1/forecast") {

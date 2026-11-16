@@ -20,6 +20,7 @@ if (origin && location.origin === origin) {
     tailscaleDisable: () => ipcRenderer.invoke("tailscale:disable"),
     tailscaleOpen: (url) => ipcRenderer.invoke("tailscale:openLink", String(url)),
     onWake: on("jarvis:wake"),
+    onWakeAudio: on("jarvis:wakeAudio"),
     onPushToTalk: on("jarvis:ptt"),
     onStatus: on("jarvis:status"),
     onResumed: on("jarvis:resumed"),

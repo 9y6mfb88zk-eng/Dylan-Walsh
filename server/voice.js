@@ -1,5 +1,6 @@
 import { Readable } from "node:stream";
 import { config, ttsProvider } from "./config.js";
+import { localAsrAvailable, transcribeLocal } from "./local-asr.js";
 
 /**
  * Streams synthesized speech (audio/mpeg) to an Express response.
@@ -47,19 +48,42 @@ export async function streamTTS(text, res, signal) {
 }
 
 /** Server-side transcription via OpenAI Whisper (for iPhone / browsers without Web Speech). */
+/**
+ * Speech to text. Prefers free local Whisper on this machine (WAV input); falls back to OpenAI Whisper.
+ * Errors carry a plain-English reason the user can act on.
+ */
 export async function transcribe(buffer, mimeType = "audio/webm") {
-  if (!config.openaiKey) throw Object.assign(new Error("Transcription needs OPENAI_API_KEY"), { status: 501 });
+  const isWav = /wav/.test(mimeType) || buffer.toString("ascii", 0, 4) === "RIFF";
+  if (isWav && localAsrAvailable()) {
+    try { return await transcribeLocal(buffer); }
+    catch (e) { if (!config.openaiKey) throw Object.assign(new Error(`Local speech recognition failed: ${e.message}`), { status: 500, expose: true }); }
+  }
+  if (!config.openaiKey) {
+    throw Object.assign(new Error(localAsrAvailable()
+      ? "This device sent audio JARVIS can't read locally. Update the app, or add an OpenAI key."
+      : "Voice input needs either JARVIS's built-in speech recognition (Windows app) or an OpenAI API key. Add one via the tray icon → API keys."), { status: 503, expose: true, code: "no_stt" });
+  }
   const ext = mimeType.includes("mp4") || mimeType.includes("m4a") || mimeType.includes("aac") ? "m4a"
-    : mimeType.includes("ogg") ? "ogg" : mimeType.includes("wav") ? "wav" : "webm";
+    : mimeType.includes("ogg") ? "ogg" : isWav ? "wav" : "webm";
   const form = new FormData();
-  form.append("file", new Blob([buffer], { type: mimeType }), `speech.${ext}`);
+  form.append("file", new Blob([buffer], { type: isWav ? "audio/wav" : mimeType }), `speech.${ext}`);
   form.append("model", config.openaiSttModel);
   form.append("language", "en");
-  const r = await fetch(`${config.openaiBaseUrl}/v1/audio/transcriptions`, {
-    method: "POST", headers: { authorization: `Bearer ${config.openaiKey}` }, body: form,
-    signal: AbortSignal.timeout(30000),
-  });
-  if (!r.ok) throw Object.assign(new Error(`Transcription failed (${r.status})`), { status: 502 });
+  let r;
+  try {
+    r = await fetch(`${config.openaiBaseUrl}/v1/audio/transcriptions`, { method: "POST", headers: { authorization: `Bearer ${config.openaiKey}` }, body: form, signal: AbortSignal.timeout(30000) });
+  } catch (e) {
+    throw Object.assign(new Error("Couldn't reach OpenAI to transcribe your voice. Check the internet connection."), { status: 502, expose: true });
+  }
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({}));
+    const code = j.error?.code || j.error?.type || "";
+    const msg = r.status === 401 ? "Your OpenAI API key was rejected. Check it in the tray icon → API keys."
+      : r.status === 429 && /quota|billing|insufficient/i.test(code + (j.error?.message || "")) ? "Your OpenAI account has no credit left. Add credit at platform.openai.com → Settings → Billing."
+      : r.status === 429 ? "OpenAI is rate-limiting voice requests. Try again in a moment."
+      : `OpenAI couldn't transcribe the audio (${r.status}${j.error?.message ? `: ${j.error.message}` : ""}).`;
+    throw Object.assign(new Error(msg), { status: 502, expose: true });
+  }
   const j = await r.json();
   return (j.text || "").trim();
 }

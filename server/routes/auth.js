@@ -5,6 +5,7 @@ import * as auth from "../security/auth.js";
 import { auditFromReq, recentAudit } from "../security/audit.js";
 import { vapidPublicKey } from "../push.js";
 import { brainReady } from "../brain.js";
+import { localAsrAvailable } from "../local-asr.js";
 import { getSettings } from "../db.js";
 
 export const router = express.Router();
@@ -17,7 +18,7 @@ router.get("/api/session", (req, res) => {
   res.json({
     ...base,
     device: { id: req.auth.deviceId, name: req.auth.deviceName, kind: req.auth.kind },
-    brain: brainReady(), model: config.model, tts: ttsProvider(), stt: !!config.openaiKey, webSearch: config.webSearch,
+    brain: brainReady(), model: config.model, tts: ttsProvider(), stt: !!config.openaiKey || localAsrAvailable(), sttLocal: localAsrAvailable(), webSearch: config.webSearch,
     vapidPublicKey, userName: config.userName, settings: getSettings(),
     publicUrl: publicBase(req), env: config.env,
   });

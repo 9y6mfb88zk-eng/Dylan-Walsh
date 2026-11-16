@@ -143,6 +143,14 @@ async function loadDesktopPresence() {
   try { const h = await api("/api/health"); ctx.desktopOnline = h.desktops.some((d) => d.online); refreshChips(); } catch {}
 }
 
+// Remove the wake word (and fragments of it caught in the safety buffer) from the start of a command.
+export function cleanCommand(text) {
+  let t = String(text || "").trim();
+  t = t.replace(/^\W*(hey|hi|ok|okay)?\W*(jarvis|jervis|jarvi)\b[\s,.!?:-]*/i, "");
+  t = t.replace(/^\W*(jar|jarv|arvis|vis|this|is|davis|travis|harvis|service)[.,!?]\s+(?=\S)/i, "");
+  return t.trim();
+}
+
 // ---------------------------------------------------------------- Desktop bridge
 function wireDesktop() {
   if (!desktop) return;
@@ -151,7 +159,22 @@ function wireDesktop() {
     sync.sendWs({ type: "agent.status", status: s });
     refreshChips();
   });
-  desktop.onWake(() => { go(current === "talk" ? "talk" : "home"); listenOnce({ chime: true }); });
+  desktop.onWake((w) => {
+    if (current !== "talk") go("home");
+    if (!w?.capture) return listenOnce({ chime: true });
+    // The laptop's always-on listener is already recording the command: just show it and wait.
+    voice.stop(); voice.chime(); voice.setState("listening"); ctx.caption("Listening…", true);
+  });
+  desktop.onWakeAudio?.(async (wav) => {
+    if (!wav) { voice.setState("idle"); ctx.caption(""); desktop.voiceState?.("idle"); return; }
+    voice.setState("thinking"); ctx.caption("…");
+    try {
+      const { text } = await api("/api/transcribe", { method: "POST", raw: new Blob([wav], { type: "audio/wav" }), headers: { "content-type": "audio/wav" } });
+      const command = cleanCommand(text);
+      if (!command) { voice.setState("idle"); ctx.caption("Yes, sir?"); voice.speak("Yes, sir?"); return; }
+      await converse(command);
+    } catch (e) { voice.setState("idle"); ctx.caption(e.message); toast(e.message, 6000); }
+  });
   desktop.onPushToTalk(() => listenOnce({ chime: true }));
   desktop.onNavigate?.((tab) => go(tab));
   sync.on("reconnected", () => desktop.getStatus().then((s) => { ctx.agent = s; sync.sendWs({ type: "agent.status", status: s }); refreshChips(); }));

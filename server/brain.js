@@ -18,6 +18,21 @@ import { onlineDesktop, changed } from "./realtime.js";
 
 export const client = config.anthropicKey ? new Anthropic({ apiKey: config.anthropicKey }) : null;
 export const brainReady = () => !!client;
+
+/** Turn Anthropic API errors into messages a person can act on. */
+export function friendlyAiError(e) {
+  if (!(e instanceof Anthropic.APIError)) return e;
+  const m = String(e.message || "");
+  const msg = e instanceof Anthropic.AuthenticationError ? "Your Anthropic API key was rejected. Check it in the tray icon → API keys."
+    : /credit balance|billing|purchase credits/i.test(m) ? "Your Anthropic account is out of credit. Add some at console.anthropic.com → Settings → Billing."
+    : e instanceof Anthropic.PermissionDeniedError ? "Your Anthropic key isn't allowed to use this model. Try another model in API keys & AI model."
+    : e instanceof Anthropic.NotFoundError ? `The AI model "${config.model}" isn't available on your account. Choose another in API keys & AI model.`
+    : e instanceof Anthropic.RateLimitError ? "Anthropic is rate-limiting requests right now. Try again in a moment."
+    : e.status === 529 || e.status >= 500 ? "Anthropic's service is busy or having problems. Try again shortly."
+    : e instanceof Anthropic.APIConnectionError ? "Couldn't reach Anthropic. Check the internet connection."
+    : `The AI request failed: ${m.slice(0, 200)}`;
+  return Object.assign(new Error(msg), { status: 502, expose: true, code: "ai_error" });
+}
 const { fallback: FALLBACK, webSearch: WEB_SEARCH } = modelOptions(config.model);
 const research = modelOptions(config.researchModel);
 

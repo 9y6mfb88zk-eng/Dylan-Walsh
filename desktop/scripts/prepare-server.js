@@ -43,4 +43,28 @@ const nodeDir = path.join(bundle, "node");
 if (target === "win32") { fs.mkdirSync(nodeDir, { recursive: true }); fs.copyFileSync(path.join(extracted, "node.exe"), path.join(nodeDir, "node.exe")); }
 else { fs.mkdirSync(path.join(nodeDir, "bin"), { recursive: true }); fs.copyFileSync(path.join(extracted, "bin", "node"), path.join(nodeDir, "bin", "node")); fs.chmodSync(path.join(nodeDir, "bin", "node"), 0o755); }
 fs.rmSync(tmp, { recursive: true, force: true });
-console.log(`Bundled Node ${NODE_VERSION} (${target}) and the JARVIS server into desktop/bundle/`);
+
+// Local speech recognition model (Whisper base.en, int8) from the sherpa-onnx releases, checksum-pinned.
+const ASR = { file: "sherpa-onnx-whisper-base.en.tar.bz2", sha256: "475bc7052ce299c007f6d5d5407ba8601f819a2867f6eecee510ed17df581542" };
+const asrUrl = `https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/${ASR.file}`;
+console.log(`Downloading ${asrUrl}`);
+const ar = await fetch(asrUrl);
+if (!ar.ok) throw new Error(`ASR model download failed: ${ar.status}`);
+const atmp = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-asr-"));
+const abuf = Buffer.from(await ar.arrayBuffer());
+const asum = (await import("node:crypto")).createHash("sha256").update(abuf).digest("hex");
+if (asum !== ASR.sha256) throw new Error(`Checksum mismatch for ${ASR.file}`);
+fs.writeFileSync(path.join(atmp, ASR.file), abuf);
+// Windows' built-in tar may lack bzip2; Git for Windows' tar (present on GitHub runners) has it.
+const tars = process.platform === "win32" ? ["C:\\Program Files\\Git\\usr\\bin\\tar.exe", "tar"] : ["tar"];
+let extractedOk = false;
+for (const t of tars) {
+  try { execFileSync(t, ["-xjf", process.platform === "win32" && t.includes("Git") ? path.join(atmp, ASR.file).replace(/\\/g, "/").replace(/^([A-Za-z]):/, "/$1") : path.join(atmp, ASR.file), "-C", process.platform === "win32" && t.includes("Git") ? atmp.replace(/\\/g, "/").replace(/^([A-Za-z]):/, "/$1") : atmp], { stdio: "inherit" }); extractedOk = true; break; }
+  catch (e) { console.warn(`${t} could not extract: ${e.message}`); }
+}
+if (!extractedOk) throw new Error("Could not extract the speech model archive");
+const asrDir = path.join(bundle, "asr");
+fs.mkdirSync(asrDir, { recursive: true });
+for (const f of ["base.en-encoder.int8.onnx", "base.en-decoder.int8.onnx", "base.en-tokens.txt"]) fs.copyFileSync(path.join(atmp, "sherpa-onnx-whisper-base.en", f), path.join(asrDir, f));
+fs.rmSync(atmp, { recursive: true, force: true });
+console.log(`Bundled Node ${NODE_VERSION} (${target}), the JARVIS server and local Whisper into desktop/bundle/`);

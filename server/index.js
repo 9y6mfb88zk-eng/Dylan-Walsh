@@ -13,6 +13,7 @@ import { router as financeRoutes, callback as monzoCallback } from "./routes/fin
 import { router as calendarRoutes, callback as googleCallback } from "./routes/calendar.js";
 import { startScheduler } from "./scheduler.js";
 import { brainReady } from "./brain.js";
+import { preloadLocalAsr, localAsrAvailable } from "./local-asr.js";
 import { ttsProvider } from "./config.js";
 import { demoAllowed } from "./finance/service.js";
 
@@ -53,7 +54,8 @@ app.use("/api", (_req, res) => res.status(404).json({ error: "Not found" }));
 app.use((err, _req, res, _next) => {
   const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 500;
   if (status >= 500) console.error("[error]", err);
-  res.status(status).json({ error: status >= 500 && isProd ? "Something went wrong on the server." : err.message || "Internal error" });
+  // Deliberate, user-facing errors (err.expose) always show their message; unexpected ones are hidden in production.
+  res.status(status).json({ error: status >= 500 && isProd && !err.expose ? "Something unexpected went wrong in JARVIS. Details are in the server log." : err.message || "Internal error", code: err.code });
 });
 
 // ---------------- Static PWA
@@ -71,7 +73,7 @@ attachRealtime(server);
 if (isProd && demoAllowed()) console.warn("[config] Demo finance requested but refused in production.");
 server.listen(config.port, config.host, () => {
   console.log(`JARVIS backend listening on http://${config.host === "0.0.0.0" ? "localhost" : config.host}:${config.port} (${config.env}, ${config.hosting})`);
-  console.log(`  AI: ${brainReady() ? config.model : "OFF — set ANTHROPIC_API_KEY"} · voice: ${ttsProvider() || "browser"} · Whisper: ${config.openaiKey ? "on" : "off"} · Monzo: ${config.monzoClientId ? "configured" : "not configured"} · Google: ${config.googleClientId ? "configured" : "not configured"}`);
+  console.log(`  AI: ${brainReady() ? config.model : "OFF — set ANTHROPIC_API_KEY"} · voice: ${ttsProvider() || "browser"} · speech: ${localAsrAvailable() ? "local Whisper" : config.openaiKey ? "OpenAI Whisper" : "off"} · Monzo: ${config.monzoClientId ? "configured" : "not configured"} · Google: ${config.googleClientId ? "configured" : "not configured"}`);
   if (!isSetupComplete()) {
     console.log("\n  ┌──────────────────────────────────────────────────────────┐");
     console.log(`  │  FIRST-RUN SETUP CODE: ${setupCode().padEnd(34)}│`);
@@ -81,6 +83,7 @@ server.listen(config.port, config.host, () => {
   if (!config.publicUrl && config.hosting !== "laptop") console.log("  PUBLIC_URL not set: OAuth redirects and pairing links will use the request's own address.");
 });
 const stop = startScheduler();
+preloadLocalAsr();
 let closing = false;
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => {
   if (closing) return; closing = true;

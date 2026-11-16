@@ -9,7 +9,7 @@ import { healthReport } from "../services/health.js";
 import { runComputerAction } from "../services/computer.js";
 import { getWeather, geocode } from "../integrations/weather.js";
 import { streamTTS, transcribe } from "../voice.js";
-import { chat, briefing, startResearch } from "../brain.js";
+import { chat, briefing, startResearch, friendlyAiError } from "../brain.js";
 import { notifyAll } from "../push.js";
 import { runIdeaJob, runBriefingJob, fireDueReminders, backup } from "../scheduler.js";
 import { tracked } from "../services/health.js";
@@ -18,6 +18,7 @@ import { auditFromReq } from "../security/audit.js";
 import { rateLimit } from "../security/ratelimit.js";
 import { connections } from "../services/oauth.js";
 import { ACTIONS, APPS, FOLDERS } from "../shared/computer-actions.js";
+import { localAsrStatus } from "../local-asr.js";
 
 export const router = express.Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -27,7 +28,8 @@ const id = (req) => Number(req.params.id);
 router.post("/api/chat", rateLimit({ name: "chat", limit: 30, windowMs: 60_000 }), wrap(async (req, res) => {
   const text = String(req.body?.text || "").trim().slice(0, 4000);
   if (!text) return res.status(400).json({ error: "Say something, sir." });
-  res.json(await chat({ text, conversationId: req.body?.conversationId, clientId: req.body?.clientId || null, deviceId: req.auth.deviceId, deviceKind: req.auth.kind, loc: req.body?.loc }));
+  try { res.json(await chat({ text, conversationId: req.body?.conversationId, clientId: req.body?.clientId || null, deviceId: req.auth.deviceId, deviceKind: req.auth.kind, loc: req.body?.loc })); }
+  catch (e) { throw friendlyAiError(e); }
 }));
 router.get("/api/conversations", (req, res) => res.json({ current: conversations.currentId(), list: conversations.list() }));
 router.get("/api/conversations/:cid/messages", (req, res) => res.json(conversations.messages(req.params.cid, { afterId: Number(req.query.after || 0), limit: Math.min(Number(req.query.limit || 100), 300) })));
@@ -35,7 +37,9 @@ router.post("/api/conversations", (req, res) => res.status(201).json(conversatio
 router.post("/api/conversations/:cid/current", (req, res) => res.json({ ok: conversations.setCurrent(req.params.cid) }));
 router.delete("/api/conversations/:cid", (req, res) => { conversations.remove(req.params.cid); auditFromReq(req, "conversation.deleted"); res.json({ ok: true }); });
 
-router.get("/api/briefing", wrap(async (req, res) => res.json(await briefing({ loc: req.query.lat ? { lat: +req.query.lat, lon: +req.query.lon, place: req.query.place } : null }))));
+router.get("/api/briefing", wrap(async (req, res) => {
+  try { res.json(await briefing({ loc: req.query.lat ? { lat: +req.query.lat, lon: +req.query.lon, place: req.query.place } : null })); } catch (e) { throw friendlyAiError(e); }
+}));
 router.get("/api/briefing/latest", (req, res) => res.json(kvGet("briefing.latest") || null));
 
 // ---------------- Voice
@@ -154,7 +158,7 @@ router.get("/api/health", (req, res) => {
     connectedDevices: connectedDevices().length,
     integrations: {
       ai: { configured: !!config.anthropicKey, model: config.model },
-      voice: { tts: config.elevenKey ? "elevenlabs" : config.openaiKey ? "openai" : null, stt: !!config.openaiKey },
+      voice: { tts: config.elevenKey ? "elevenlabs" : config.openaiKey ? "openai" : null, stt: !!config.openaiKey || localAsrStatus().available, sttLocal: localAsrStatus() },
       monzo: { configured: !!(config.monzoClientId && config.monzoClientSecret), connection: conns.find((c) => c.provider === "monzo") || null },
       google: { configured: !!(config.googleClientId && config.googleClientSecret), connection: conns.find((c) => c.provider === "google") || null },
       webSearch: config.webSearch,

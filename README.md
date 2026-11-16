@@ -20,7 +20,7 @@ JARVIS is your personal AI assistant, and it runs **entirely on your Windows lap
 
 **What it costs:** the software is free.
 - **AI:** you pay only for usage. With the default Claude Haiku 5.5, everyday use is pennies a month; you can switch to Sonnet or Opus any time.
-- **Voice input (Whisper):** about £0.005 a minute.
+- **Voice input:** free. Whisper runs on your laptop; an OpenAI key is optional and only used as a backup.
 - **ElevenLabs voice:** has a free tier. Without it JARVIS uses the Windows voice.
 
 ## 1. Install on your laptop (about 5 minutes)
@@ -29,13 +29,13 @@ JARVIS is your personal AI assistant, and it runs **entirely on your Windows lap
    - SmartScreen may warn because it isn't code-signed. Click **More info → Run anyway**.
 2. JARVIS opens a **keys** window:
    - **Anthropic API key** (required). Get it at console.anthropic.com → API Keys → Create key, and add a little credit.
-   - **OpenAI API key** (needed to understand your voice). Get it at platform.openai.com → API keys.
+   - **OpenAI API key:** optional. JARVIS understands speech on the laptop for free.
    - **ElevenLabs** (optional) for the British butler voice.
    - The AI model is **Claude Haiku 5.5 (cheapest)** by default.
    - Keys are encrypted with your Windows account and kept on the laptop.
 3. **Choose a password.** No setup code is needed; the app handles it.
 4. Allow the microphone. If Windows blocks it, go to **Settings → Privacy & security → Microphone** and turn on "Let desktop apps access your microphone".
-5. Say **"Hey JARVIS"**, or press **Ctrl+Shift+Space**.
+5. Say **"JARVIS"** or **"Hey JARVIS"** followed by your request, e.g. "JARVIS, what's the weather tomorrow?". You can also press **Ctrl+Shift+Space**.
 
 Everyday use:
 - **Close to tray:** closing the window keeps JARVIS in the system tray.
@@ -114,7 +114,13 @@ All of this is on the laptop under **Settings → Voice & laptop**:
 - **Speech sensitivity:** how loud you must be once a command has started.
 - **Live score meter:** say "Hey JARVIS" and watch it peak.
 
-**Privacy:** detection runs on the laptop (and so does the rest of JARVIS).
+**Two wake detectors, both on the laptop:**
+- The openWakeWord `hey_jarvis` model listens for "Hey JARVIS".
+- A sherpa-onnx keyword spotter listens for "JARVIS" on its own. You can switch this one off in Settings → Voice & laptop.
+
+**Your command is recorded by the same always-on listener** from the instant after the wake word, so saying it in one breath works. It is transcribed locally by Whisper base.en.
+
+**Privacy:** wake-word detection, speech recognition and the server all run on the laptop.
 - Uses the openWakeWord `hey_jarvis_v0.1` ONNX model, executed in the app via onnxruntime-web.
 - Idle audio never leaves the computer. After the wake phrase, only your command is recorded and sent for transcription.
 - While a conversation is running, the wake word pauses so JARVIS can't wake himself.

@@ -1,7 +1,7 @@
 {
   "name": "jarvis-desktop",
   "productName": "JARVIS",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "JARVIS for Windows: runs your whole JARVIS on this laptop \u2014 local Hey JARVIS wake word, private server, tray app.",
   "author": "JARVIS",
   "license": "UNLICENSED",
@@ -34,14 +34,14 @@
     },
     "files": [
       "src/**/*",
-      "models/**/*",
       "build/icon.png",
       "build/tray.png",
       "package.json",
       "node_modules/onnxruntime-web/dist/ort.wasm.min.js",
       "node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm",
       "node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs",
-      "node_modules/onnxruntime-web/package.json"
+      "node_modules/onnxruntime-web/package.json",
+      "models/*.onnx"
     ],
     "win": {
       "target": [
@@ -72,6 +72,14 @@
       {
         "from": "bundle/node",
         "to": "node"
+      },
+      {
+        "from": "bundle/asr",
+        "to": "models/asr"
+      },
+      {
+        "from": "models/kws",
+        "to": "models/kws"
       }
     ]
   }

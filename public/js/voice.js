@@ -157,21 +157,36 @@ export const voice = {
   },
   async record(maxMs) {
     let stream;
-    try { stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: this.micDeviceId ? { exact: this.micDeviceId } : undefined, echoCancellation: true, noiseSuppression: true } }); }
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: this.micDeviceId ? { exact: this.micDeviceId } : undefined, echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
     catch { throw new Error("Microphone permission is needed."); }
     this.ensureAudio();
     const node = this.ctx.createMediaStreamSource(stream);
     this.mic = this.ctx.createAnalyser(); this.mic.fftSize = 1024; node.connect(this.mic);
-    const type = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm", "audio/ogg"].find((t) => window.MediaRecorder?.isTypeSupported?.(t)) || "";
-    const media = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
-    const parts = [];
-    media.ondataavailable = (e) => e.data.size && parts.push(e.data);
-    let spoke = false, discarded = false, quietSince = performance.now();
+    // Capture raw PCM (works everywhere) and send 16 kHz WAV: readable by local Whisper and by OpenAI.
+    const proc = this.ctx.createScriptProcessor(4096, 1, 1);
+    const chunks = [];
+    proc.onaudioprocess = (e) => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+    const sink = this.ctx.createGain(); sink.gain.value = 0;
+    node.connect(proc); proc.connect(sink); sink.connect(this.ctx.destination);
+    const rate = this.ctx.sampleRate;
+    let spoke = false, discarded = false, done = false, quietSince = performance.now();
     const started = performance.now();
-    // Adaptive noise floor: speech must clear the room's background level.
-    let floor = 0.01;
+    let floor = 0.01;   // adaptive noise floor: speech must clear the room's background level
     return new Promise((resolve, reject) => {
-      const finish = () => { if (media.state !== "inactive") media.stop(); };
+      const finish = async () => {
+        if (done) return; done = true;
+        clearInterval(vad);
+        try { node.disconnect(); proc.disconnect(); sink.disconnect(); } catch {}
+        stream.getTracks().forEach((t) => t.stop());
+        this.mic = null;
+        if (discarded || !spoke) return resolve("");
+        this.setState("thinking");
+        try {
+          const wav = encodeWav16k(chunks, rate);
+          const { text } = await api("/api/transcribe", { method: "POST", raw: wav, headers: { "content-type": "audio/wav" } });
+          resolve(text || "");
+        } catch (e) { reject(e); }
+      };
       this.cancelListen = (d) => { discarded = d; finish(); };
       const vad = setInterval(() => {
         this.mic.getByteTimeDomainData(this.td);
@@ -182,20 +197,27 @@ export const voice = {
         const now = performance.now();
         if ((spoke && now - quietSince > 1200) || now - started > maxMs || (!spoke && now - started > 7000)) finish();
       }, 60);
-      media.onstop = async () => {
-        clearInterval(vad);
-        stream.getTracks().forEach((t) => t.stop());
-        this.mic = null;
-        if (discarded || !spoke) return resolve("");
-        this.setState("thinking");
-        try {
-          const blob = new Blob(parts, { type: media.mimeType || type || "audio/webm" });
-          const { text } = await api("/api/transcribe", { method: "POST", raw: blob, headers: { "content-type": blob.type } });
-          resolve(text || "");
-        } catch (e) { reject(e); }
-      };
-      media.start(250);
     });
   },
 };
 if ("speechSynthesis" in window) speechSynthesis.onvoiceschanged = () => {};
+
+/** Concatenate Float32 chunks, resample to 16 kHz and encode as 16-bit mono WAV. */
+export function encodeWav16k(chunks, rate) {
+  const n = chunks.reduce((a, c) => a + c.length, 0);
+  const all = new Float32Array(n); let o = 0; for (const c of chunks) { all.set(c, o); o += c.length; }
+  const ratio = rate / 16000, len = Math.floor(n / ratio);
+  const pcm = new Int16Array(len);
+  for (let i = 0; i < len; i++) {
+    const p = i * ratio, i0 = Math.floor(p), t = p - i0;
+    const v = (all[i0] ?? 0) + ((all[i0 + 1] ?? all[i0] ?? 0) - (all[i0] ?? 0)) * t;
+    pcm[i] = Math.max(-32768, Math.min(32767, Math.round(v * 32767)));
+  }
+  const buf = new ArrayBuffer(44 + pcm.length * 2), dv = new DataView(buf);
+  const w = (off, str) => { for (let i = 0; i < str.length; i++) dv.setUint8(off + i, str.charCodeAt(i)); };
+  w(0, "RIFF"); dv.setUint32(4, 36 + pcm.length * 2, true); w(8, "WAVE"); w(12, "fmt ");
+  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true); dv.setUint32(24, 16000, true);
+  dv.setUint32(28, 32000, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); w(36, "data"); dv.setUint32(40, pcm.length * 2, true);
+  new Int16Array(buf, 44).set(pcm);
+  return new Blob([buf], { type: "audio/wav" });
+}
