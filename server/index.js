@@ -11,6 +11,8 @@ import { router as authRoutes } from "./routes/auth.js";
 import { router as coreRoutes } from "./routes/core.js";
 import { router as financeRoutes, callback as monzoCallback } from "./routes/finance.js";
 import { router as calendarRoutes, callback as googleCallback } from "./routes/calendar.js";
+import { router as upgradeRoutes } from "./routes/upgrade.js";
+import { logError } from "./services/diagnostics.js";
 import { startScheduler } from "./scheduler.js";
 import { brainReady } from "./brain.js";
 import { preloadLocalAsr, localAsrAvailable } from "./local-asr.js";
@@ -49,11 +51,12 @@ app.use(authRoutes);
 app.use(coreRoutes);
 app.use(financeRoutes);
 app.use(calendarRoutes);
+app.use(upgradeRoutes);
 app.use("/api", (_req, res) => res.status(404).json({ error: "Not found" }));
 
-app.use((err, _req, res, _next) => {
-  const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 500;
-  if (status >= 500) console.error("[error]", err);
+app.use((err, req, res, _next) => {
+  const status = err.status && err.status >= 400 && err.status < 600 ? err.status : err.type === "entity.too.large" ? 413 : 500;
+  if (status >= 500) { console.error("[error]", err); logError("http", err.message, { path: req.path, method: req.method, status }); }
   // Deliberate, user-facing errors (err.expose) always show their message; unexpected ones are hidden in production.
   res.status(status).json({ error: status >= 500 && isProd && !err.expose ? "Something unexpected went wrong in JARVIS. Details are in the server log." : err.message || "Internal error", code: err.code });
 });
@@ -82,6 +85,7 @@ server.listen(config.port, config.host, () => {
   }
   if (!config.publicUrl && config.hosting !== "laptop") console.log("  PUBLIC_URL not set: OAuth redirects and pairing links will use the request's own address.");
 });
+process.on("unhandledRejection", (e) => { console.error("[unhandledRejection]", e); logError("process", e?.message || String(e)); });
 const stop = startScheduler();
 preloadLocalAsr();
 let closing = false;

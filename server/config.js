@@ -46,13 +46,16 @@ export const config = {
   monzoClientSecret: env.MONZO_CLIENT_SECRET || "",
   googleClientId: env.GOOGLE_CLIENT_ID || "",
   googleClientSecret: env.GOOGLE_CLIENT_SECRET || "",
+  // Home Assistant (optional smart home). Token is a long-lived access token from your HA profile.
+  haUrl: (env.HOME_ASSISTANT_URL || "").replace(/\/$/, ""),
+  haToken: env.HOME_ASSISTANT_TOKEN || "",
   // Development-only, clearly labelled TEST DATA finance provider. Refused in production.
   demoFinance: bool(env.JARVIS_DEMO_FINANCE, false),
 
   // Scheduler
   ideasEveryMinutes: Number(env.IDEAS_EVERY_MINUTES || 30),
   ideasEnabled: bool(env.IDEAS_ENABLED, true),
-  briefingTime: env.BRIEFING_TIME || "07:30",
+  briefingTime: env.BRIEFING_TIME || "07:00",
   reminderPollSeconds: Number(env.REMINDER_POLL_SECONDS || 20),
   financeSyncMinutes: Number(env.FINANCE_SYNC_MINUTES || 15),
   calendarSyncMinutes: Number(env.CALENDAR_SYNC_MINUTES || 10),

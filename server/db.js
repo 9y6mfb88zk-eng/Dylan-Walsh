@@ -15,6 +15,15 @@ export function migrate() {
   db.exec("CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (datetime('now')))");
   const done = new Set(db.prepare("SELECT version FROM schema_migrations").all().map((r) => r.version));
   const files = fs.readdirSync(path.join(here, "migrations")).filter((f) => /^\d+_.*\.sql$/.test(f)).sort();
+  const pending = files.filter((f) => !done.has(f.split("_")[0]));
+  // Safety net: before changing an existing database, take a full copy of it.
+  if (pending.length && done.size) {
+    const dir = path.join(config.dataDir, "backups");
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `pre-migration-${pending[0].split("_")[0]}-${new Date().toISOString().replace(/[:.]/g, "-")}.db`);
+    db.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
+    console.log(`[db] backed up database to ${file} before applying ${pending.length} migration(s)`);
+  }
   const applied = [];
   for (const f of files) {
     const version = f.split("_")[0];
@@ -51,6 +60,7 @@ export function kvSet(k, v) {
 
 // ---------------- User settings (synced across devices)
 export const DEFAULT_SETTINGS = {
+  profile: { name: "", title: "Sir", city: "Dhekelia", country: "Cyprus" },
   home: { lat: config.defaultLat, lon: config.defaultLon, place: config.defaultPlace },
   units: "metric",                 // metric | imperial
   briefing: { time: config.briefingTime, enabled: true, sections: { weather: true, calendar: true, tasks: true, finance: true, projects: true, news: false } },
@@ -59,6 +69,14 @@ export const DEFAULT_SETTINGS = {
   memory: { autoSave: true },
   computer: { enabled: true },
   timezone: config.timezone,
+  // How JARVIS talks and listens. continuous: after "Hey JARVIS", follow-up questions need no wake word until
+  // `timeoutSec` of silence; "Stay with me" extends that to `stayWithMeSec`.
+  voice: { continuous: true, timeoutSec: 8, stayWithMeSec: 120, bargeIn: true, rate: 1, voiceName: "", speakReplies: true, speakBriefings: true, speakNotifications: true, chime: true },
+  personality: { style: "jarvis", humour: "dry", verbosity: "brief" },
+  appearance: { animation: "full", quality: "auto", reduceMotion: false, accent: "cyan", sidebar: "expanded" },
+  alarms: { defaultSound: "chime", defaultVolume: 80, gradual: true, snoozeMinutes: 10, speak: true, wakeComputer: true },
+  notifications: { alarm: true, reminder: true, event: true, task: true, automation: true, project: true, system: true, research: true, idea: true, focus: true, habit: true, briefing: true, finance: true },
+  focus: { workMinutes: 25, breakMinutes: 5 },
 };
 function deepMerge(a, b) {
   const out = { ...a };

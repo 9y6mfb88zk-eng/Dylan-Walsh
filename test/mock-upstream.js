@@ -35,6 +35,27 @@ function monthStartLondon() {
   return new Date(guess - (new Date(guess).toLocaleString("en-GB", { timeZone: "Europe/London", hour: "2-digit", hour12: false }) === "01" ? 3600_000 : 0));
 }
 
+/** Stream a message the way the Anthropic API does (Server-Sent Events). */
+function writeSSE(res, m) {
+  res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
+  const ev = (type, data) => res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`);
+  ev("message_start", { message: { ...m, content: [], stop_reason: null, usage: { input_tokens: 10, output_tokens: 1 } } });
+  m.content.forEach((b, i) => {
+    if (b.type === "text") {
+      ev("content_block_start", { index: i, content_block: { type: "text", text: "" } });
+      for (const chunk of b.text.match(/\S+\s*/g) || []) ev("content_block_delta", { index: i, delta: { type: "text_delta", text: chunk } });
+      for (const c of b.citations || []) ev("content_block_delta", { index: i, delta: { type: "citations_delta", citation: c } });
+    } else if (b.type === "tool_use") {
+      ev("content_block_start", { index: i, content_block: { type: "tool_use", id: b.id, name: b.name, input: {} } });
+      ev("content_block_delta", { index: i, delta: { type: "input_json_delta", partial_json: JSON.stringify(b.input) } });
+    }
+    ev("content_block_stop", { index: i });
+  });
+  ev("message_delta", { delta: { stop_reason: m.stop_reason, stop_sequence: null }, usage: { output_tokens: 10 } });
+  ev("message_stop", {});
+  res.end();
+}
+
 export function startMock() {
   const log = { anthropic: [], tts: [], stt: 0, push: [], meteo: 0, monzo: [], google: [] };
   const state = { monzoApproved: false, monzoTokenVersion: 0, googleEvents: [] };
@@ -61,10 +82,13 @@ export function startMock() {
       const results = last.content.map((r) => r.content).join(" ");
       if (/remind/i.test(firstUser)) return text("Very good, sir. I'll remind you to call your mum at six.");
       if (/weather/i.test(firstUser)) return text(`Tomorrow: ${results.match(/Tomorrow ([^.]+)/)?.[1] || "unknown"}.`);
+      if (/i just spent/i.test(firstUser)) return text(/"ok":true/.test(results) ? "Noted, Sir: twelve pounds fifty on food." : `I couldn't record that: ${results}`);
       if (/money|spent/i.test(firstUser)) return text(`Finance facts: ${results}`);
       if (/open chrome/i.test(firstUser)) return text(/"ok":true/.test(results) ? "Chrome is open, sir." : `I couldn't: ${results}`);
       if (/gym/i.test(firstUser)) return text(/needsConfirmation/.test(results) ? "That clashes. Shall I go ahead?" : "Booked, sir.");
       if (/business/i.test(firstUser)) return text("I've set up the project, sir.");
+      if (/alarm/i.test(firstUser)) { const next = results.match(/"next":"([^"]+)"/)?.[1]; return text(next ? `Alarm set, Sir — ${next}.` : `I couldn't set that: ${results}`); }
+      if (/time is it in/i.test(firstUser)) return text(`In Tokyo it's ${results.match(/"localTime":"([^"]+)"[^}]*"timezone":"Asia\/Tokyo"|Tokyo[^}]*"localTime":"([^"]+)"/)?.slice(1).find(Boolean) || "unknown"}.`);
       return text("Very good, sir. Consider it done.");
     }
     const t = typeof last.content === "string" ? last.content : "";
@@ -78,6 +102,10 @@ export function startMock() {
       if (/how much money have i got/i.test(t)) return toolUse("finance", { question: "position" });
       if (/how much have i spent/i.test(t)) return toolUse("finance", { question: "spending" });
       if (/add .*task/i.test(t)) return toolUse("add_task", { title: "Buy milk" });
+      if (/set an alarm for seven/i.test(t)) return toolUse("set_alarm", { time: "07:00", label: "Wake up", repeat: "weekdays" });
+      if (/i just spent £12\.50 on food/i.test(t)) return toolUse("record_money", { amount_pounds: 12.5, description: "Lunch", category: "food" });
+      if (/what time is it in tokyo/i.test(t)) return toolUse("world_time", { places: ["Tokyo"] });
+      if (/tell me a long story/i.test(t)) return text("Once upon a time, Sir, there was a laptop. It woke at seven. It made the tea. The end.");
       if (/open chrome/i.test(t)) return toolUse("computer", { action: "open_app", app: "chrome" });
       if (/schedule a gym/i.test(t)) { const s0 = new Date(Date.now() + 86400_000); s0.setUTCMinutes(0, 0, 0); return toolUse("calendar_create", { title: "Gym", start: s0.toISOString() }); }
       if (/start a business/i.test(t)) return toolUse("create_project", { title: "Website business", goal: "Launch a web design business", milestones: [{ title: "Validate", tasks: [{ title: "Interview 5 local businesses", priority: 1 }] }, { title: "Launch", tasks: [{ title: "Build portfolio site" }] }] });
@@ -96,7 +124,12 @@ export function startMock() {
     const p = url.pathname;
 
     if (p === "/anthropic-401/v1/messages") return json(401, { type: "error", error: { type: "authentication_error", message: "invalid x-api-key" } });
-    if (p === "/v1/messages") { const body = JSON.parse(raw.toString()); log.anthropic.push(body); return json(200, anthropicReply(body)); }
+    if (p === "/v1/messages") {
+      const body = JSON.parse(raw.toString()); log.anthropic.push(body);
+      const reply = anthropicReply(body);
+      return body.stream ? writeSSE(res, reply) : json(200, reply);
+    }
+    if (p.startsWith("/v1/models/")) return json(200, { type: "model", id: decodeURIComponent(p.slice(11)), display_name: "Mock model", created_at: "2026-01-01T00:00:00Z" });
 
     if (p === "/v1/forecast") {
       log.meteo++;
@@ -111,7 +144,10 @@ export function startMock() {
           sunrise: days.map((d) => d + "T06:20"), sunset: days.map((d) => d + "T16:45") },
       });
     }
-    if (p === "/v1/search") return json(200, { results: [{ name: "Larnaca", admin1: "Larnaca", country: "Cyprus", latitude: 34.92, longitude: 33.63, timezone: "Asia/Nicosia" }] });
+    if (p === "/v1/search") {
+      if (/tokyo/i.test(url.searchParams.get("name") || "")) return json(200, { results: [{ name: "Tokyo", admin1: "Tokyo", country: "Japan", latitude: 35.69, longitude: 139.69, timezone: "Asia/Tokyo" }] });
+      return json(200, { results: [{ name: "Larnaca", admin1: "Larnaca", country: "Cyprus", latitude: 34.92, longitude: 33.63, timezone: "Asia/Nicosia" }] });
+    }
 
     if (p.startsWith("/v1/text-to-speech/")) { log.tts.push(JSON.parse(raw.toString())); res.writeHead(200, { "content-type": "audio/mpeg" }); return res.end(speechLikeWav()); }
     if (p === "/v1/audio/transcriptions") { log.stt++; return json(200, { text: "What's the weather like?" }); }

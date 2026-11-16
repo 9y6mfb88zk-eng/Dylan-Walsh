@@ -24,6 +24,16 @@ export const ACTIONS = {
   create_document: { description: "Create a new text or Markdown document in Documents\\JARVIS and open it.", confirm: false },
   search_files: { description: "Search file names in the user's standard folders. Returns up to 20 matches, newest first.", confirm: false },
   open_file: { description: "Open a file previously returned by search_files.", confirm: false },
+  create_folder: { description: "Create a new folder inside one of the standard folders (never replaces anything).", confirm: false },
+  screenshot: { description: "Save a screenshot of the screen to Pictures\\JARVIS Screenshots (stays on the laptop).", confirm: false },
+  list_windows: { description: "List the apps that have open windows.", confirm: false },
+  focus_window: { description: "Bring an open window to the front (by app or window title).", confirm: false },
+  minimize_window: { description: "Minimise an open window (by app or window title).", confirm: false },
+  close_window: { description: "Close an app's window. Unsaved work could be lost, so this always needs your confirmation.", confirm: true },
+  clipboard_read: { description: "Read the text currently on the clipboard.", confirm: false },
+  clipboard_write: { description: "Put text on the clipboard.", confirm: false },
+  lock_screen: { description: "Lock the laptop.", confirm: false },
+  system_status: { description: "Battery, uptime and screen information.", confirm: false },
 };
 
 const str = (v, max = 200) => {
@@ -67,5 +77,15 @@ export function validateAction(action, args = {}) {
       return { query, folder };
     }
     case "open_file": return { path: str(args.path, 1000) };
+    case "create_folder": {
+      const name = str(args.name, 80);
+      if (/[\\/:*?"<>|]|^\.+$/.test(name)) throw new Error("Folder names can't contain \\ / : * ? \" < > | or be dots only.");
+      const parent = args.parent ? str(args.parent, 40).toLowerCase() : "documents";
+      if (!FOLDERS.includes(parent)) throw new Error(`Parent folder must be one of ${FOLDERS.join(", ")}.`);
+      return { name, parent };
+    }
+    case "focus_window": case "minimize_window": case "close_window": return { target: str(args.target ?? args.app ?? args.title, 120) };
+    case "clipboard_write": return { text: typeof args.text === "string" ? args.text.slice(0, 20_000) : str(args.text, 20_000) };
+    case "screenshot": case "list_windows": case "clipboard_read": case "lock_screen": case "system_status": return {};
   }
 }

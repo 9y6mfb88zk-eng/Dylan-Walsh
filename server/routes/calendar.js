@@ -2,6 +2,8 @@ import express from "express";
 import { oauthBase } from "../config.js";
 import * as calendar from "../services/calendar.js";
 import { auditFromReq } from "../security/audit.js";
+import { oauthResultPage } from "../services/oauth-page.js";
+import { notify } from "../services/notify.js";
 
 export const router = express.Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -23,7 +25,11 @@ router.post("/api/calendar/google/disconnect", wrap(async (req, res) => { auditF
 
 export const callback = express.Router();
 callback.get("/oauth/google/callback", wrap(async (req, res) => {
-  if (req.query.error) return res.redirect(`/?tab=agenda&error=${encodeURIComponent(String(req.query.error))}`);
-  try { await calendar.finishGoogle({ state: req.query.state, code: req.query.code, redirectUri: redirectUri(req) }); res.redirect("/?tab=agenda&connected=google"); }
-  catch (e) { res.redirect(`/?tab=agenda&error=${encodeURIComponent(e.message)}`); }
+  const inApp = !!req.auth;
+  if (req.query.error) return inApp ? res.redirect(`/?tab=calendar&error=${encodeURIComponent(String(req.query.error))}`) : oauthResultPage(res, { ok: false, title: "Google Calendar wasn't connected", lines: [String(req.query.error)] });
+  try {
+    await calendar.finishGoogle({ state: req.query.state, code: req.query.code, redirectUri: redirectUri(req) });
+    notify({ kind: "system", title: "Google Calendar connected", body: "Your events are syncing to JARVIS.", url: "/?tab=calendar" }).catch(() => {});
+    inApp ? res.redirect("/?tab=calendar&connected=google") : oauthResultPage(res, { ok: true, title: "Google Calendar is connected", lines: ["Your events are syncing to JARVIS. JARVIS asks before changing or deleting anything in your Google Calendar."] });
+  } catch (e) { inApp ? res.redirect(`/?tab=calendar&error=${encodeURIComponent(e.message)}`) : oauthResultPage(res, { ok: false, title: "Google Calendar wasn't connected", lines: [e.message] }); }
 }));

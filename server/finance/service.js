@@ -168,7 +168,8 @@ export function loadData() {
   const accounts = db.prepare(`SELECT a.*, c.provider, c.status AS connection_status, c.last_sync_at FROM fin_accounts a JOIN connections c ON c.id = a.connection_id WHERE c.status != 'disconnected'`).all();
   const pots = db.prepare("SELECT p.* FROM fin_pots p JOIN fin_accounts a ON a.id = p.account_id").all();
   const sharedIds = new Set(accounts.filter((a) => a.shared).map((a) => a.id));
-  const transactions = db.prepare("SELECT * FROM fin_transactions ORDER BY created DESC").all().filter((t) => sharedIds.has(t.account_id));
+  // Manual entries that have since arrived from the bank feed (matched_id) are not counted twice.
+  const transactions = db.prepare("SELECT * FROM fin_transactions WHERE matched_id IS NULL ORDER BY created DESC").all().filter((t) => sharedIds.has(t.account_id));
   const bills = db.prepare("SELECT * FROM bills ORDER BY name").all();
   const budgets = Object.fromEntries(db.prepare("SELECT * FROM budgets").all().map((b) => [b.category, b.amount]));
   return { accounts, pots, transactions, bills, budgets };
@@ -190,14 +191,14 @@ export function overview() {
     connections: connections.all().filter((c) => ["monzo", DEMO].includes(c.provider)).map(connections.view),
     monzoConfigured: monzo.monzoConfigured(), demoAvailable: demoAllowed(),
     testData: d.accounts.some((a) => a.provider === DEMO),
-    accounts: d.accounts.map((a) => ({ id: a.id, name: a.name, type: a.type, balance: a.balance, total_balance: a.total_balance, shared: !!a.shared, provider: a.provider, updated_at: a.updated_at })),
+    accounts: d.accounts.filter((a) => a.type !== "manual").map((a) => ({ id: a.id, name: a.name, type: a.type, balance: a.balance, total_balance: a.total_balance, shared: !!a.shared, provider: a.provider, updated_at: a.updated_at })),
     pots: d.pots.filter((p) => !p.deleted).map((p) => ({ id: p.id, name: p.name, balance: p.balance, account_id: p.account_id })),
     position: pos,
     month: engine.spendingSummary(d.transactions, start, end),
     weekly: engine.weeklySpending(d.transactions, twelveWeeks, now),
     comparison: engine.compareMonths(d.transactions, now, s.timezone),
     subscriptions: engine.detectSubscriptions(d.transactions, now),
-    recent: d.transactions.slice(0, 40).map((t) => ({ ...t, category: engine.effectiveCategory(t), auto_category: t.category })),
+    recent: d.transactions.slice(0, 40).map((t) => ({ ...t, category: engine.effectiveCategory(t), auto_category: t.category, manual: t.account_id === "manual-entries" })),
     bills: d.bills, budgets: d.budgets, categories: CATEGORIES,
   };
 }
@@ -237,10 +238,13 @@ export function setBudget(category, amount) {
 // ---------------- Answers for the AI (facts only, with provenance)
 export function financeFacts(kind, args = {}) {
   const d = loadData(); const s = getSettings(); const now = new Date();
-  if (!d.accounts.length) return { connected: false, message: "No bank account is connected. Connect Monzo in the Finance section first." };
+  const bankAccounts = d.accounts.filter((a) => a.provider !== "manual");
+  const manualOnly = !bankAccounts.length && d.transactions.length > 0;
+  if (!bankAccounts.length && !manualOnly) return { connected: false, message: "No bank account is connected and no spending has been recorded by hand. Connect Monzo in the Money section, or tell me what you spend." };
+  if (manualOnly && ["position", "afford", "saving"].includes(kind)) return { connected: false, manualEntriesOnly: true, message: "No bank is connected, so balances and what's left are unknown. Only the spending you've told me about is recorded." };
   const testData = d.accounts.some((a) => a.provider === DEMO);
   const conn = connections.all().find((c) => ["monzo", DEMO].includes(c.provider));
-  const base = { connected: true, testData, lastSync: conn?.last_sync_at, connectionStatus: conn?.status };
+  const base = { connected: !manualOnly, manualEntriesOnly: manualOnly || undefined, testData, lastSync: conn?.last_sync_at, connectionStatus: conn?.status };
   const pos = engine.computePosition({ ...d, buffer: s.finance.buffer, now, tz: s.timezone });
   const fmt = (o) => JSON.parse(JSON.stringify(o, (k, v) => (typeof v === "number" && /amount|balance|spent|income|total|available|owed|projected|remaining|budget|net|change|perDay|buffer|thisMonth|lastMonth|savedToPots|Used/i.test(k) ? engine.GBP(v) : v)));
   switch (kind) {
@@ -256,7 +260,7 @@ export function financeFacts(kind, args = {}) {
     case "subscriptions": return { ...base, detected: fmt(engine.detectSubscriptions(d.transactions, now)), manual: fmt(d.bills.filter((b) => b.category === "subscriptions")), note: "Detected subscriptions are estimates based on repeating payments." };
     case "compare": { const c = engine.compareMonths(d.transactions, now, s.timezone); return { ...base, ...fmt({ thisMonthSoFar: c.thisMonth.spent, lastMonthSamePoint: c.lastMonthSamePoint.spent, lastMonthFull: c.lastMonthFull.spent, change: c.change, biggestChanges: c.byCategory.slice(0, 5) }) }; }
     case "saving": return { ...base, ...fmt({ savedToPotsThisMonth: pos.month.savedToPots, potsTotal: pos.balances.savings.total, plannedSavingsRemaining: pos.commitments.savings, projectedDisposable: pos.projectedDisposable }), note: "Saving capacity = projected disposable money after commitments; the figures above show how it is derived." };
-    case "transactions": return { ...base, recent: d.transactions.slice(0, Math.min(Number(args.limit || 10), 25)).map((t) => ({ date: t.created.slice(0, 10), description: t.merchant || t.description, amount: engine.GBP(t.amount), category: engine.effectiveCategory(t), internal: !!t.internal })) };
+    case "transactions": return { ...base, recent: d.transactions.slice(0, Math.min(Number(args.limit || 10), 25)).map((t) => ({ date: t.created.slice(0, 10), description: t.merchant || t.description, amount: engine.GBP(t.amount), category: engine.effectiveCategory(t), internal: !!t.internal, manual: t.account_id === "manual-entries" || undefined })) };
     default: return { error: "Unknown finance question" };
   }
 }

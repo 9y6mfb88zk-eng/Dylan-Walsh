@@ -12,9 +12,20 @@ import * as finance from "./finance/service.js";
 import { getWeather, weatherSentence } from "./integrations/weather.js";
 import * as pending from "./services/pending.js";
 import { connections } from "./services/oauth.js";
-import { runComputerAction } from "./services/computer.js";
-import { APPS, FOLDERS } from "./shared/computer-actions.js";
+import { runComputerAction, proposeComputerAction } from "./services/computer.js";
+import { APPS, FOLDERS, ACTIONS as COMPUTER_ACTIONS } from "./shared/computer-actions.js";
 import { onlineDesktop, changed } from "./realtime.js";
+import { alarms } from "./services/alarms.js";
+import { notifications, recentActivity, notify } from "./services/notify.js";
+import { notes, clients, invoices, expenses, interactions, businessSummary, goals, milestones, habits, focus, savingsGoals, debts, STAGES } from "./services/records.js";
+import { addManualTransaction, report as financeReport, contributeToGoal } from "./services/money.js";
+import { gatherFacts } from "./services/briefing-facts.js";
+import { geocode } from "./integrations/weather.js";
+import { timed } from "./services/diagnostics.js";
+import { localDate, describeLocal } from "./services/time.js";
+import { CATEGORIES as FIN_CATS } from "./finance/categorize.js";
+import { TASK_CATEGORIES, REMINDER_REPEATS } from "./services/work.js";
+import * as smarthome from "./services/smarthome.js";
 
 export const client = config.anthropicKey ? new Anthropic({ apiKey: config.anthropicKey }) : null;
 export const brainReady = () => !!client;
@@ -33,31 +44,38 @@ export function friendlyAiError(e) {
     : `The AI request failed: ${m.slice(0, 200)}`;
   return Object.assign(new Error(msg), { status: 502, expose: true, code: "ai_error" });
 }
+/** Every Anthropic call goes through here so Diagnostics can show real latency and error rates. */
+const ai = (purpose, params, how = "create") => timed("anthropic", { model: params.model, purpose }, () => client.beta.messages[how](params));
 const { fallback: FALLBACK, webSearch: WEB_SEARCH } = modelOptions(config.model);
 const research = modelOptions(config.researchModel);
 
-const PERSONA = `You are JARVIS, the user's personal AI assistant, in the spirit of the assistant from Iron Man.
-Personality: calm, intelligent, professional, direct, quietly witty, British in phrasing. Address the user as "sir" naturally, not in every sentence.
-Your replies are usually SPOKEN ALOUD by a British voice and shown as text. Keep them to 1–3 natural sentences unless the user asks for detail, a list or a report. No markdown headings in spoken replies; say numbers and times the way a person would.
+const title = () => getSettings().profile?.title || "Sir";
+const PERSONA_BASE = `You are JARVIS, the user's personal AI assistant, in the spirit of the assistant from Iron Man.
+Personality: calm, intelligent, professional, direct, quietly witty (dry, understated humour — never forced), British in phrasing, loyal and unflappable.
+Your replies are usually SPOKEN ALOUD by a British voice and shown as text. Keep them to 1–3 natural sentences unless the user asks for detail, a list or a report. No markdown headings or bullet lists in spoken replies; say numbers, money and times the way a person would ("half past seven", "twelve pounds fifty").
+In a continuing voice conversation do not re-greet or repeat the user's name every turn; answer follow-ups naturally using the earlier turns.
 Truthfulness rules, which override everything else:
-- Only state facts that come from your tools or the context below. Never invent balances, transactions, weather, events, search results or sources.
+- Only state facts that come from your tools or the context below. Never invent balances, transactions, weather, events, search results, device states or sources.
 - If a service is not connected or a tool fails, say so plainly and say what would fix it.
-- For money: separate the actual balance from projections; say when a figure is an estimate; never treat credit or overdraft limits as money the user has. If the data is labelled TEST DATA, say so.
-- Do not claim an action succeeded unless the tool result says it did.
+- For money: separate the actual balance from projections; say when a figure is an estimate; never treat credit or overdraft limits as money the user has. If the data is labelled TEST DATA, say so. You can never move money or make payments.
+- Never say an action is done unless the tool result says ok/verified. If a tool returns needsConfirmation, ask the user and wait.
 Actions:
-- Use tools to act: tasks, reminders, calendar, projects, memory, finance questions, weather, the user's laptop, and web search.
-- Calendar changes to existing events, deleting events, and bookings that clash need the user's confirmation: the tool returns a pending action; ask "Shall I go ahead?" and only call confirm_pending after a clear yes.
+- Use tools to act: alarms, tasks, reminders, notes, calendar, projects, goals, habits, focus sessions, memory, money (including recording spending the user tells you about), clients and invoices, routines, smart home, weather anywhere, world times, the user's laptop, and web search.
+- Calendar changes to existing events, deleting events, bookings that clash, closing windows on the laptop and smart-home security devices need the user's confirmation: the tool returns a pending action; ask "Shall I go ahead?" and only call confirm_pending after a clear yes.
+- Alarms: "wake me at seven" = set_alarm time 07:00 (next occurrence). "Every weekday" = repeat weekdays. Confirm the exact time and day you set, from the tool result.
 - For reminders, convert relative times ("at six", "in 20 minutes") into an absolute ISO 8601 timestamp with the correct UTC offset for the user's time zone given below. "At six" means the next 18:00 unless context says morning.
 - Memory: save lasting, useful facts (preferences, goals, important dates, decisions) with remember. Do not save trivia or one-off chatter. Mark health, religion, politics, sexuality, exact address, ID numbers and detailed finances as sensitive — they are only stored after the user agrees. Never store passwords, PINs or card numbers.
 - Research: use web search for anything current or factual you are not certain of, compare sources, and cite them. Use start_research for a longer written report.
 - When the user wants to start something substantial ("I want to start a business"), create a project with milestones and first tasks, then summarise the plan briefly.`;
+const persona = () => `${PERSONA_BASE}\nAddress the user as "${title()}" naturally (not in every sentence).${getSettings().personality?.verbosity === "detailed" ? " The user prefers fuller answers." : ""}`;
+const PERSONA = PERSONA_BASE;
 
 function localNow(tz) {
   return new Intl.DateTimeFormat("en-GB", { timeZone: tz, weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false, timeZoneName: "longOffset" }).format(new Date());
 }
 const fmtLocal = (iso, tz) => new Date(iso).toLocaleString("en-GB", { timeZone: tz, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
-async function contextBlock({ userText, deviceKind, loc }) {
+async function contextBlock({ userText, deviceKind, loc, voiceTurn = false }) {
   const s = getSettings();
   const tz = s.timezone;
   const open = tasks.list().slice(0, 12);
@@ -74,7 +92,7 @@ async function contextBlock({ userText, deviceKind, loc }) {
   const home = loc?.lat ? loc : s.home;
   return [
     `Now: ${localNow(tz)} (time zone ${tz}). UTC: ${new Date().toISOString()}.`,
-    `User is talking from: ${deviceKind || "unknown device"}. Home location: ${s.home.place}. Current location: ${home.place || "home"}. Units: ${s.units}.`,
+    `User: ${s.profile?.name || "(name not set)"}, addressed as "${title()}". Talking from: ${deviceKind || "unknown device"}${voiceTurn ? " by voice" : ""}. Home location: ${s.home.place}. Current location: ${home.place || "home"}. Units: ${s.units}.`,
     `Laptop (computer control): ${desk ? "online" : "offline"}. Allowed apps: ${Object.keys(APPS).join(", ")}. Folders: ${FOLDERS.join(", ")}.`,
     `Bank: ${fin.connections.length ? fin.connections.map((c) => `${c.provider} (${c.status}${c.last_sync_at ? `, synced ${c.last_sync_at}` : ""})`).join("; ") + (fin.testData ? " — TEST DATA" : "") : "not connected"}. Calendar: ${calendar.googleStatus().connection ? "Google connected" : "JARVIS calendar only (Google not connected)"}.`,
     `Open tasks: ${open.length ? open.map((t) => `#${t.id} ${t.title}${t.due ? ` (due ${t.due})` : ""}${t.project_title ? ` [${t.project_title}]` : ""}`).join("; ") : "none"}.`,
@@ -82,6 +100,10 @@ async function contextBlock({ userText, deviceKind, loc }) {
     `Calendar next 48h: ${events.length ? events.map((e) => `#${e.id} ${e.title} ${e.all_day ? e.start + " (all day)" : fmtLocal(e.start, tz)}`).join("; ") : "nothing"}.`,
     `Active projects: ${projs.length ? projs.map((p) => `#${p.id} ${p.title} ${p.progress.percent}%`).join("; ") : "none"}.`,
     `Pending confirmations: ${pend.length ? pend.map((p) => `${p.id}: ${p.summary}`).join("; ") : "none"}.`,
+    `Alarms: ${(() => { const al = alarms.list().filter((a) => a.enabled || a.snoozed_until); return al.length ? al.slice(0, 8).map((a) => `#${a.id} ${a.label} ${a.time} ${a.repeat}${a.effective_next ? ` (next ${describeLocal(a.effective_next, tz)})` : ""}${a.enabled ? "" : " OFF"}`).join("; ") : "none set"; })()}.`,
+    (() => { const f = focus.active(); return f ? `Focus session running: ${f.label}, ${Math.ceil(f.remainingSeconds / 60)} min left.` : ""; })(),
+    (() => { const hs = habits.list({ active: true }); return hs.length ? `Habits today: ${hs.map((h) => `${h.name} ${h.doneToday ? "done" : "not done"}${h.streak ? ` (streak ${h.streak})` : ""}`).join("; ")}.` : ""; })(),
+    `Unread notifications: ${notifications.unreadCount()}. Recently: ${recentActivity(5).map((a) => a.summary).join("; ") || "nothing"}.`,
     `About the user: ${profile.length ? profile.map((m) => m.fact).join(" | ") : "nothing saved yet"}.`,
     relevant.length ? `Relevant memories: ${relevant.map((m) => `[${m.category}] ${m.fact}`).join(" | ")}` : "",
   ].filter(Boolean).join("\n");
@@ -91,7 +113,25 @@ async function contextBlock({ userText, deviceKind, loc }) {
 const obj = (properties, required = []) => ({ type: "object", additionalProperties: false, properties, required });
 const S = { type: "string" }, I = { type: "integer" }, N = { type: "number" }, B = { type: "boolean" };
 const TOOLS = [
-  { name: "get_weather", description: "Real forecast (current, hourly, 7 days) for the user's home or current location.", input_schema: obj({}) },
+  { name: "get_weather", description: "Real forecast (current, 7 days, UV, sunrise/sunset) for the user's home or current location, or any named place.", input_schema: obj({ place: S }) },
+  { name: "world_time", description: "Current local time (and optionally weather) in named cities or countries.", input_schema: obj({ places: { type: "array", items: S }, weather: B }, ["places"]) },
+  { name: "set_alarm", description: "Set an alarm. time is HH:MM 24h local. repeat: once (default; next time this clock time comes round, or on date YYYY-MM-DD), daily, weekdays, weekends, custom (days 0=Sun..6=Sat). message is spoken after the sound.",
+    input_schema: obj({ time: S, label: S, repeat: { type: "string", enum: ["once", "daily", "weekdays", "weekends", "custom"] }, days: { type: "array", items: I }, date: S, message: S, sound: { type: "string", enum: ["chime", "classic", "radar", "gentle", "digital"] } }, ["time"]) },
+  { name: "change_alarm", description: "Change, switch on/off, snooze, dismiss or delete an alarm by id.", input_schema: obj({ id: I, action: { type: "string", enum: ["update", "enable", "disable", "snooze", "dismiss", "delete"] }, time: S, label: S, repeat: { type: "string", enum: ["once", "daily", "weekdays", "weekends", "custom"] }, days: { type: "array", items: I }, minutes: I }, ["id", "action"]) },
+  { name: "take_note", description: "Save a note (or search notes when query is given).", input_schema: obj({ title: S, body: S, tags: S, query: S }) },
+  { name: "record_money", description: "Record money the user tells you they spent or received (e.g. 'I just spent £12.50 on food'). This is bookkeeping only — it never moves money. If a bank is connected the same spend is matched automatically when it arrives.",
+    input_schema: obj({ amount_pounds: N, description: S, category: { type: "string", enum: FIN_CATS }, income: B, date: S }, ["amount_pounds"]) },
+  { name: "money_plan", description: "Savings goals, debts and the finance report/projections. action: report | add_goal {name, target_pounds, deadline} | contribute {goal_id, amount_pounds} | add_debt {name, balance_pounds, apr, min_payment_pounds}.",
+    input_schema: obj({ action: { type: "string", enum: ["report", "add_goal", "contribute", "add_debt"] }, name: S, target_pounds: N, deadline: S, goal_id: I, amount_pounds: N, balance_pounds: N, apr: N, min_payment_pounds: N }, ["action"]) },
+  { name: "business", description: "Clients, leads and invoices. action: summary | list_clients | add_client {name, company, email, stage, value_pounds, next_follow_up} | update_client {client_id, stage, next_follow_up, notes} | log_interaction {client_id, kind, summary} | create_invoice {client_id, items:[{description, quantity, unit_pounds}], due} | invoice_status {invoice_id, status} | add_expense {description, amount_pounds, category, date}.",
+    input_schema: obj({ action: { type: "string", enum: ["summary", "list_clients", "add_client", "update_client", "log_interaction", "create_invoice", "invoice_status", "add_expense"] }, client_id: I, invoice_id: I, name: S, company: S, email: S, stage: { type: "string", enum: STAGES }, value_pounds: N, next_follow_up: S, notes: S, kind: { type: "string", enum: ["call", "email", "meeting", "note"] }, summary: S, items: { type: "array", items: obj({ description: S, quantity: N, unit_pounds: N }, ["description", "unit_pounds"]) }, due: S, status: { type: "string", enum: ["draft", "sent", "paid", "void"] }, description: S, amount_pounds: N, category: S, date: S }, ["action"]) },
+  { name: "focus", description: "Start, stop or check a focus (Pomodoro) session.", input_schema: obj({ action: { type: "string", enum: ["start", "stop", "status", "break"] }, minutes: I, label: S }, ["action"]) },
+  { name: "habits_goals", description: "Habits and goals. action: list | check_habit {name} | add_habit {name, frequency, target, reminder_time} | add_goal {title, kind, target_date} | goal_progress {goal_id, progress} | add_milestone {goal_id, title, due} | complete_milestone {milestone_id}.",
+    input_schema: obj({ action: { type: "string", enum: ["list", "check_habit", "add_habit", "add_goal", "goal_progress", "add_milestone", "complete_milestone"] }, name: S, frequency: { type: "string", enum: ["daily", "weekly"] }, target: I, reminder_time: S, title: S, kind: { type: "string", enum: ["short", "long", "career", "financial", "learning", "personal"] }, target_date: S, goal_id: I, milestone_id: I, progress: I, due: S }, ["action"]) },
+  { name: "routine", description: "Run an automation routine now (e.g. 'morning briefing', 'evening review', 'weekly review' or one of the user's routines), or deliver a briefing: kind morning|afternoon|evening|weekly.", input_schema: obj({ name: S, briefing: { type: "string", enum: ["morning", "afternoon", "evening", "weekly"] } }) },
+  { name: "smart_home", description: "Home Assistant devices the user has allowed. action: list | control {device (name or entity id), service (turn_on, turn_off, toggle, set_temperature, open_cover, close_cover, lock, unlock, media_play, media_pause), brightness_pct, temperature}. Locks and doors need confirmation.",
+    input_schema: obj({ action: { type: "string", enum: ["list", "control"] }, device: S, service: S, brightness_pct: I, temperature: N }, ["action"]) },
+  { name: "notifications", description: "Read or clear the notification centre.", input_schema: obj({ action: { type: "string", enum: ["list", "read_all", "dismiss_all"] } }, ["action"]) },
   { name: "finance", description: "Answer money questions from the user's connected bank data. question: position (how much do I have / left / after bills), spending (spent this month, optionally a category or monthsAgo), afford (needs amount in pounds), subscriptions, compare (this vs last month), saving, transactions.",
     input_schema: obj({ question: { type: "string", enum: ["position", "spending", "afford", "subscriptions", "compare", "saving", "transactions"] }, amount: N, category: { type: "string", enum: ["food", "shopping", "transport", "fuel", "bills", "subscriptions", "entertainment", "travel", "transfers", "other"] }, monthsAgo: I, limit: I }, ["question"]) },
   { name: "add_commitment", description: "Record an upcoming bill, planned saving or debt repayment the user tells you about (used in the money-left calculation). Mark certainty 'confirmed' only if the user says the amount is fixed.",
@@ -101,9 +141,9 @@ const TOOLS = [
     input_schema: obj({ title: S, start: S, end: S, all_day: B, location: S, notes: S }, ["title", "start"]) },
   { name: "calendar_change", description: "Move/edit or delete an existing event (by id from context or calendar_list). Always returns a pending action the user must confirm.",
     input_schema: obj({ event_id: I, operation: { type: "string", enum: ["update", "delete"] }, title: S, start: S, end: S, location: S }, ["event_id", "operation"]) },
-  { name: "add_task", description: "Add a task, optionally to a project.", input_schema: obj({ title: S, due: S, priority: { type: "integer", enum: [1, 2, 3] }, project_id: I, notes: S }, ["title"]) },
-  { name: "update_task", description: "Complete, reschedule, reprioritise or delete a task by id.", input_schema: obj({ id: I, done: B, due: S, priority: { type: "integer", enum: [1, 2, 3] }, title: S, delete: B }, ["id"]) },
-  { name: "add_reminder", description: "Create a persistent reminder delivered as a notification on all devices at due_at (absolute ISO 8601 with UTC offset).", input_schema: obj({ text: S, due_at: S }, ["text", "due_at"]) },
+  { name: "add_task", description: "Add a task, optionally to a project.", input_schema: obj({ title: S, due: S, priority: { type: "integer", enum: [1, 2, 3] }, project_id: I, notes: S, category: { type: "string", enum: TASK_CATEGORIES } }, ["title"]) },
+  { name: "update_task", description: "Complete, reschedule, reprioritise, set progress (0-100) or delete a task by id.", input_schema: obj({ id: I, done: B, due: S, priority: { type: "integer", enum: [1, 2, 3] }, title: S, progress: I, category: { type: "string", enum: TASK_CATEGORIES }, delete: B }, ["id"]) },
+  { name: "add_reminder", description: "Create a persistent reminder delivered as a notification on all devices at due_at (absolute ISO 8601 with UTC offset). repeat: none (default), daily, weekdays, weekly, monthly.", input_schema: obj({ text: S, due_at: S, repeat: { type: "string", enum: REMINDER_REPEATS } }, ["text", "due_at"]) },
   { name: "cancel_reminder", description: "Cancel a reminder by id.", input_schema: obj({ id: I }, ["id"]) },
   { name: "create_project", description: "Create a structured project with milestones and starter tasks (dates YYYY-MM-DD, priority 1 high to 3 low).",
     input_schema: obj({ title: S, goal: S, milestones: { type: "array", items: obj({ title: S, due: S, tasks: { type: "array", items: obj({ title: S, due: S, priority: { type: "integer", enum: [1, 2, 3] } }, ["title"]) } }, ["title"]) } }, ["title", "goal", "milestones"]) },
@@ -112,8 +152,8 @@ const TOOLS = [
   { name: "remember", description: "Save a lasting fact about the user.", input_schema: obj({ fact: S, category: { type: "string", enum: MEM_CATS }, sensitive: B }, ["fact", "category"]) },
   { name: "recall", description: "Search long-term memory.", input_schema: obj({ query: S }, ["query"]) },
   { name: "forget", description: "Delete a memory by id.", input_schema: obj({ id: I }, ["id"]) },
-  { name: "computer", description: "Do something on the user's Windows laptop through the allowlisted actions: open_app {app}, open_folder {folder}, open_bookmark {name}, open_url {url}, create_document {title, content, format}, search_files {query, folder}, open_file {path}.",
-    input_schema: obj({ action: { type: "string", enum: ["open_app", "open_folder", "open_bookmark", "open_url", "create_document", "search_files", "open_file"] }, app: S, folder: S, name: S, url: S, title: S, content: S, format: { type: "string", enum: ["md", "txt"] }, query: S, path: S }, ["action"]) },
+  { name: "computer", description: "Do something on the user's Windows laptop through the allowlisted actions: open_app {app}, open_folder {folder}, open_bookmark {name}, open_url {url}, create_document {title, content, format}, search_files {query, folder}, open_file {path}, create_folder {name, parent}, screenshot, list_windows, focus_window {target}, minimize_window {target}, close_window {target} (needs confirmation), clipboard_read, clipboard_write {text}, lock_screen, system_status.",
+    input_schema: obj({ action: { type: "string", enum: Object.keys(COMPUTER_ACTIONS) }, app: S, folder: S, name: S, url: S, title: S, content: S, format: { type: "string", enum: ["md", "txt"] }, query: S, path: S, parent: S, target: S, text: S }, ["action"]) },
   { name: "confirm_pending", description: "Carry out or cancel a pending action after the user clearly answers.", input_schema: obj({ id: S, decision: { type: "string", enum: ["confirm", "reject"] } }, ["id", "decision"]) },
   { name: "start_research", description: "Start a longer sourced research report in the background; the user is notified when it is ready.", input_schema: obj({ query: S }, ["query"]) },
   { name: "latest_ideas", description: "Read the latest background business ideas.", input_schema: obj({ count: I }) },
@@ -124,8 +164,106 @@ async function runTool(name, input, ctx) {
   const s = getSettings();
   switch (name) {
     case "get_weather": {
-      const loc = ctx.loc?.lat ? ctx.loc : s.home;
-      try { return { ok: true, forecast: weatherSentence(await getWeather({ ...loc, units: s.units })) }; } catch (e) { return { ok: false, error: `Weather service unavailable: ${e.message}` }; }
+      let loc = ctx.loc?.lat ? ctx.loc : s.home;
+      if (input.place) { const g = (await geocode(input.place).catch(() => []))[0]; if (!g) return { ok: false, error: `I couldn't find a place called ${input.place}.` }; loc = { lat: g.lat, lon: g.lon, place: g.name }; }
+      try { const w = await getWeather({ ...loc, units: s.units }); return { ok: true, forecast: weatherSentence(w), sunrise: w.today?.sunrise, sunset: w.today?.sunset, uvToday: w.today?.uv }; } catch (e) { return { ok: false, error: `Weather service unavailable: ${e.message}` }; }
+    }
+    case "world_time": {
+      const out = [];
+      for (const p of (input.places || []).slice(0, 6)) {
+        const g = (await geocode(p).catch(() => []))[0];
+        if (!g?.timezone) { out.push({ place: p, error: "not found" }); continue; }
+        const row = { place: g.name, timezone: g.timezone, localTime: new Date().toLocaleString("en-GB", { timeZone: g.timezone, weekday: "long", hour: "2-digit", minute: "2-digit" }) };
+        if (input.weather) { try { const w = await getWeather({ lat: g.lat, lon: g.lon, place: g.name, units: s.units }); row.weather = `${w.current.temp}${w.unitTemp}, ${w.current.summary}`; } catch (e) { row.weather = `unavailable (${e.message})`; } }
+        out.push(row);
+      }
+      return { ok: true, home: { place: s.home.place, localTime: new Date().toLocaleString("en-GB", { timeZone: s.timezone, weekday: "long", hour: "2-digit", minute: "2-digit" }) }, places: out };
+    }
+    case "set_alarm": {
+      const a = alarms.create({ time: input.time, label: input.label, repeat: input.repeat || "once", days: input.days, date: input.date, message: input.message, sound: input.sound }, { deviceId: ctx.deviceId });
+      return { ok: true, alarm: { id: a.id, label: a.label, time: a.time, repeat: a.repeat, next: a.next_local, sound: a.sound_name } };
+    }
+    case "change_alarm": {
+      const id = input.id;
+      if (!alarms.get(id)) return { ok: false, error: "No such alarm" };
+      if (input.action === "delete") return { ok: alarms.remove(id, { deviceId: ctx.deviceId }) };
+      if (input.action === "snooze") return { ok: true, ...alarms.snooze(id, input.minutes, { deviceId: ctx.deviceId }) };
+      if (input.action === "dismiss") return { ok: true, alarm: alarms.dismiss(id, { deviceId: ctx.deviceId }) };
+      const patch = input.action === "enable" ? { enabled: true } : input.action === "disable" ? { enabled: false } : Object.fromEntries(Object.entries({ time: input.time, label: input.label, repeat: input.repeat, days: input.days }).filter(([, v]) => v !== undefined));
+      const a = alarms.update(id, patch, { deviceId: ctx.deviceId });
+      return { ok: true, alarm: { id: a.id, label: a.label, time: a.time, repeat: a.repeat, enabled: a.enabled, next: a.next_local } };
+    }
+    case "take_note": {
+      if (input.query) { const q = input.query.toLowerCase(); return { ok: true, notes: notes.list().filter((n) => `${n.title} ${n.body} ${n.tags}`.toLowerCase().includes(q)).slice(0, 10).map((n) => ({ id: n.id, title: n.title, body: n.body.slice(0, 500) })) }; }
+      const n = notes.create({ title: input.title || (input.body || "").slice(0, 60), body: input.body || "", tags: input.tags || "" });
+      return { ok: true, note: { id: n.id, title: n.title } };
+    }
+    case "record_money": {
+      const t = addManualTransaction({ amount: Math.round(Number(input.amount_pounds) * 100), description: input.description, category: input.category, income: !!input.income, date: input.date }, { deviceId: ctx.deviceId });
+      return { ok: true, recorded: { id: t.id, amount: (Math.abs(t.amount) / 100).toFixed(2), category: t.category, income: t.amount > 0, date: t.created.slice(0, 10) }, note: "Bookkeeping only; no money was moved." };
+    }
+    case "money_plan": {
+      const p = (x) => Math.round(Number(x) * 100);
+      if (input.action === "report") { const r = financeReport(); return { ok: true, ...JSON.parse(JSON.stringify(r, (k, v) => (typeof v === "number" && /spent|income|net|target|saved|left|balance|monthly|in\dMonths|total|cash|savings|credit|debts|min_payment|monthlyNeeded/i.test(k) ? `£${(v / 100).toFixed(2)}` : v))) }; }
+      if (input.action === "add_goal") { const g = savingsGoals.create({ name: input.name, target: p(input.target_pounds), deadline: input.deadline }); return { ok: true, goal: g }; }
+      if (input.action === "contribute") { const g = contributeToGoal(input.goal_id, p(input.amount_pounds)); return g ? { ok: true, goal: g, note: "Tracked only; no money was moved." } : { ok: false, error: "No such goal" }; }
+      if (input.action === "add_debt") { const d = debts.create({ name: input.name, balance: p(input.balance_pounds), apr: input.apr || 0, min_payment: p(input.min_payment_pounds || 0) }); return { ok: true, debt: d }; }
+      return { ok: false, error: "Unknown action" };
+    }
+    case "business": {
+      const p = (x) => (x == null ? undefined : Math.round(Number(x) * 100));
+      switch (input.action) {
+        case "summary": return { ok: true, ...businessSummary() };
+        case "list_clients": return { ok: true, clients: clients.list().slice(0, 40).map((c) => ({ id: c.id, name: c.name, company: c.company, stage: c.stage, value: c.value, next_follow_up: c.next_follow_up })) };
+        case "add_client": return { ok: true, client: clients.create({ name: input.name, company: input.company, email: input.email, stage: input.stage, value: p(input.value_pounds), next_follow_up: input.next_follow_up, notes: input.notes }) };
+        case "update_client": { const c = clients.update(input.client_id, Object.fromEntries(Object.entries({ stage: input.stage, next_follow_up: input.next_follow_up, notes: input.notes, value: p(input.value_pounds) }).filter(([, v]) => v !== undefined))); return c ? { ok: true, client: c } : { ok: false, error: "No such client" }; }
+        case "log_interaction": return { ok: true, interaction: interactions.create({ client_id: input.client_id, kind: input.kind, summary: input.summary }) };
+        case "create_invoice": { const i = invoices.create({ client_id: input.client_id, items: (input.items || []).map((it) => ({ description: it.description, quantity: it.quantity || 1, unit: p(it.unit_pounds) })), due: input.due }); return { ok: true, invoice: { id: i.id, number: i.number, total: `£${(i.total / 100).toFixed(2)}`, status: i.status, due: i.due }, note: "Created as a draft; nothing has been sent." }; }
+        case "invoice_status": { const i = invoices.update(input.invoice_id, { status: input.status }); return i ? { ok: true, invoice: { id: i.id, number: i.number, status: i.status } } : { ok: false, error: "No such invoice" }; }
+        case "add_expense": return { ok: true, expense: expenses.create({ description: input.description, amount: p(input.amount_pounds), category: input.category, date: input.date || localDate() }) };
+        default: return { ok: false, error: "Unknown action" };
+      }
+    }
+    case "focus": {
+      if (input.action === "status") return { ok: true, active: focus.active(), stats: focus.stats() };
+      if (input.action === "stop") { const f = focus.stop({ completed: false }); return f ? { ok: true, stopped: f.label } : { ok: false, error: "No focus session is running" }; }
+      const f = focus.start({ minutes: input.minutes || (input.action === "break" ? s.focus.breakMinutes : s.focus.workMinutes), label: input.label, kind: input.action === "break" ? "break" : "work" });
+      return { ok: true, session: { label: f.label, minutes: f.planned_minutes, ends_at: f.ends_at } };
+    }
+    case "habits_goals": {
+      switch (input.action) {
+        case "list": return { ok: true, habits: habits.list({ active: true }).map((h) => ({ id: h.id, name: h.name, doneToday: h.doneToday, streak: h.streak, frequency: h.frequency })), goals: goals.list().map((g) => ({ id: g.id, title: g.title, progress: g.progress, status: g.status, target_date: g.target_date, milestones: g.milestones.map((m) => ({ id: m.id, title: m.title, done: m.done })) })) };
+        case "check_habit": { const h = habits.find(input.name || input.title || ""); if (!h) return { ok: false, error: `No active habit matching "${input.name}"`, habits: habits.list({ active: true }).map((x) => x.name) }; const r = habits.check(h.id); return { ok: true, habit: { name: r.name, today: r.today, streak: r.streak } }; }
+        case "add_habit": return { ok: true, habit: habits.create({ name: input.name, frequency: input.frequency, target: input.target, reminder_time: input.reminder_time }) };
+        case "add_goal": return { ok: true, goal: goals.create({ title: input.title || input.name, kind: input.kind, target_date: input.target_date }) };
+        case "goal_progress": { const g = goals.update(input.goal_id, { progress: input.progress, ...(input.progress >= 100 ? { status: "done" } : {}) }); return g ? { ok: true, goal: { id: g.id, title: g.title, progress: g.progress } } : { ok: false, error: "No such goal" }; }
+        case "add_milestone": return { ok: true, milestone: milestones.create({ goal_id: input.goal_id, title: input.title || input.name, due: input.due }) };
+        case "complete_milestone": { const m = milestones.update(input.milestone_id, { done: true }); return m ? { ok: true, milestone: m } : { ok: false, error: "No such milestone" }; }
+        default: return { ok: false, error: "Unknown action" };
+      }
+    }
+    case "routine": {
+      const auto = await import("./services/automations.js");
+      if (input.briefing) { const { deliverBriefing } = await import("./services/briefings.js"); const b = await deliverBriefing(input.briefing, { loc: ctx.loc, trigger: "voice", speak: false }); return { ok: true, briefing: b.text, note: "Read this briefing to the user as your reply." }; }
+      const r = auto.routines.find(input.name || "");
+      if (!r) return { ok: false, error: `No routine called "${input.name}"`, routines: auto.routines.list().map((x) => x.name) };
+      const res = await auto.runRoutine(r.id, { trigger: "voice" });
+      return { ok: res.status === "ok", ...res };
+    }
+    case "smart_home": {
+      if (!smarthome.configured()) return { ok: false, error: "Home Assistant isn't set up. It can be added in API keys (address and a long-lived access token)." };
+      if (input.action === "list") return { ok: true, devices: smarthome.list().filter((d) => d.allowed).map((d) => ({ entity_id: d.entity_id, name: d.name, state: d.state, services: d.services })), note: "Only devices the user allowed are listed." };
+      const d = smarthome.find(input.device);
+      if (!d) return { ok: false, error: `No device matching "${input.device}"` };
+      const data = { brightness_pct: input.brightness_pct, temperature: input.temperature };
+      const v = smarthome.validate(d.entity_id, input.service, data);
+      if (v.sensitive) return pending.propose("smarthome.control", { entity: d.entity_id, service: input.service, data }, `${input.service.replace(/_/g, " ")} ${d.name}`);
+      return smarthome.control(d.entity_id, input.service, data, { deviceId: ctx.deviceId });
+    }
+    case "notifications": {
+      if (input.action === "read_all") { notifications.markRead("all"); return { ok: true }; }
+      if (input.action === "dismiss_all") { notifications.dismiss("all"); return { ok: true }; }
+      return { ok: true, unread: notifications.list({ unread: true, limit: 15 }).map((n) => ({ title: n.title, body: n.body, at: n.created_at })) };
     }
     case "finance": return finance.financeFacts(input.question, input);
     case "add_commitment": {
@@ -152,18 +290,18 @@ async function runTool(name, input, ctx) {
       const clash = patch.start ? calendar.conflicts(new Date(patch.start).toISOString(), new Date(patch.end).toISOString(), cur.id) : [];
       return pending.propose("calendar.update", { id: cur.id, patch }, `Change "${cur.title}"${patch.start ? ` to ${fmtLocal(patch.start, s.timezone)}` : ""}${patch.title ? `, renamed "${patch.title}"` : ""}${clash.length ? ` (clashes with ${clash.map((c) => c.title).join(", ")})` : ""}`);
     }
-    case "add_task": return { ok: true, task: tasks.add({ title: input.title, due: input.due, priority: input.priority, projectId: input.project_id, notes: input.notes, source: "jarvis" }) };
+    case "add_task": return { ok: true, task: tasks.add({ title: input.title, due: input.due, priority: input.priority, projectId: input.project_id, notes: input.notes, category: input.category, source: "jarvis" }) };
     case "update_task": {
       if (input.delete) return { ok: tasks.remove(input.id) };
-      const t = tasks.update(input.id, { done: input.done, due: input.due, priority: input.priority, title: input.title });
+      const t = tasks.update(input.id, { done: input.done, due: input.due, priority: input.priority, title: input.title, progress: input.progress, category: input.category });
       return t ? { ok: true, task: t } : { ok: false, error: "No such task" };
     }
     case "add_reminder": {
       const d = new Date(input.due_at);
       if (Number.isNaN(d.getTime())) return { ok: false, error: "Invalid time; use ISO 8601 with offset" };
       if (d.getTime() < Date.now() - 60_000) return { ok: false, error: "That time has already passed" };
-      const r = reminders.add({ text: input.text, due_at: d.toISOString() });
-      return { ok: true, reminder: { id: r.id, text: r.text, local: fmtLocal(r.due_at, s.timezone) } };
+      const r = reminders.add({ text: input.text, due_at: d.toISOString(), repeat: input.repeat || "none" });
+      return { ok: true, reminder: { id: r.id, text: r.text, local: fmtLocal(r.due_at, s.timezone), repeat: r.repeat } };
     }
     case "cancel_reminder": return { ok: reminders.remove(input.id) };
     case "create_project": { const p = projects.create(input); return { ok: true, project: { id: p.id, title: p.title, milestones: p.milestones.map((m) => m.title), tasks: p.progress.total } }; }
@@ -185,6 +323,7 @@ async function runTool(name, input, ctx) {
     case "forget": return { ok: memory.remove(input.id) };
     case "computer": {
       const { action, ...rest } = input;
+      if (COMPUTER_ACTIONS[action]?.confirm) { try { return proposeComputerAction(action, rest); } catch (e) { return { ok: false, error: e.message }; } }
       return runComputerAction(action, rest, { requestedBy: ctx.deviceId });
     }
     case "confirm_pending": {
@@ -206,6 +345,7 @@ async function runTool(name, input, ctx) {
 pending.registerHandler("calendar.create", (ev) => calendar.create(ev).then((e) => ({ id: e.id, title: e.title })));
 pending.registerHandler("calendar.update", ({ id, patch }) => calendar.update(id, patch).then((e) => ({ id: e.id, start: e.start })));
 pending.registerHandler("calendar.delete", ({ id }) => calendar.remove(id).then((ok) => ({ deleted: ok })));
+pending.registerHandler("smarthome.control", ({ entity, service, data }) => smarthome.control(entity, service, data, { confirmed: true }));
 
 // ---------------- Conversation turn
 function textAndSources(content) {
@@ -222,52 +362,71 @@ function textAndSources(content) {
 /**
  * Handle one user message: store it, think with tools, store and broadcast the reply.
  * Idempotent per clientId: a retried message returns the original reply.
+ * With onEvent the reply is streamed: {type:"delta", text} as words arrive, {type:"tool", name, phase} around tool use.
  */
-export async function chat({ text, conversationId, deviceId, deviceKind, clientId, loc }) {
+export async function chat({ text, conversationId, deviceId, deviceKind, clientId, loc, voice = false, onEvent } = {}) {
   conversationId ||= conversations.currentId();
   const prior = clientId ? conversations.findByClientId(clientId) : null;
   if (prior) {
     const reply = db.prepare("SELECT * FROM messages WHERE conversation_id = ? AND id > ? AND role = 'assistant' ORDER BY id LIMIT 1").get(prior.conversation_id, prior.id);
-    if (reply) return { reply: reply.content, sources: reply.sources ? JSON.parse(reply.sources) : [], conversationId: prior.conversation_id, duplicate: true, changed: [] };
+    if (reply) { onEvent?.({ type: "delta", text: reply.content }); return { reply: reply.content, sources: reply.sources ? JSON.parse(reply.sources) : [], conversationId: prior.conversation_id, duplicate: true, changed: [] }; }
   }
   const { summary, turns } = conversations.context(conversationId, 20);
   conversations.add({ conversationId, role: "user", content: text, deviceId, clientId });
   if (!client) {
-    const reply = "My apologies, sir — my reasoning systems are offline. An Anthropic API key needs to be added to the server.";
+    const reply = `My apologies, ${title()} — my reasoning systems are offline. An Anthropic API key needs to be added (tray icon → API keys & AI model).`;
     conversations.add({ conversationId, role: "assistant", content: reply });
+    onEvent?.({ type: "delta", text: reply });
     return { reply, sources: [], conversationId, changed: [] };
   }
   const ctx = { loc, deviceId, changed: new Set() };
   const system = [
-    { type: "text", text: PERSONA, cache_control: { type: "ephemeral" } },
-    { type: "text", text: `${summary ? `Earlier in this conversation (summary): ${summary}\n` : ""}${await contextBlock({ userText: text, deviceKind, loc })}` },
+    { type: "text", text: persona(), cache_control: { type: "ephemeral" } },
+    { type: "text", text: `${summary ? `Earlier in this conversation (summary): ${summary}\n` : ""}${await contextBlock({ userText: text, deviceKind, loc, voiceTurn: voice })}` },
   ];
   const messages = [...turns, { role: "user", content: text }];
   const tools = [...TOOLS, ...(config.webSearch ? [WEB_SEARCH(5)] : [])];
-  let final = null;
+  const said = [], sources = [];
+  let finished = false;
   for (let step = 0; step < 8; step++) {
-    const msg = await client.beta.messages.create({ model: config.model, max_tokens: 6000, system, tools, messages, output_config: { effort: process.env.JARVIS_EFFORT || "low" }, ...FALLBACK });
-    if (msg.stop_reason === "refusal") { final = { text: "I'm afraid that's one I must decline, sir.", sources: [] }; break; }
+    const params = { model: config.model, max_tokens: 6000, system, tools, messages, output_config: { effort: process.env.JARVIS_EFFORT || "low" }, ...FALLBACK };
+    let msg;
+    if (onEvent) {
+      msg = await timed("anthropic", { model: config.model, purpose: "chat" }, async () => {
+        const stream = client.beta.messages.stream(params);
+        let sep = said.length > 0;
+        stream.on("text", (delta) => { if (sep && delta.trim()) { onEvent({ type: "delta", text: " " }); sep = false; } onEvent({ type: "delta", text: delta }); });
+        stream.on("streamEvent", (ev) => { if (ev.type === "content_block_start" && ev.content_block?.type === "server_tool_use") onEvent({ type: "tool", name: ev.content_block.name, phase: "start" }); });
+        return stream.finalMessage();
+      });
+    } else msg = await ai("chat", params);
+    if (msg.stop_reason === "refusal") { said.push(`I'm afraid that's one I must decline, ${title()}.`); onEvent?.({ type: "delta", text: said.at(-1) }); finished = true; break; }
     messages.push({ role: "assistant", content: msg.content });
+    const part = textAndSources(msg.content);
+    if (part.text) said.push(part.text);
+    for (const src of part.sources) if (!sources.some((x) => x.url === src.url)) sources.push(src);
     if (msg.stop_reason === "pause_turn") continue;  // server tool (web search) still working
     const uses = msg.content.filter((b) => b.type === "tool_use");
-    if (msg.stop_reason !== "tool_use" || !uses.length) { final = textAndSources(msg.content); break; }
+    if (msg.stop_reason !== "tool_use" || !uses.length) { finished = true; break; }
     const results = await Promise.all(uses.map(async (u) => {
+      onEvent?.({ type: "tool", name: u.name, phase: "start" });
       try {
         const out = await runTool(u.name, u.input || {}, ctx);
+        onEvent?.({ type: "tool", name: u.name, phase: "done", ok: out?.ok !== false });
         return { type: "tool_result", tool_use_id: u.id, content: JSON.stringify(out).slice(0, 30000), is_error: out?.ok === false };
       } catch (e) {
+        onEvent?.({ type: "tool", name: u.name, phase: "done", ok: false });
         return { type: "tool_result", tool_use_id: u.id, content: `Error: ${e.message}`, is_error: true };
       }
     }));
     messages.push({ role: "user", content: results });
   }
-  final ||= { text: "I've done what I can on that, sir.", sources: [] };
-  final.text ||= "Done, sir.";
+  let reply = said.join(" ").replace(/\s+\n/g, "\n").trim();
+  if (!reply) { reply = finished ? `Done, ${title()}.` : `I've done what I can on that, ${title()}.`; onEvent?.({ type: "delta", text: reply }); }
   const targetConv = ctx.newConversationId || conversationId;
-  conversations.add({ conversationId: targetConv, role: "assistant", content: final.text, sources: final.sources });
+  conversations.add({ conversationId: targetConv, role: "assistant", content: reply, sources });
   maybeSummarize(conversationId).catch(() => {});
-  return { reply: final.text, sources: final.sources, conversationId: targetConv };
+  return { reply, sources, conversationId: targetConv };
 }
 
 /** Keep long conversations manageable: fold older turns into a running summary, and keep notable ones as memory. */
@@ -276,7 +435,7 @@ async function maybeSummarize(conversationId) {
   if (rows.length < 40 || !client) return;
   const fold = rows.slice(0, rows.length - 12);
   const prev = conversations.get(conversationId)?.summary || "";
-  const msg = await client.beta.messages.create({
+  const msg = await ai("summary", {
     model: config.model, max_tokens: 2000, output_config: { effort: "low" }, ...FALLBACK,
     messages: [{ role: "user", content: `Update this running summary of a conversation between a user and their assistant JARVIS. Keep decisions, commitments, facts about the user and open threads; drop small talk. Max 200 words.\n\nPrevious summary:\n${prev || "(none)"}\n\nNew turns:\n${fold.map((m) => `${m.role}: ${m.content}`).join("\n")}` }],
   });
@@ -296,14 +455,13 @@ export function startResearch(query) {
   return { id };
 }
 async function runResearch(id, query) {
-  const { notifyAll } = await import("./push.js");
   try {
     if (!client) throw new Error("Anthropic API key missing");
     if (!config.webSearch) throw new Error("Web search is disabled (JARVIS_WEB_SEARCH=false)");
     const messages = [{ role: "user", content: `Research this thoroughly using web search and write a concise, well-structured report for the user (who lives in ${getSettings().home.place}). Compare several sources, note disagreements and uncertainty, and cite sources for every factual claim. Do not invent anything. Topic: ${query}` }];
     let out = { text: "", sources: [] };
     for (let i = 0; i < 6; i++) {
-      const msg = await client.beta.messages.create({ model: config.researchModel, max_tokens: 16000, tools: [research.webSearch(10)], messages, output_config: { effort: "medium" }, ...research.fallback });
+      const msg = await ai("research", { model: config.researchModel, max_tokens: 16000, tools: [research.webSearch(10)], messages, output_config: { effort: "medium" }, ...research.fallback });
       messages.push({ role: "assistant", content: msg.content });
       const part = textAndSources(msg.content);
       out = { text: (out.text + "\n" + part.text).trim(), sources: [...out.sources, ...part.sources.filter((s) => !out.sources.some((o) => o.url === s.url))] };
@@ -311,55 +469,35 @@ async function runResearch(id, query) {
     }
     db.prepare("UPDATE research SET report = ?, sources = ?, status = 'done' WHERE id = ?").run(out.text, JSON.stringify(out.sources), id);
     changed("research");
-    notifyAll({ title: "Research ready", body: String(query).slice(0, 100), url: `/?tab=research&id=${id}`, tag: `research-${id}` }).catch(() => {});
+    notify({ kind: "research", title: "Research ready", body: String(query).slice(0, 100), url: `/?tab=intelligence&id=${id}`, tag: `research-${id}` }).catch(() => {});
   } catch (e) {
     db.prepare("UPDATE research SET status = 'failed', error = ? WHERE id = ?").run(e.message, id);
     changed("research");
   }
 }
 
-// ---------------- Daily briefing (real data only)
-export async function briefing({ loc } = {}) {
+// ---------------- Briefings (real data only)
+const BRIEF_STYLE = {
+  morning: (n) => `Deliver the morning briefing: a greeting suited to the time of day (e.g. "Good morning, ${title()}."), then weather (mention UV or sunset only if notable), today's schedule, priorities and reminders, money if present, projects and habits${n ? ", then one or two genuinely relevant news headlines" : ""} — in 5–8 spoken sentences.`,
+  afternoon: () => "Give a brief afternoon update: the rest of today's schedule, progress so far and what still needs doing — 3–5 spoken sentences.",
+  evening: () => `Give the evening review: what got done today, what's left, tomorrow's schedule and weather, and the alarm for tomorrow — 4–6 spoken sentences, ending with a calm sign-off for the night.`,
+  weekly: () => "Give the weekly review: the week's results (tasks, focus, habits, goals), money and business if present, and the week ahead — 6–9 spoken sentences.",
+};
+export async function briefing({ loc, kind = "morning" } = {}) {
   const s = getSettings();
-  const sec = s.briefing.sections;
-  const facts = [];
-  let weather = null;
-  if (sec.weather) {
-    try { weather = await getWeather({ ...(loc?.lat ? loc : s.home), units: s.units }); facts.push(`Weather: ${weatherSentence(weather)}`); }
-    catch (e) { facts.push(`Weather: unavailable (${e.message}).`); }
-  }
-  if (sec.calendar) {
-    const ev = calendar.list(new Date().toISOString(), new Date(Date.now() + 24 * 3600_000).toISOString());
-    facts.push(`Calendar (next 24h): ${ev.length ? ev.map((e) => `${e.title} ${e.all_day ? "(all day)" : fmtLocal(e.start, s.timezone)}`).join("; ") : "nothing scheduled"}.`);
-  }
-  if (sec.tasks) {
-    const od = tasks.overdue(), today = tasks.dueToday(), open = tasks.list();
-    facts.push(`Tasks: ${open.length} open; overdue: ${od.map((t) => t.title).join(", ") || "none"}; due today: ${today.map((t) => t.title).join(", ") || "none"}; top priority: ${open.filter((t) => t.priority === 1).slice(0, 3).map((t) => t.title).join(", ") || "none"}.`);
-    const rem = reminders.upcoming().filter((r) => Date.parse(r.due_at) < Date.now() + 24 * 3600_000);
-    facts.push(`Reminders today: ${rem.map((r) => `${r.text} at ${fmtLocal(r.due_at, s.timezone)}`).join("; ") || "none"}.`);
-  }
-  if (sec.finance && s.finance.enabled) {
-    const f = finance.financeFacts("position");
-    facts.push(f.connected ? `Finance${f.testData ? " (TEST DATA)" : ""}: available ${f.balances.available}, commitments still due ${f.commitments.total}, projected disposable ${f.projectedDisposable}. ${f.notes.join(" ")}` : "Finance: no bank connected.");
-  }
-  if (sec.projects) {
-    const ps = projects.list({ includeDone: false }).slice(0, 4);
-    facts.push(`Projects: ${ps.map((p) => `${p.title} ${p.progress.percent}% (${p.progress.overdue} overdue)`).join("; ") || "none"}.`);
-  }
-  const pend = pending.list();
-  if (pend.length) facts.push(`Waiting for your confirmation: ${pend.map((p) => p.summary).join("; ")}.`);
-
-  if (!client) return { text: `Good ${partOfDay()}, sir. ${facts.join(" ")}`, weather, facts };
-  const tools = sec.news && config.webSearch ? [WEB_SEARCH(2)] : [];
-  const messages = [{ role: "user", content: `Facts for the briefing (use only these${tools.length ? " plus one or two genuinely relevant news headlines you find with web search, with sources" : ""}):\n${facts.join("\n")}\n\nNow: ${localNow(s.timezone)}.\nDeliver the briefing: greeting suited to the time of day, then weather, schedule, priorities, money if present, projects, ${tools.length ? "news, " : ""}in 5–8 spoken sentences. No lists.` }];
+  const { facts, weather } = await gatherFacts(kind, { loc });
+  if (!client) return { text: `Good ${partOfDay()}, ${title()}. ${facts.join(" ")}`, weather, facts };
+  const news = kind === "morning" && s.briefing.sections?.news && config.webSearch;
+  const tools = news ? [WEB_SEARCH(2)] : [];
+  const messages = [{ role: "user", content: `Facts for the briefing (use only these${news ? " plus news you find with web search, with sources" : ""}; if something is unavailable, say so briefly):\n${facts.join("\n")}\n\nNow: ${localNow(s.timezone)}.\n${BRIEF_STYLE[kind](news)} No lists or headings.` }];
   let text = "", sources = [];
   for (let i = 0; i < 3; i++) {
-    const msg = await client.beta.messages.create({ model: config.model, max_tokens: 4000, system: PERSONA, tools, messages, output_config: { effort: "low" }, ...FALLBACK });
+    const msg = await ai(`briefing:${kind}`, { model: config.model, max_tokens: 4000, system: persona(), tools, messages, output_config: { effort: "low" }, ...FALLBACK });
     messages.push({ role: "assistant", content: msg.content });
     const p = textAndSources(msg.content); text += p.text; sources.push(...p.sources);
     if (msg.stop_reason !== "pause_turn") break;
   }
-  return { text: text.trim() || `Good ${partOfDay()}, sir.`, weather, facts, sources };
+  return { text: text.trim() || `Good ${partOfDay()}, ${title()}.`, weather, facts, sources, kind };
 }
 
 export function partOfDay() {
@@ -382,11 +520,11 @@ export async function generateIdea() {
   const previous = db.prepare("SELECT title FROM ideas ORDER BY id DESC").all().map((r) => r.title);
   const place = getSettings().home.place;
   for (let attempt = 0; attempt < 3; attempt++) {
-    const msg = await client.beta.messages.parse({
+    const msg = await ai("idea", {
       model: config.model, max_tokens: 6000, output_config: { effort: "medium", format: betaZodOutputFormat(IdeaSchema) }, ...FALLBACK,
       messages: [{ role: "user", content: `Give the single best NEW AI app or SaaS idea for a solo founder based in ${place} on a small budget (a few hundred pounds, no team). Favour real paying customers, a fast MVP with light code plus AI APIs, recurring revenue and low regulatory risk. Give: title, a two-sentence pitch, why now, rough budget, exactly three MVP steps, and one concrete first move for this week (under 20 words).
 It must differ from all of these (different customer AND problem):\n${previous.slice(0, 200).map((t) => `- ${t}`).join("\n") || "(none)"}` }],
-    });
+    }, "parse");
     if (msg.stop_reason === "refusal") return null;
     const idea = msg.parsed_output;
     if (!idea || tooSimilar(idea.title, previous)) { if (idea) previous.unshift(idea.title); continue; }
