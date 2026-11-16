@@ -18,17 +18,17 @@ const sherpa = require("sherpa-onnx-node");
 let failed = 0;
 const check = (name, ok, detail = "") => { console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? ` — ${detail}` : ""}`); if (!ok) failed++; };
 
-// 1. Whisper
+// 1. On-device speech recognition (Parakeet TDT 0.6B v2)
 const asr = path.join(desktop, "bundle", "asr");
 const rec = await sherpa.OfflineRecognizer.createAsync({
   featConfig: { sampleRate: 16000, featureDim: 80 },
-  modelConfig: { whisper: { encoder: path.join(asr, "base.en-encoder.int8.onnx"), decoder: path.join(asr, "base.en-decoder.int8.onnx"), language: "en", task: "transcribe" }, tokens: path.join(asr, "base.en-tokens.txt"), numThreads: 2, provider: "cpu", debug: 0 },
+  modelConfig: { transducer: { encoder: path.join(asr, "encoder.int8.onnx"), decoder: path.join(asr, "decoder.int8.onnx"), joiner: path.join(asr, "joiner.int8.onnx") }, tokens: path.join(asr, "tokens.txt"), modelType: "nemo_transducer", numThreads: 2, provider: "cpu", debug: 0 },
 });
 const w = sherpa.readWave(path.join(desktop, "..", "test", "fixtures", "command-48k.wav"));
 const st = rec.createStream(); st.acceptWaveform({ sampleRate: w.sampleRate, samples: w.samples });
 await rec.decodeAsync(st);
 const text = rec.getResult(st).text;
-check(`local Whisper on ${os.platform()}`, /call my mum/i.test(text), JSON.stringify(text));
+check(`on-device speech recognition (Parakeet) on ${os.platform()}`, /call my mum/i.test(text), JSON.stringify(text));
 
 // 2. Keyword spotter
 const kd = path.join(desktop, "models", "kws");

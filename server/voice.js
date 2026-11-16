@@ -1,4 +1,5 @@
 import { Readable } from "node:stream";
+import { recordApiCall } from "./services/diagnostics.js";
 import { config, ttsProvider } from "./config.js";
 import { localAsrAvailable, transcribeLocal } from "./local-asr.js";
 
@@ -52,11 +53,32 @@ export async function streamTTS(text, res, signal) {
  * Speech to text. Prefers free local Whisper on this machine (WAV input); falls back to OpenAI Whisper.
  * Errors carry a plain-English reason the user can act on.
  */
-export async function transcribe(buffer, mimeType = "audio/webm", { localOnly = false } = {}) {
+/** Transcribe with details: { text, confidence, stats, latencyMs, engine }. */
+export async function transcribeDetailed(buffer, mimeType = "audio/webm", { localOnly = false } = {}) {
   const isWav = /wav/.test(mimeType) || buffer.toString("ascii", 0, 4) === "RIFF";
-  // Live (partial) transcription runs only on the laptop's own Whisper: free, private, and never billed.
-  if (localOnly) return isWav && localAsrAvailable() ? transcribeLocal(buffer).catch(() => "") : "";
+  const t0 = performance.now();
   if (isWav && localAsrAvailable()) {
+    try {
+      const r = await transcribeLocal(buffer, { details: true });
+      if (!localOnly) recordApiCall({ provider: "stt-local", model: r.model, purpose: "transcribe", latencyMs: performance.now() - t0, ok: true });
+      return { ...r, latencyMs: Math.round(performance.now() - t0), engine: r.model };
+    } catch (e) {
+      if (!localOnly) recordApiCall({ provider: "stt-local", purpose: "transcribe", latencyMs: performance.now() - t0, ok: false, error: e.message });
+      if (localOnly) return { text: "" };
+      if (!config.openaiKey) throw Object.assign(new Error(`Local speech recognition failed: ${e.message}`), { status: 500, expose: true });
+    }
+  }
+  if (localOnly) return { text: "" };
+  const text = await transcribe(buffer, mimeType, { skipLocal: true });
+  recordApiCall({ provider: "stt-openai", model: config.openaiSttModel, purpose: "transcribe", latencyMs: performance.now() - t0, ok: true });
+  return { text, latencyMs: Math.round(performance.now() - t0), engine: "openai", confidence: { level: text ? "high" : "none", reasons: [] } };
+}
+
+export async function transcribe(buffer, mimeType = "audio/webm", { localOnly = false, skipLocal = false } = {}) {
+  const isWav = /wav/.test(mimeType) || buffer.toString("ascii", 0, 4) === "RIFF";
+  // Live (partial) transcription runs only on the laptop's own model: free, private, and never billed.
+  if (localOnly) return isWav && localAsrAvailable() ? transcribeLocal(buffer).catch(() => "") : "";
+  if (isWav && localAsrAvailable() && !skipLocal) {
     try { return await transcribeLocal(buffer); }
     catch (e) { if (!config.openaiKey) throw Object.assign(new Error(`Local speech recognition failed: ${e.message}`), { status: 500, expose: true }); }
   }

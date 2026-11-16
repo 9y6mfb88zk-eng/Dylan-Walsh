@@ -1,7 +1,7 @@
 // Always-on local wake-word service.
 // Microphone → 16 kHz → openWakeWord "hey_jarvis" (ONNX, in this process) → wake event.
 // Nothing is sent anywhere: only the wake event (a number) leaves this window.
-import { WakeWordEngine, WakeDetector, resampleTo16k } from "../wakeword/engine.js";
+import { WakeWordEngine, WakeDetector, createResampler } from "../wakeword/engine.js";
 
 const bridge = window.audioBridge;
 const ort = window.ort;
@@ -9,7 +9,7 @@ ort.env.wasm.wasmPaths = new URL("../../node_modules/onnxruntime-web/dist/", loc
 ort.env.wasm.numThreads = 1;
 
 let engine = null, detector = null, cfg = null;
-let ctx = null, stream = null, node = null, src = null, deviceLabel = "";
+let ctx = null, stream = null, node = null, src = null, deviceLabel = "", resample = null;
 let queue = [], busy = false, retryTimer = null;
 let state = { wakeWord: "loading", mic: "unknown", error: null };
 let lastScoreSent = 0;
@@ -29,7 +29,7 @@ async function startMic() {
   stopMic();
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      audio: { deviceId: cfg.micDeviceId ? { exact: cfg.micDeviceId } : undefined, channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      audio: { deviceId: cfg.micDeviceId ? { exact: cfg.micDeviceId } : undefined, channelCount: 1, echoCancellation: cfg.echoCancellation !== false, noiseSuppression: cfg.noiseSuppression !== false, autoGainControl: cfg.autoGainControl !== false },
     });
   } catch (e) {
     const denied = e.name === "NotAllowedError" || e.name === "SecurityError";
@@ -46,6 +46,7 @@ async function startMic() {
   ctx = new AudioContext();
   await ctx.audioWorklet.addModule(new URL("./capture-worklet.js", import.meta.url));
   src = ctx.createMediaStreamSource(stream);
+  resample = createResampler(ctx.sampleRate);   // anti-aliased, keeps its place between chunks
   node = new AudioWorkletNode(ctx, "jarvis-capture");
   node.port.onmessage = (e) => { queue.push(e.data); if (queue.length > 15) queue.splice(0, queue.length - 15); pump(); };
   src.connect(node);
@@ -76,15 +77,24 @@ function startCapture({ id = "wake", preRoll = true, noSpeechMs = 6000, maxMs = 
 }
 function cancelCapture() { if (!capture) return; const id = capture.id; capture = null; bridge.captured(null, id); }
 function rms(pcm) { let s = 0; for (let i = 0; i < pcm.length; i++) { const v = pcm[i] / 32768; s += v * v; } return Math.sqrt(s / Math.max(1, pcm.length)); }
+// Voice activity: speech must clear a start threshold for ~160 ms (so clicks and taps don't count); once you're talking,
+// a lower "still talking" threshold keeps quiet, trailing words from being treated as silence (hysteresis).
+// End of speech: a pause of endpointMs (default 1.2 s) — or 1.8 s while you've said very little, so a pause after
+// "JARVIS…" doesn't cut you off. The background-noise floor keeps adapting while you're quiet.
 function captureChunk(pcm) {
   const c = capture; c.chunks.push(pcm);
   const l = rms(pcm), now = Date.now();
-  if (!c.spoke) c.floor = c.floor * 0.9 + l * 0.1;
-  if (l > Math.max(cfg.vadThreshold || 0.03, c.floor * 2.2)) { c.spoke = true; c.quietSince = now; }
+  const startThr = Math.max(cfg.vadThreshold || 0.03, c.floor * 2.5), keepThr = Math.max((cfg.vadThreshold || 0.03) * 0.55, c.floor * 1.6);
+  if (l < keepThr) c.floor = c.floor * 0.95 + l * 0.05;
+  if (!c.spoke) {
+    c.loud = l > startThr ? (c.loud || 0) + 1 : 0;
+    if (c.loud >= 2) { c.spoke = true; c.quietSince = now; c.speechStart = now; }
+  } else if (l > keepThr) { c.quietSince = now; c.voiced = (c.voiced || 0) + pcm.length / 16000; }
   if (now - c.lastLevel > 66) { c.lastLevel = now; bridge.level?.(Math.min(1, rms(pcm) * 6)); }
   // Live transcription: while you talk, hand the audio so far to the app every 1.5 s.
   if (c.spoke && now - c.lastProgress > 1500 && now - c.started > 1200) { c.lastProgress = now; bridge.progress?.(wav16k(c.chunks)); }
-  const doneSpeaking = c.spoke && now - c.quietSince > 1200;
+  const endpoint = cfg.endpointMs || 1200;
+  const doneSpeaking = c.spoke && now - c.quietSince > ((c.voiced || 0) < 1 ? Math.max(endpoint, 1800) : endpoint);
   if (doneSpeaking || now - c.started > c.maxMs || (!c.spoke && now - c.started > c.noSpeechMs)) {
     const spoke = c.spoke, id = c.id; capture = null;
     bridge.captured(spoke ? wav16k(c.chunks) : null, id);
@@ -108,7 +118,8 @@ async function pump() {
   try {
     while (queue.length) {
       const chunk = queue.shift();
-      const pcm = resampleTo16k(chunk, ctx.sampleRate);
+      const pcm = resample(chunk);
+      if (!pcm.length) continue;
       const merged = new Int16Array(Math.min(RING, ring.length + pcm.length));
       merged.set(ring.subarray(Math.max(0, ring.length + pcm.length - RING)), 0);
       merged.set(pcm.subarray(Math.max(0, pcm.length - RING)), merged.length - Math.min(pcm.length, RING));
@@ -133,7 +144,7 @@ async function apply(c) {
   const micOn = c.micOn ?? (c.enabled && !c.paused);
   if (!micOn) { cancelCapture(); stopMic(); return report({ wakeWord: c.muted ? "muted" : c.wakeEnabled === false ? "disabled" : "paused", mic: "off", error: null }); }
   if (detector) Object.assign(detector, { threshold: c.threshold, minFrames: c.minFrames });
-  const deviceChanged = prev && prev.micDeviceId !== c.micDeviceId;
+  const deviceChanged = (prev && prev.micDeviceId !== c.micDeviceId) || c.restartMic;
   if (!stream || deviceChanged || state.mic !== "ok") await startMic();
   report({ wakeWord: c.detect === false ? (c.wakeEnabled === false ? "disabled" : "conversation") : "listening" });
 }

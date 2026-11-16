@@ -8,7 +8,7 @@ import * as pending from "../services/pending.js";
 import { healthReport } from "../services/health.js";
 import { runComputerAction } from "../services/computer.js";
 import { getWeather, geocode } from "../integrations/weather.js";
-import { streamTTS, transcribe } from "../voice.js";
+import { streamTTS, transcribe, transcribeDetailed } from "../voice.js";
 import { chat, briefing, startResearch, friendlyAiError } from "../brain.js";
 import { notifyAll } from "../push.js";
 import { runIdeaJob, runBriefingJob, fireDueReminders, backup } from "../scheduler.js";
@@ -55,7 +55,8 @@ const sttLimit = rateLimit({ name: "stt", limit: 40, windowMs: 60_000 }), partia
 router.post("/api/transcribe", (req, res, next) => (req.headers["x-partial"] === "1" ? partialLimit : sttLimit)(req, res, next), express.raw({ type: () => true, limit: "15mb" }), wrap(async (req, res) => {
   if (!req.body?.length) return res.status(400).json({ error: "No audio" });
   const partial = req.headers["x-partial"] === "1";
-  res.json({ text: await transcribe(req.body, req.headers["content-type"] || "audio/webm", { localOnly: partial }), partial });
+  const r = await transcribeDetailed(req.body, req.headers["content-type"] || "audio/webm", { localOnly: partial });
+  res.json({ text: r.text, partial, confidence: r.confidence, latencyMs: r.latencyMs, engine: r.engine, audio: r.stats });
 }));
 
 // ---------------- Weather & settings
@@ -117,6 +118,8 @@ router.patch("/api/milestones/:id", (req, res) => res.json(projects.setMilestone
 
 // ---------------- Memory
 router.get("/api/memories", (req, res) => res.json(memory.list()));
+router.get("/api/memories/profile", (req, res) => res.json(memory.byCategory()));
+router.get("/api/memories/recent", (req, res) => res.json(memory.recent(Math.min(Number(req.query.limit || 20), 100))));
 router.get("/api/memories/search", wrap(async (req, res) => res.json(await memory.search(req.query.q || "", 20))));
 router.post("/api/memories", wrap(async (req, res) => res.status(201).json(await memory.save({ ...req.body, source: "user", approved: true }))));
 router.patch("/api/memories/:id", wrap(async (req, res) => res.json(await memory.update(id(req), req.body || {}))));

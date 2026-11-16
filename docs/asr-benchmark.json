@@ -1,0 +1,178 @@
+{
+  "at": "2026-11-16T19:37:01.007Z",
+  "cpu": "Intel(R) Xeon(R) Processor @ 2.30GHz",
+  "threads": 2,
+  "sentences": 12,
+  "conditions": [
+    "normal",
+    "fast",
+    "slow",
+    "quiet (-24 dB)",
+    "noisy (SNR 10 dB)",
+    "clipped"
+  ],
+  "voices": [
+    "en-gb",
+    "en-gb-x-rp",
+    "en-us",
+    "en-gb-scotland"
+  ],
+  "report": {
+    "Whisper base.en (current)": {
+      "wer": 11.4,
+      "avgLatencyMs": 422,
+      "realTimeFactor": 0.099,
+      "byCondition": {
+        "normal": 4.6,
+        "fast": 13.9,
+        "slow": 2.8,
+        "quiet (-24 dB)": 8.3,
+        "noisy (SNR 10 dB)": 31.5,
+        "clipped": 7.4
+      },
+      "mistakes": [
+        {
+          "condition": "normal",
+          "voice": "en-us",
+          "ref": "Remind me to call my mum at six",
+          "hyp": "Remind me to call my mom at 6."
+        },
+        {
+          "condition": "normal",
+          "voice": "en-gb",
+          "ref": "Start a twenty five minute focus session",
+          "hyp": "Start at 25 minute focus session"
+        },
+        {
+          "condition": "normal",
+          "voice": "en-gb",
+          "ref": "Can you summarise my tasks for today and tell me which ones are overdue",
+          "hyp": "Can you summarize my tasks for today and tell me which ones are over you?"
+        },
+        {
+          "condition": "normal",
+          "voice": "en-gb-x-rp",
+          "ref": "Add a meeting with the accountant on Friday at half past two in the afternoon",
+          "hyp": "At a meeting with the accountant on Friday at half past two in the afternoon."
+        },
+        {
+          "condition": "fast",
+          "voice": "en-gb-x-rp",
+          "ref": "What's the weather like tomorrow",
+          "hyp": "Wasn't it when I liked to mallow?"
+        },
+        {
+          "condition": "fast",
+          "voice": "en-us",
+          "ref": "Remind me to call my mum at six",
+          "hyp": "Remind me to call my mom at 6."
+        },
+        {
+          "condition": "fast",
+          "voice": "en-gb-x-rp",
+          "ref": "Add a meeting with the accountant on Friday at half past two in the afternoon",
+          "hyp": "At a meeting with Lea Canton on Friday at half past two in the afternoon."
+        },
+        {
+          "condition": "fast",
+          "voice": "en-gb-scotland",
+          "ref": "How much money have I got left until the end of the month",
+          "hyp": "How much money I might have left until the end of the moon."
+        },
+        {
+          "condition": "slow",
+          "voice": "en-us",
+          "ref": "Remind me to call my mum at six",
+          "hyp": "Remind me to call my mom at 6."
+        },
+        {
+          "condition": "slow",
+          "voice": "en-gb",
+          "ref": "Start a twenty five minute focus session",
+          "hyp": "Start at 25 minute focus session"
+        },
+        {
+          "condition": "slow",
+          "voice": "en-gb-x-rp",
+          "ref": "Add a meeting with the accountant on Friday at half past two in the afternoon",
+          "hyp": "At a meeting with the accountant on Friday at half past two in the afternoon."
+        },
+        {
+          "condition": "quiet (-24 dB)",
+          "voice": "en-gb-x-rp",
+          "ref": "What's the weather like tomorrow",
+          "hyp": "What's the winner like tomorrow?"
+        }
+      ]
+    },
+    "Parakeet TDT 0.6B v2 (new)": {
+      "wer": 2.6,
+      "avgLatencyMs": 369,
+      "realTimeFactor": 0.086,
+      "byCondition": {
+        "normal": 0.9,
+        "fast": 0.9,
+        "slow": 0,
+        "quiet (-24 dB)": 1.9,
+        "noisy (SNR 10 dB)": 10.2,
+        "clipped": 1.9
+      },
+      "mistakes": [
+        {
+          "condition": "normal",
+          "voice": "en-gb-scotland",
+          "ref": "Open Chrome",
+          "hyp": "Open room."
+        },
+        {
+          "condition": "fast",
+          "voice": "en-us",
+          "ref": "Remind me to call my mum at six",
+          "hyp": "Reminds me to call my mum at 6."
+        },
+        {
+          "condition": "quiet (-24 dB)",
+          "voice": "en-gb-scotland",
+          "ref": "Open Chrome",
+          "hyp": "Or control."
+        },
+        {
+          "condition": "noisy (SNR 10 dB)",
+          "voice": "en-gb-scotland",
+          "ref": "Open Chrome",
+          "hyp": "Or and clone."
+        },
+        {
+          "condition": "noisy (SNR 10 dB)",
+          "voice": "en-gb-x-rp",
+          "ref": "I just spent twelve pounds fifty on food",
+          "hyp": "I just spent twelve pounds and fifty on food."
+        },
+        {
+          "condition": "noisy (SNR 10 dB)",
+          "voice": "en-gb",
+          "ref": "Can you summarise my tasks for today and tell me which ones are overdue",
+          "hyp": "Can you summarize my tasks for today and tell me which ones are over you?"
+        },
+        {
+          "condition": "noisy (SNR 10 dB)",
+          "voice": "en-gb-x-rp",
+          "ref": "Add a meeting with the accountant on Friday at half past two in the afternoon",
+          "hyp": "Had a meeting with the accountant on Friday at half past two in the afternoon."
+        },
+        {
+          "condition": "noisy (SNR 10 dB)",
+          "voice": "en-us",
+          "ref": "Run a full system diagnostic",
+          "hyp": "Run a full system high and ask it."
+        },
+        {
+          "condition": "clipped",
+          "voice": "en-us",
+          "ref": "Let's work on the next chapter of my story about the civil war",
+          "hyp": "Let's welcome the next chapter of my story about the Civil War."
+        }
+      ]
+    }
+  }
+}

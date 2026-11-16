@@ -1,6 +1,7 @@
 // Settings & security centre: devices/pairing, laptop voice, preferences, integrations, notifications, privacy, health.
 import { api } from "../api.js";
 import { voice } from "../voice.js";
+import { renderMicSetup, stopLive } from "./micsetup.js";
 import { $, $$, esc, toast, confirmDialog, formDialog, ago, fmtWhen } from "../util.js";
 
 let tab = "devices";
@@ -11,7 +12,7 @@ export async function render(root, ctx, params = {}) {
   root.innerHTML = `<div class="page-head"><div><h2 class="title">Settings</h2></div></div><div class="tabs">${TABS.map(([k, l]) => `<button data-s="${k}">${l}</button>`).join("")}</div><div id="sv"></div>`;
   $$("[data-s]", root).forEach((b) => b.onclick = () => { tab = b.dataset.s; draw(ctx); });
   await draw(ctx);
-  return () => clearInterval(meterTimer);
+  return () => { clearInterval(meterTimer); stopLive(); };
 }
 export function refresh(e, ctx) { if (e.includes("*") || (tab === "health" && e.includes("health")) || (tab === "prefs" && e.includes("settings"))) draw(ctx); }
 
@@ -370,6 +371,7 @@ Object.assign(SECTIONS, {
     });
   },
 });
-TABS.splice(1, 0, ["profile", "Profile & personality"], ["conversation", "Voice & conversation"]);
+TABS.splice(1, 0, ["profile", "Profile & personality"], ["microphone", "Microphone & speech"], ["conversation", "Voice & conversation"]);
+SECTIONS.microphone = (el, ctx) => renderMicSetup(el, ctx);
 TABS.splice(TABS.findIndex((t) => t[0] === "integrations"), 0, ["appearance", "Appearance"], ["alarmprefs", "Alarms & focus"]);
 TABS.splice(TABS.findIndex((t) => t[0] === "health"), 1, ["data", "Your data"]);

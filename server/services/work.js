@@ -126,7 +126,7 @@ export const reminders = {
 };
 
 // ---------------- Projects
-export const PROJECT_KINDS = ["personal", "business", "idea", "goal", "plan", "learning", "client"];
+export const PROJECT_KINDS = ["personal", "business", "idea", "goal", "plan", "learning", "client", "creative"];
 function hydrate(p) {
   if (!p) return null;
   const ms = db.prepare("SELECT * FROM milestones WHERE project_id = ? ORDER BY sort, id").all(p.id);

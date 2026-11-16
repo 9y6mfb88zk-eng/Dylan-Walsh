@@ -88,6 +88,15 @@ const every = (ms, fn) => { const t = setInterval(() => fn().catch(() => {}), ms
 export function startScheduler() {
   const s = () => getSettings();
   seedRoutines();
+  // The starting personal profile (once) and the KILL HOUSE workspace, if it doesn't exist yet.
+  import("./services/memory.js").then(async ({ seedProfile }) => {
+    const fresh = !kvGet("profile.seeded");
+    await seedProfile({ kvGet, kvSet });
+    if (fresh) {
+      const { projects } = await import("./services/work.js");
+      if (!projects.find("KILL HOUSE")) projects.create({ title: "KILL HOUSE", kind: "creative", goal: "A gritty British dystopian survival thriller set during a fictional civil war. Keep characters, world-building, plot outlines and chapter notes here." });
+    }
+  }).catch((e) => console.error("[profile] seed failed", e.message));
   recomputeAlarms();
   recomputeRoutines();
   const syncFinance = async () => { const r = await finance.syncAll(); reconcileManual(); return r; };

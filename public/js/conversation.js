@@ -105,6 +105,14 @@ export const conversation = {
         }
         const said = text, cmd = localCommand(said);
         text = null;
+        // Unsure what was said? Ask again rather than act on a guess.
+        const heard = this.lastHeard;
+        if (!cmd && heard?.text === said && heard.confidence?.level === "low") {
+          this.lastHeard = null;
+          ctx.caption(`I heard “${said}”, but I'm not confident (${heard.confidence.reasons.join(", ")}). Could you say that again?`);
+          await voice.speakShort(`Apologies, ${title(ctx)}, I didn't quite catch that. Could you say it again?`);
+          continue;
+        }
         if (cmd === "end") { ctx.caption(`Standing by, ${title(ctx)}.`); await voice.speakShort(`Very good, ${title(ctx)}.`); break; }
         if (cmd === "stay") { this.session.stayUntil = Date.now() + (ctx.settings?.voice?.stayWithMeSec || 120) * 1000; ctx.caption(`I'm here, ${title(ctx)}.`); await voice.speakShort(`I'm here, ${title(ctx)}.`); continue; }
         if (cmd === "listen") continue;
@@ -162,9 +170,11 @@ export const conversation = {
     voice.setState("thinking");
     core.set("thinking", true);
     try {
-      const { text } = await api("/api/transcribe", { method: "POST", raw: new Blob([wav], { type: "audio/wav" }), headers: { "content-type": "audio/wav", ...(partial ? { "x-partial": "1" } : {}) } });
-      const t = cleanCommand(text);
-      return isHallucination(t) ? "" : t;
+      const r = await api("/api/transcribe", { method: "POST", raw: new Blob([wav], { type: "audio/wav" }), headers: { "content-type": "audio/wav", ...(partial ? { "x-partial": "1" } : {}) } });
+      const t = cleanCommand(r.text);
+      if (isHallucination(t)) return "";
+      this.lastHeard = { text: t, confidence: r.confidence, latencyMs: r.latencyMs, engine: r.engine };
+      return t;
     } finally { core.set("thinking", false); if (voice.state === "thinking") voice.setState("idle"); }
   },
 };

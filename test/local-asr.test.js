@@ -1,5 +1,5 @@
-// Free on-device speech recognition (Whisper base.en via sherpa-onnx) and clear voice error messages.
-// The Whisper model (~150 MB) is downloaded by desktop/scripts/prepare-server.js into desktop/bundle/asr;
+// Free on-device speech recognition (Parakeet TDT 0.6B v2, or Whisper base.en, via sherpa-onnx) and clear voice errors.
+// The model is downloaded by desktop/scripts/prepare-server.js into desktop/bundle/asr;
 // set JARVIS_TEST_ASR_DIR to use another copy. The model test is skipped when the model isn't present.
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
@@ -11,7 +11,7 @@ import { startServer, Device } from "./helpers.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const asrDir = process.env.JARVIS_TEST_ASR_DIR || path.join(here, "..", "desktop", "bundle", "asr");
-const haveModel = fs.existsSync(path.join(asrDir, "base.en-encoder.int8.onnx"));
+const haveModel = fs.existsSync(path.join(asrDir, "encoder.int8.onnx")) || fs.existsSync(path.join(asrDir, "base.en-encoder.int8.onnx"));
 const mock = await startMock();
 const servers = [];
 after(async () => { for (const s of servers) await s.stop(); mock.server.close(); });
@@ -25,7 +25,7 @@ async function signedIn(extraEnv) {
   return d;
 }
 
-test("transcribes speech on this machine with no OpenAI key", { skip: !haveModel && "Whisper model not downloaded (run desktop: npm run prepare-server)" }, async () => {
+test("transcribes speech on this machine with no OpenAI key", { skip: !haveModel && "Speech model not downloaded (run desktop: npm run prepare-server)" }, async () => {
   const d = await signedIn({ JARVIS_ASR_DIR: asrDir });
   const s = await d.call("/api/session");
   assert.equal(s.data.stt, true);
@@ -36,6 +36,8 @@ test("transcribes speech on this machine with no OpenAI key", { skip: !haveModel
   assert.equal(r.status, 200, JSON.stringify(r.data));
   assert.match(r.data.text.toLowerCase(), /remind me to call my mum at (6|six)/);
   assert.equal(mock.log.stt, 0, "nothing was sent to OpenAI");
+  assert.ok(["high", "medium"].includes(r.data.confidence?.level), JSON.stringify(r.data.confidence));
+  assert.ok(r.data.audio?.speechSec > 0.5 && r.data.latencyMs > 0, "audio stats and timing are reported");
   assert.ok(Date.now() - t0 < 15000);
 });
 

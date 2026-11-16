@@ -288,6 +288,16 @@ router.post("/api/diagnostics/test/:check", rateLimit({ name: "diagtest", limit:
   if (!diagnostics.TESTABLE.includes(req.params.check)) return res.status(404).json({ error: "No test for that" });
   res.json(await diagnostics.testCheck(req.params.check, { client }));
 }));
+// Narrated diagnostic levels (quick, full, voice, ai, network, security, performance, hardware, integrations) and their history.
+router.post("/api/diagnostics/run", rateLimit({ name: "diagrun", limit: 10, windowMs: 60_000 }), wrap(async (req, res) => {
+  const { runLevel, LEVELS } = await import("../services/narrator.js");
+  const level = String(req.body?.level || req.query.level || "quick");
+  if (!LEVELS[level]) return res.status(400).json({ error: `Unknown level. Choose: ${Object.keys(LEVELS).join(", ")}` });
+  res.json(await runLevel(level, { client }));
+}));
+router.get("/api/diagnostics/runs", wrap(async (req, res) => res.json((await import("../services/narrator.js")).diagnosticHistory(Math.min(Number(req.query.limit || 30), 200)))));
+router.get("/api/performance", wrap(async (req, res) => res.json(await (await import("../services/narrator.js")).performanceMetrics())));
+router.get("/api/awareness", wrap(async (req, res) => res.json(await (await import("../services/narrator.js")).systemAwareness())));
 // Desktop-side checks (microphone level, speaker test, wake word, alarm audio) are posted here so they appear in history.
 router.post("/api/diagnostics/report", (req, res) => {
   const name = String(req.body?.check || "").slice(0, 40), status = ["ok", "warn", "error", "off", "unknown"].includes(req.body?.status) ? req.body.status : "unknown";

@@ -155,3 +155,38 @@ export function floatToInt16(f) {
   for (let i = 0; i < f.length; i++) out[i] = Math.max(-32768, Math.min(32767, Math.round(f[i] * 32767)));
   return out;
 }
+
+/**
+ * Streaming resampler to 16 kHz with a proper anti-aliasing low-pass filter (windowed-sinc, 7.2 kHz cut-off).
+ * Keeps its position and filter history between chunks, so there are no clicks or lost samples at chunk edges.
+ * (The plain linear interpolation above folds 8–24 kHz noise back into the speech band at 48 kHz input.)
+ */
+export function createResampler(fromRate, toRate = 16000) {
+  if (fromRate === toRate) return (f) => floatToInt16(f);
+  const ratio = fromRate / toRate;
+  const cutoff = Math.min(0.45 * toRate, 7200) / fromRate;     // normalised to the input rate
+  const half = Math.ceil(8 * ratio);                            // filter half-width in input samples
+  const taps = new Float32Array(2 * half + 1);
+  let norm = 0;
+  for (let k = -half; k <= half; k++) {
+    const x = 2 * cutoff * k, sinc = k === 0 ? 1 : Math.sin(Math.PI * x) / (Math.PI * x);
+    const win = 0.42 + 0.5 * Math.cos(Math.PI * k / (half + 1)) + 0.08 * Math.cos(2 * Math.PI * k / (half + 1));   // Blackman
+    taps[k + half] = 2 * cutoff * sinc * win; norm += taps[k + half];
+  }
+  for (let i = 0; i < taps.length; i++) taps[i] /= norm;
+  let hist = new Float32Array(0), pos = half;                   // pos: next output position (in input samples) within buf
+  return function resample(chunk) {
+    const buf = new Float32Array(hist.length + chunk.length); buf.set(hist); buf.set(chunk, hist.length);
+    const out = [];
+    const fir = (c) => { let acc = 0; for (let k = -half; k <= half; k++) acc += buf[c + k] * taps[k + half]; return acc; };
+    while (pos + half + 1 < buf.length) {
+      const c = Math.floor(pos), t = pos - c;
+      const v = t ? fir(c) * (1 - t) + fir(c + 1) * t : fir(c);      // fractional positions (e.g. 44.1 kHz) interpolate filtered samples
+      out.push(Math.max(-32768, Math.min(32767, Math.round(v * 32767))));
+      pos += ratio;
+    }
+    const keepFrom = Math.max(0, Math.floor(pos) - half);
+    hist = buf.slice(keepFrom); pos -= keepFrom;
+    return Int16Array.from(out);
+  };
+}

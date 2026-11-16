@@ -1,0 +1,172 @@
+{
+  "at": "2026-11-16T19:38:33.343Z",
+  "cpu": "Intel(R) Xeon(R) Processor @ 2.30GHz",
+  "threads": 2,
+  "sentences": 12,
+  "conditions": [
+    "normal",
+    "fast",
+    "slow",
+    "quiet (-24 dB)",
+    "noisy (SNR 10 dB)",
+    "clipped"
+  ],
+  "voices": [
+    "en-gb",
+    "en-gb-x-rp",
+    "en-us",
+    "en-gb-scotland"
+  ],
+  "report": {
+    "Whisper base.en (current)": {
+      "wer": 10.5,
+      "avgLatencyMs": 420,
+      "realTimeFactor": 0.11,
+      "byCondition": {
+        "normal": 5.6,
+        "fast": 14.8,
+        "slow": 3.7,
+        "quiet (-24 dB)": 5.6,
+        "noisy (SNR 10 dB)": 27.8,
+        "clipped": 5.6
+      },
+      "mistakes": [
+        {
+          "condition": "normal",
+          "voice": "en-gb-x-rp",
+          "ref": "What's the weather like tomorrow",
+          "hyp": "What's the winner like tomorrow?"
+        },
+        {
+          "condition": "normal",
+          "voice": "en-us",
+          "ref": "Remind me to call my mum at six",
+          "hyp": "Remind me to call my mom at 6."
+        },
+        {
+          "condition": "normal",
+          "voice": "en-gb",
+          "ref": "Start a twenty five minute focus session",
+          "hyp": "Start at 25 minute focus session"
+        },
+        {
+          "condition": "normal",
+          "voice": "en-gb-scotland",
+          "ref": "What was that business idea I was working on last week",
+          "hyp": "What was not business idea I was working on last week?"
+        },
+        {
+          "condition": "normal",
+          "voice": "en-gb-x-rp",
+          "ref": "Add a meeting with the accountant on Friday at half past two in the afternoon",
+          "hyp": "at a meeting with the accountant on Friday at half past two in the afternoon."
+        },
+        {
+          "condition": "normal",
+          "voice": "en-gb-scotland",
+          "ref": "How much money have I got left until the end of the month",
+          "hyp": "How much money I got left until the end of the month"
+        },
+        {
+          "condition": "fast",
+          "voice": "en-gb-x-rp",
+          "ref": "What's the weather like tomorrow",
+          "hyp": "Wasn't it when I like to mallow?"
+        },
+        {
+          "condition": "fast",
+          "voice": "en-us",
+          "ref": "Remind me to call my mum at six",
+          "hyp": "Remind me to call my mom at 6."
+        },
+        {
+          "condition": "fast",
+          "voice": "en-gb-scotland",
+          "ref": "Open Chrome",
+          "hyp": "Open"
+        },
+        {
+          "condition": "fast",
+          "voice": "en-gb-scotland",
+          "ref": "What was that business idea I was working on last week",
+          "hyp": "What was the business idea I was working on last week?"
+        },
+        {
+          "condition": "fast",
+          "voice": "en-gb-x-rp",
+          "ref": "Add a meeting with the accountant on Friday at half past two in the afternoon",
+          "hyp": "The meeting with Lea Canton on Friday at half past two in the afternoon."
+        },
+        {
+          "condition": "fast",
+          "voice": "en-gb-scotland",
+          "ref": "How much money have I got left until the end of the month",
+          "hyp": "How much money I might have left until the end of the month."
+        }
+      ]
+    },
+    "Parakeet TDT 0.6B v2 (new)": {
+      "wer": 2.6,
+      "avgLatencyMs": 340,
+      "realTimeFactor": 0.089,
+      "byCondition": {
+        "normal": 0,
+        "fast": 1.9,
+        "slow": 0,
+        "quiet (-24 dB)": 0,
+        "noisy (SNR 10 dB)": 12,
+        "clipped": 1.9
+      },
+      "mistakes": [
+        {
+          "condition": "fast",
+          "voice": "en-us",
+          "ref": "Remind me to call my mum at six",
+          "hyp": "Reminds me to call my mum at 6."
+        },
+        {
+          "condition": "fast",
+          "voice": "en-gb-scotland",
+          "ref": "Open Chrome",
+          "hyp": "Open trump."
+        },
+        {
+          "condition": "noisy (SNR 10 dB)",
+          "voice": "en-gb-scotland",
+          "ref": "Open Chrome",
+          "hyp": "Open floor."
+        },
+        {
+          "condition": "noisy (SNR 10 dB)",
+          "voice": "en-gb-scotland",
+          "ref": "What was that business idea I was working on last week",
+          "hyp": "What one has been this idea I was working on last week."
+        },
+        {
+          "condition": "noisy (SNR 10 dB)",
+          "voice": "en-gb",
+          "ref": "Can you summarise my tasks for today and tell me which ones are overdue",
+          "hyp": "Can you summarize my tasks for today and tell me which one Maroma you?"
+        },
+        {
+          "condition": "noisy (SNR 10 dB)",
+          "voice": "en-gb-x-rp",
+          "ref": "Add a meeting with the accountant on Friday at half past two in the afternoon",
+          "hyp": "Have a meeting with the accountant on Friday at half past two in the afternoon."
+        },
+        {
+          "condition": "noisy (SNR 10 dB)",
+          "voice": "en-us",
+          "ref": "Run a full system diagnostic",
+          "hyp": "Run a full system die and ask it."
+        },
+        {
+          "condition": "clipped",
+          "voice": "en-gb-scotland",
+          "ref": "Open Chrome",
+          "hyp": "Or can chrome."
+        }
+      ]
+    }
+  }
+}

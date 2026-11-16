@@ -67,7 +67,29 @@ Actions:
 - Memory: save lasting, useful facts (preferences, goals, important dates, decisions) with remember. Do not save trivia or one-off chatter. Mark health, religion, politics, sexuality, exact address, ID numbers and detailed finances as sensitive — they are only stored after the user agrees. Never store passwords, PINs or card numbers.
 - Research: use web search for anything current or factual you are not certain of, compare sources, and cite them. Use start_research for a longer written report.
 - When the user wants to start something substantial ("I want to start a business"), create a project with milestones and first tasks, then summarise the plan briefly.`;
-const persona = () => `${PERSONA_BASE}\nAddress the user as "${title()}" naturally (not in every sentence).${getSettings().personality?.verbosity === "detailed" ? " The user prefers fuller answers." : ""}`;
+const MODES = {
+  standard: "Mode: STANDARD — natural, warm, efficient conversation.",
+  cinematic: "Mode: CINEMATIC — more expressive, like the AI of a science-fiction film: occasional system-style phrasing (\"Cross-referencing available intelligence\", \"Standing by\"), still factual and concise.",
+  concise: "Mode: CONCISE — the shortest correct answer, usually one sentence. No pleasantries.",
+  professional: "Mode: PROFESSIONAL — formal, precise and businesslike; no humour.",
+  focus: "Mode: FOCUS — the user is concentrating: be brief, don't volunteer extra information, raise only what is important.",
+};
+const LEVEL = ["none", "a little", "moderate", "plenty of"];
+export const persona = () => {
+  const p = getSettings().personality || {};
+  const mode = MODES[p.mode] ? p.mode : "standard";
+  return `${PERSONA_BASE}
+Address the user as "${title()}" naturally (not in every sentence).
+${MODES[mode]} Formality: ${LEVEL[p.formality ?? 2]}. Humour: ${LEVEL[mode === "professional" || mode === "concise" ? 0 : p.humour ?? 1]}. Cinematic sci-fi flavour: ${LEVEL[mode === "cinematic" ? 3 : p.cinematic ?? 1]}.${p.verbosity === "detailed" ? " The user prefers fuller answers." : ""}
+Cinematic language is decoration only: it must never replace or contradict real results. If something is offline, untested or failed, say exactly that.
+Personal knowledge:
+- The "Personal profile" below is what the user has told you about themselves. Use it naturally when relevant (e.g. "What was that business idea?" → the website design agency). Never invent personal details, and remember older facts may be out of date — if unsure, ask.
+- For "what are my priorities/goals/projects", use the real saved goals, projects and tasks (tools) — never make them up.
+- When the user shares something lasting about themselves (a new job, a preference, a decision, an idea to keep), ask "Would you like me to remember that for future conversations, ${title()}?" unless they already asked you to remember it. Only call remember with user_confirmed=true after a clear yes or an explicit request.
+- When they correct or retract something ("I'm no longer interested in that career"), update or delete that memory with correct_memory (ids are shown as #id), then confirm briefly.
+- Never store passwords, PINs, bank details or other credentials.
+- Diagnostics and status: use run_diagnostics for "run a diagnostic / status report / are all systems operational / how are you performing" and system_status for resource questions. Speak its narration lines in order (you may lightly vary wording), then give the real summary.`;
+};
 const PERSONA = PERSONA_BASE;
 
 function localNow(tz) {
@@ -83,8 +105,8 @@ async function contextBlock({ userText, deviceKind, loc, voiceTurn = false }) {
   const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
   const events = calendar.list(new Date(Date.now() - 3600_000).toISOString(), new Date(Date.now() + 2 * 86400_000).toISOString()).slice(0, 10);
   const projs = projects.list({ includeDone: false }).slice(0, 8);
-  const relevant = userText ? await memory.search(userText, 6) : [];
-  const profile = memory.profile(10);
+  const memOn = (s.memory?.mode || "ask") !== "off";
+  const relevant = memOn && userText ? await memory.search(userText, 6) : [];
   const pend = pending.list();
   const fin = { connections: connections.all().filter((c) => ["monzo", "demo"].includes(c.provider)).map(connections.view) };
   fin.testData = fin.connections.some((c) => c.provider === "demo");
@@ -104,8 +126,10 @@ async function contextBlock({ userText, deviceKind, loc, voiceTurn = false }) {
     (() => { const f = focus.active(); return f ? `Focus session running: ${f.label}, ${Math.ceil(f.remainingSeconds / 60)} min left.` : ""; })(),
     (() => { const hs = habits.list({ active: true }); return hs.length ? `Habits today: ${hs.map((h) => `${h.name} ${h.doneToday ? "done" : "not done"}${h.streak ? ` (streak ${h.streak})` : ""}`).join("; ")}.` : ""; })(),
     `Unread notifications: ${notifications.unreadCount()}. Recently: ${recentActivity(5).map((a) => a.summary).join("; ") || "nothing"}.`,
-    `About the user: ${profile.length ? profile.map((m) => m.fact).join(" | ") : "nothing saved yet"}.`,
-    relevant.length ? `Relevant memories: ${relevant.map((m) => `[${m.category}] ${m.fact}`).join(" | ")}` : "",
+    memOn ? "" : "Memory is switched OFF by the user: don't use or save personal memories.",
+    relevant.length ? `Memories relevant to this message: ${relevant.map((m) => `#${m.id} [${m.category}] ${m.fact}`).join(" | ")}` : "",
+    (() => { const n = calendar.nextEvent(); return n && Date.parse(n.start) - Date.now() < 90 * 60_000 ? `Heads-up (mention only if relevant): "${n.title}" starts ${fmtLocal(n.start, tz)}.` : ""; })(),
+    `Interface mode: ${s.personality?.mode || "standard"}.`,
   ].filter(Boolean).join("\n");
 }
 
@@ -148,8 +172,13 @@ const TOOLS = [
   { name: "create_project", description: "Create a structured project with milestones and starter tasks (dates YYYY-MM-DD, priority 1 high to 3 low).",
     input_schema: obj({ title: S, goal: S, milestones: { type: "array", items: obj({ title: S, due: S, tasks: { type: "array", items: obj({ title: S, due: S, priority: { type: "integer", enum: [1, 2, 3] } }, ["title"]) } }, ["title"]) } }, ["title", "goal", "milestones"]) },
   { name: "get_project", description: "Retrieve a project (by id or search text) with milestones, tasks, progress, overdue work and next actions.", input_schema: obj({ id: I, query: S }) },
-  { name: "update_project", description: "Change a project's status or notes, or add a milestone.", input_schema: obj({ id: I, status: { type: "string", enum: ["active", "paused", "done"] }, notes: S, add_milestone: S, milestone_due: S }, ["id"]) },
-  { name: "remember", description: "Save a lasting fact about the user.", input_schema: obj({ fact: S, category: { type: "string", enum: MEM_CATS }, sensitive: B }, ["fact", "category"]) },
+  { name: "update_project", description: "Change a project's status or notes, add a milestone, or append to its workspace notes (append_note keeps the existing notes — use it for creative work like KILL HOUSE chapters, characters and plot decisions).", input_schema: obj({ id: I, status: { type: "string", enum: ["active", "paused", "done"] }, notes: S, append_note: S, add_milestone: S, milestone_due: S }, ["id"]) },
+  { name: "remember", description: "Save a lasting fact about the user. user_confirmed must be true only if the user explicitly asked you to remember it or said yes when you asked. Categories: profile, career, ambition, interest, hobby, business, creative, date, preference, routine, task, decision, topic.",
+    input_schema: obj({ fact: S, category: { type: "string", enum: MEM_CATS.filter((c) => c !== "summary") }, sensitive: B, user_confirmed: B, topic: S }, ["fact", "category", "user_confirmed"]) },
+  { name: "correct_memory", description: "Update or delete a saved memory by id after the user corrects or retracts it.", input_schema: obj({ id: I, fact: S, category: { type: "string", enum: MEM_CATS }, delete: B }, ["id"]) },
+  { name: "run_diagnostics", description: "Run real system checks. level: quick | full | voice | ai | network | security | performance | hardware | integrations. Returns narration lines and real results.", input_schema: obj({ level: { type: "string", enum: ["quick", "full", "voice", "ai", "network", "security", "performance", "hardware", "integrations"] } }, ["level"]) },
+  { name: "system_status", description: "Live system awareness: service health, errors detected, resource use (CPU, memory, storage), what's using the most resources on the laptop, recent errors.", input_schema: obj({}) },
+  { name: "interface", description: "Control the JARVIS interface on the user's current device: mission_control_on, mission_control_off, set_mode (standard|cinematic|concise|professional|focus), open_section (section id).", input_schema: obj({ action: { type: "string", enum: ["mission_control_on", "mission_control_off", "set_mode", "open_section"] }, mode: { type: "string", enum: ["standard", "cinematic", "concise", "professional", "focus"] }, section: S }, ["action"]) },
   { name: "recall", description: "Search long-term memory.", input_schema: obj({ query: S }, ["query"]) },
   { name: "forget", description: "Delete a memory by id.", input_schema: obj({ id: I }, ["id"]) },
   { name: "computer", description: "Do something on the user's Windows laptop through the allowlisted actions: open_app {app}, open_folder {folder}, open_bookmark {name}, open_url {url}, create_document {title, content, format}, search_files {query, folder}, open_file {path}, create_folder {name, parent}, screenshot, list_windows, focus_window {target}, minimize_window {target}, close_window {target} (needs confirmation), clipboard_read, clipboard_write {text}, lock_screen, system_status.",
@@ -311,15 +340,41 @@ async function runTool(name, input, ctx) {
     }
     case "update_project": {
       if (input.add_milestone) projects.addMilestone(input.id, { title: input.add_milestone, due: input.milestone_due });
-      const p = projects.update(input.id, { status: input.status, notes: input.notes });
+      const cur = projects.get(input.id);
+      const notes = input.append_note ? `${cur?.notes ? cur.notes + "\n\n" : ""}[${localDate()}] ${input.append_note}`.slice(-5000) : input.notes;
+      const p = projects.update(input.id, { status: input.status, notes });
       return p ? { ok: true, project: projects.report(p.id) } : { ok: false, error: "No such project" };
     }
     case "remember": {
-      if (!s.memory.autoSave && !ctx.explicitMemory) return { ok: false, error: "Automatic memory is switched off; ask the user to save it from the Memory page." };
-      const r = await memory.save({ fact: input.fact, category: input.category, sensitive: input.sensitive, source: "conversation" });
+      const mode = s.memory?.mode || "ask";
+      if (mode === "off") return { ok: false, error: "Memory is switched off by the user (Memory & Notes)." };
+      if (mode === "ask" && !input.user_confirmed) return { ok: false, needsConfirmation: true, error: `Ask first: "Would you like me to remember that for future conversations, ${title()}?" Then call remember again with user_confirmed=true if they agree.` };
+      const r = await memory.save({ fact: input.fact, category: input.category, sensitive: input.sensitive, source: "conversation", topic: input.topic });
       return r.pending ? { ok: true, pending: true, id: r.id, note: "Sensitive: stored only after the user approves. Ask them if you may keep it; if yes call confirm_pending with id 'memory:" + r.id + "'." } : r;
     }
-    case "recall": return { ok: true, memories: (await memory.search(input.query, 8)).map((m) => ({ id: m.id, fact: m.fact, category: m.category })) };
+    case "recall": return (s.memory?.mode || "ask") === "off" ? { ok: false, error: "Memory is switched off by the user." } : { ok: true, memories: (await memory.search(input.query, 8)).map((m) => ({ id: m.id, fact: m.fact, category: m.category })) };
+    case "correct_memory": {
+      if (!memory.get(input.id)) return { ok: false, error: "No such memory" };
+      if (input.delete) return { ok: memory.remove(input.id), deleted: true };
+      const m = await memory.update(input.id, { fact: input.fact, category: input.category });
+      return { ok: true, memory: { id: m.id, fact: m.fact, category: m.category } };
+    }
+    case "run_diagnostics": {
+      const { runLevel } = await import("./services/narrator.js");
+      const r = await runLevel(input.level || "quick", { client, deviceId: ctx.deviceId });
+      ctx.diagnostics = r;
+      return { ok: true, overall: r.overall, narration: r.narration, problems: r.problems, durationMs: r.durationMs };
+    }
+    case "system_status": {
+      const { systemAwareness } = await import("./services/narrator.js");
+      return { ok: true, ...(await systemAwareness()) };
+    }
+    case "interface": {
+      const { sendToDevice } = await import("./realtime.js");
+      if (input.action === "set_mode") { const { updateSettings } = await import("./db.js"); updateSettings({ personality: { mode: input.mode || "standard" } }); changed("settings"); return { ok: true, mode: input.mode }; }
+      const sent = sendToDevice(ctx.deviceId, { type: "ui", action: input.action, section: input.section });
+      return sent ? { ok: true } : { ok: false, error: "This device isn't connected live." };
+    }
     case "forget": return { ok: memory.remove(input.id) };
     case "computer": {
       const { action, ...rest } = input;
@@ -382,6 +437,7 @@ export async function chat({ text, conversationId, deviceId, deviceKind, clientI
   const ctx = { loc, deviceId, changed: new Set() };
   const system = [
     { type: "text", text: persona(), cache_control: { type: "ephemeral" } },
+    ...((getSettings().memory?.mode || "ask") !== "off" ? [{ type: "text", text: `Personal profile (from saved memory; ids for corrections):\n${memory.profileBlock() || "Nothing saved yet."}`, cache_control: { type: "ephemeral" } }] : []),
     { type: "text", text: `${summary ? `Earlier in this conversation (summary): ${summary}\n` : ""}${await contextBlock({ userText: text, deviceKind, loc, voiceTurn: voice })}` },
   ];
   const messages = [...turns, { role: "user", content: text }];

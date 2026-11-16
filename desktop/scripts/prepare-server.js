@@ -44,27 +44,39 @@ if (target === "win32") { fs.mkdirSync(nodeDir, { recursive: true }); fs.copyFil
 else { fs.mkdirSync(path.join(nodeDir, "bin"), { recursive: true }); fs.copyFileSync(path.join(extracted, "bin", "node"), path.join(nodeDir, "bin", "node")); fs.chmodSync(path.join(nodeDir, "bin", "node"), 0o755); }
 fs.rmSync(tmp, { recursive: true, force: true });
 
-// Local speech recognition model (Whisper base.en, int8) from the sherpa-onnx releases, checksum-pinned.
-const ASR = { file: "sherpa-onnx-whisper-base.en.tar.bz2", sha256: "475bc7052ce299c007f6d5d5407ba8601f819a2867f6eecee510ed17df581542" };
-const asrUrl = `https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/${ASR.file}`;
-console.log(`Downloading ${asrUrl}`);
-const ar = await fetch(asrUrl);
-if (!ar.ok) throw new Error(`ASR model download failed: ${ar.status}`);
-const atmp = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-asr-"));
-const abuf = Buffer.from(await ar.arrayBuffer());
-const asum = (await import("node:crypto")).createHash("sha256").update(abuf).digest("hex");
-if (asum !== ASR.sha256) throw new Error(`Checksum mismatch for ${ASR.file}`);
-fs.writeFileSync(path.join(atmp, ASR.file), abuf);
-// Windows' built-in tar may lack bzip2; Git for Windows' tar (present on GitHub runners) has it.
-const tars = process.platform === "win32" ? ["C:\\Program Files\\Git\\usr\\bin\\tar.exe", "tar"] : ["tar"];
-let extractedOk = false;
-for (const t of tars) {
-  try { execFileSync(t, ["-xjf", process.platform === "win32" && t.includes("Git") ? path.join(atmp, ASR.file).replace(/\\/g, "/").replace(/^([A-Za-z]):/, "/$1") : path.join(atmp, ASR.file), "-C", process.platform === "win32" && t.includes("Git") ? atmp.replace(/\\/g, "/").replace(/^([A-Za-z]):/, "/$1") : atmp], { stdio: "inherit" }); extractedOk = true; break; }
-  catch (e) { console.warn(`${t} could not extract: ${e.message}`); }
-}
-if (!extractedOk) throw new Error("Could not extract the speech model archive");
+// Local speech recognition model: NVIDIA Parakeet TDT 0.6B v2 (int8) from the sherpa-onnx releases, checksum-pinned.
+// Chosen by measurement (scripts/asr-bench.mjs → docs/asr-benchmark.json): far fewer word errors than Whisper base.en.
+const ASR = { file: "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2", dir: "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8", sha256: "6fc4426b54aa549a0019b8a75b8dea59164e71790a37ac56a045ad57f915f714", files: ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"] };
 const asrDir = path.join(bundle, "asr");
-fs.mkdirSync(asrDir, { recursive: true });
-for (const f of ["base.en-encoder.int8.onnx", "base.en-decoder.int8.onnx", "base.en-tokens.txt"]) fs.copyFileSync(path.join(atmp, "sherpa-onnx-whisper-base.en", f), path.join(asrDir, f));
-fs.rmSync(atmp, { recursive: true, force: true });
-console.log(`Bundled Node ${NODE_VERSION} (${target}), the JARVIS server and local Whisper into desktop/bundle/`);
+if (ASR.files.every((f) => fs.existsSync(path.join(asrDir, f))) && fs.existsSync(path.join(asrDir, ".source")) && fs.readFileSync(path.join(asrDir, ".source"), "utf8").trim() === ASR.sha256) {
+  console.log("Speech model already bundled");
+} else {
+  const asrUrl = `https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/${ASR.file}`;
+  console.log(`Downloading ${asrUrl}`);
+  const atmp = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-asr-"));
+  const archivePath = path.join(atmp, ASR.file);
+  const ar = await fetch(asrUrl);
+  if (!ar.ok) throw new Error(`ASR model download failed: ${ar.status}`);
+  // Stream to disk while hashing (the archive is ~480 MB).
+  const hash = (await import("node:crypto")).createHash("sha256");
+  const out = fs.createWriteStream(archivePath);
+  for await (const chunk of ar.body) { hash.update(chunk); if (!out.write(chunk)) await new Promise((r) => out.once("drain", r)); }
+  await new Promise((r, j) => out.end((e) => (e ? j(e) : r())));
+  if (hash.digest("hex") !== ASR.sha256) throw new Error(`Checksum mismatch for ${ASR.file}`);
+  // Windows' built-in tar may lack bzip2; Git for Windows' tar (present on GitHub runners) has it.
+  const tars = process.platform === "win32" ? ["C:\\Program Files\\Git\\usr\\bin\\tar.exe", "tar"] : ["tar"];
+  const gitPath = (p) => p.replace(/\\/g, "/").replace(/^([A-Za-z]):/, "/$1");
+  let extractedOk = false;
+  for (const t of tars) {
+    const git = process.platform === "win32" && t.includes("Git");
+    try { execFileSync(t, ["-xjf", git ? gitPath(archivePath) : archivePath, "-C", git ? gitPath(atmp) : atmp, ...ASR.files.map((f) => `${ASR.dir}/${f}`)], { stdio: "inherit" }); extractedOk = true; break; }
+    catch (e) { console.warn(`${t} could not extract: ${e.message}`); }
+  }
+  if (!extractedOk) throw new Error("Could not extract the speech model archive");
+  fs.rmSync(asrDir, { recursive: true, force: true });
+  fs.mkdirSync(asrDir, { recursive: true });
+  for (const f of ASR.files) fs.renameSync(path.join(atmp, ASR.dir, f), path.join(asrDir, f));
+  fs.writeFileSync(path.join(asrDir, ".source"), ASR.sha256);
+  fs.rmSync(atmp, { recursive: true, force: true });
+}
+console.log(`Bundled Node ${NODE_VERSION} (${target}), the JARVIS server and the Parakeet speech model into desktop/bundle/`);

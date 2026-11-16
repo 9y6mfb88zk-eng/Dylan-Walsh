@@ -28,7 +28,8 @@ const DEFAULTS = {
   mode: "local",                 // "local" = JARVIS server runs on this laptop; "remote" = connect to a cloud server
   serverUrl: process.env.JARVIS_SERVER_URL || "",
   phoneAccess: false, phoneUrl: null,
-  wakeEnabled: true, wakeJarvisAlone: true, threshold: 0.5, minFrames: 2, vadThreshold: 0.035, micDeviceId: null,
+  wakeEnabled: true, wakeJarvisAlone: true, threshold: 0.5, minFrames: 2, vadThreshold: 0.03, micDeviceId: null,
+  endpointMs: 1200, noiseSuppression: true, echoCancellation: true, autoGainControl: true, calibratedAt: null,
   autoStart: true, closeToTray: true, computerEnabled: true, bookmarks: {},
   pttShortcut: "CommandOrControl+Shift+Space", muteShortcut: "CommandOrControl+Shift+M",
 };
@@ -168,6 +169,7 @@ function audioConfig() {
     enabled: micOn, paused: false, micOn, muted: status.muted, wakeEnabled: settings.wakeEnabled,
     detect: settings.wakeEnabled && !status.muted && (!sessionActive || bargeInAllowed()),
     threshold: settings.threshold, minFrames: settings.minFrames, micDeviceId: settings.micDeviceId, vadThreshold: settings.vadThreshold,
+    endpointMs: settings.endpointMs, noiseSuppression: settings.noiseSuppression, echoCancellation: settings.echoCancellation, autoGainControl: settings.autoGainControl,
   };
 }
 function sendAudioConfig() { audioWin?.webContents.send("audio:config", audioConfig()); }
@@ -246,7 +248,8 @@ function pushToTalk() { showMain(); win?.webContents.send("jarvis:ptt"); }
 
 function applySettings(patch) {
   if ("autoStart" in patch) app.setLoginItemSettings({ openAtLogin: !!settings.autoStart, args: ["--hidden"] });
-  if (["wakeEnabled", "threshold", "minFrames", "micDeviceId", "vadThreshold"].some((k) => k in patch)) {
+  if (["noiseSuppression", "echoCancellation", "autoGainControl"].some((k) => k in patch)) audioWin?.webContents.send("audio:config", { ...audioConfig(), restartMic: true });
+  if (["wakeEnabled", "threshold", "minFrames", "micDeviceId", "vadThreshold", "endpointMs"].some((k) => k in patch)) {
     if ("wakeEnabled" in patch && !settings.wakeEnabled) status.wakeWord = "disabled";
     sendAudioConfig();
   }
@@ -312,10 +315,13 @@ const runAction = createActions({
 ipcMain.handle("jarvis:getStatus", () => status);
 ipcMain.handle("jarvis:getSettings", () => settings);
 ipcMain.handle("jarvis:setSettings", (_e, patch) => {
-  const allowed = ["wakeEnabled", "wakeJarvisAlone", "threshold", "minFrames", "vadThreshold", "micDeviceId", "autoStart", "closeToTray", "computerEnabled", "bookmarks"];
+  const allowed = ["wakeEnabled", "wakeJarvisAlone", "threshold", "minFrames", "vadThreshold", "micDeviceId", "autoStart", "closeToTray", "computerEnabled", "bookmarks", "endpointMs", "noiseSuppression", "echoCancellation", "autoGainControl", "calibratedAt"];
   const clean = Object.fromEntries(Object.entries(patch || {}).filter(([k]) => allowed.includes(k)));
   if (clean.threshold != null) clean.threshold = Math.min(0.99, Math.max(0.2, Number(clean.threshold)));
   if (clean.minFrames != null) clean.minFrames = Math.min(5, Math.max(1, Math.round(clean.minFrames)));
+  if (clean.vadThreshold != null) clean.vadThreshold = Math.min(0.2, Math.max(0.004, Number(clean.vadThreshold) || 0.03));
+  if (clean.endpointMs != null) clean.endpointMs = Math.min(3000, Math.max(500, Math.round(Number(clean.endpointMs) || 1200)));
+  for (const k of ["noiseSuppression", "echoCancellation", "autoGainControl"]) if (k in clean) clean[k] = !!clean[k];
   if (clean.bookmarks) clean.bookmarks = Object.fromEntries(Object.entries(clean.bookmarks).slice(0, 50).map(([k, v]) => [String(k).slice(0, 60), String(v).slice(0, 500)]));
   return saveSettings(clean);
 });

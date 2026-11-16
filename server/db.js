@@ -66,7 +66,7 @@ export const DEFAULT_SETTINGS = {
   briefing: { time: config.briefingTime, enabled: true, sections: { weather: true, calendar: true, tasks: true, finance: true, projects: true, news: false } },
   ideas: { enabled: config.ideasEnabled, everyMinutes: config.ideasEveryMinutes },
   finance: { enabled: true, buffer: 5000 },     // keep £50 aside in affordability checks
-  memory: { autoSave: true },
+  memory: { autoSave: true, mode: "ask" },     // ask = ask before remembering things you mention; auto; off = memory disabled
   computer: { enabled: true },
   timezone: config.timezone,
   // How JARVIS talks and listens. continuous: after "Hey JARVIS", follow-up questions need no wake word until
