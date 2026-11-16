@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>JARVIS</title>
+  <meta name="theme-color" content="#07040d">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="JARVIS">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="aurora" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i><i class="b4"></i></div>
+  <div class="grain" aria-hidden="true"></div>
+
+  <!-- Passcode gate -->
+  <section id="gate" class="gate" hidden>
+    <form class="glass gate-card" id="gateForm">
+      <div class="mini-orb"></div>
+      <h2>Good to see you, sir.</h2>
+      <p>Your passcode, if you please.</p>
+      <input id="gateInput" type="password" inputmode="text" autocomplete="current-password" placeholder="Passcode" required>
+      <button class="pill-btn" type="submit">Enter</button>
+      <p class="gate-err" id="gateErr"></p>
+    </form>
+  </section>
+
+  <main id="app">
+    <!-- HOME -->
+    <section class="view active" data-view="home">
+      <header class="topbar">
+        <div class="brand">J·A·R·V·I·S</div>
+        <div class="status" id="statusChip"><span class="dot"></span><span id="statusText">Online</span></div>
+      </header>
+
+      <div class="stage">
+        <button class="orb-wrap" id="orb" aria-label="Talk to JARVIS" data-state="idle">
+          <canvas id="ripples" class="ripples"></canvas>
+          <div class="ring r1"></div>
+          <div class="ring r2"></div>
+          <div class="ring r3"></div>
+          <div class="orb"><div class="core"></div><div class="sheen"></div></div>
+        </button>
+        <h1 class="greeting" id="greeting">Good evening, sir.</h1>
+        <div class="wave" id="wave" aria-hidden="true"></div>
+        <p class="caption" id="caption" aria-live="polite"></p>
+      </div>
+
+      <div class="controls">
+        <form class="glass text-pill" id="textForm" autocomplete="off">
+          <input id="textInput" type="text" placeholder="Type to JARVIS…" enterkeyhint="send">
+          <button type="submit" aria-label="Send" class="icon-btn"><svg viewBox="0 0 24 24"><path d="M4 12h13M12 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        </form>
+        <button class="mic glass" id="mic" aria-label="Hold or tap to speak">
+          <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+
+      <div class="widgets">
+        <article class="glass card weather" id="weatherCard">
+          <div class="card-head"><span>Weather</span><span class="muted" id="wPlace">—</span></div>
+          <div class="w-main">
+            <div class="w-temp" id="wTemp">--°</div>
+            <div class="w-meta"><div id="wSummary">Fetching…</div><div class="muted" id="wHiLo"></div></div>
+            <div class="w-icon" id="wIcon"></div>
+          </div>
+          <div class="w-hours" id="wHours"></div>
+        </article>
+        <div class="row">
+          <article class="glass card mini" data-go="tasks"><div class="card-head"><span>Tasks</span></div><div class="big" id="taskCount">0</div><div class="muted" id="taskNext">Nothing pressing</div></article>
+          <article class="glass card mini" data-go="reminders"><div class="card-head"><span>Next reminder</span></div><div class="big sm" id="remNext">None</div><div class="muted" id="remWhen"></div></article>
+        </div>
+        <article class="glass card idea-teaser" data-go="ideas"><div class="card-head"><span>Latest idea</span><span class="muted" id="ideaAge"></span></div><div id="ideaTeaser" class="muted">The first will arrive shortly, sir.</div></article>
+        <button class="glass pill-btn wide" id="briefBtn">Brief me</button>
+      </div>
+    </section>
+
+    <!-- TASKS -->
+    <section class="view" data-view="tasks">
+      <header class="topbar"><div class="title">Tasks</div><button class="link" id="toggleDone">Show done</button></header>
+      <form class="glass text-pill add" id="taskForm" autocomplete="off"><input id="taskInput" placeholder="Add a task…"><button class="icon-btn" aria-label="Add">+</button></form>
+      <ul class="list" id="taskList"></ul>
+    </section>
+
+    <!-- REMINDERS -->
+    <section class="view" data-view="reminders">
+      <header class="topbar"><div class="title">Reminders</div></header>
+      <form class="glass rem-form" id="remForm" autocomplete="off">
+        <input id="remText" placeholder="Remind me to…" required>
+        <input id="remWhenInput" type="datetime-local" required>
+        <button class="pill-btn">Set</button>
+      </form>
+      <p class="hint">Or just say, “Remind me in twenty minutes to call Andreas.” Reminders fire from the server, even with the app closed.</p>
+      <ul class="list" id="remList"></ul>
+      <h3 class="sub">Recently fired</h3>
+      <ul class="list dim" id="remRecent"></ul>
+    </section>
+
+    <!-- IDEAS -->
+    <section class="view" data-view="ideas">
+      <header class="topbar"><div class="title">Ideas</div><button class="link" id="genIdea">New idea now</button></header>
+      <p class="hint" id="ideasHint">A fresh idea is drafted in the background every 30 minutes.</p>
+      <div class="ideas" id="ideaList"></div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="view" data-view="settings">
+      <header class="topbar"><div class="title">Settings</div></header>
+      <div class="glass card settings">
+        <div class="set-row"><div><b>Notifications</b><div class="muted" id="pushState">Off</div></div><button class="pill-btn" id="pushBtn">Enable</button></div>
+        <div class="set-row"><div><b>Location</b><div class="muted" id="locState">Dhekelia, Cyprus (default)</div></div><button class="pill-btn" id="locBtn">Use mine</button></div>
+        <div class="set-row"><div><b>Voice</b><div class="muted" id="voiceState">—</div></div><button class="pill-btn" id="voiceTest">Test</button></div>
+        <div class="set-row"><div><b>Listening</b><div class="muted" id="sttState">—</div></div></div>
+        <div class="set-row"><div><b>Test push</b><div class="muted">Send a notification to this device</div></div><button class="pill-btn" id="pushTest">Send</button></div>
+        <div class="set-row"><div><b>Forget conversation</b><div class="muted">Clears short-term context</div></div><button class="pill-btn" id="clearHist">Clear</button></div>
+      </div>
+      <h3 class="sub">Things JARVIS remembers</h3>
+      <ul class="list" id="memList"></ul>
+      <p class="hint" id="installHint"></p>
+    </section>
+  </main>
+
+  <nav class="dock glass" id="dock">
+    <button data-tab="home" class="active" aria-label="Home"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".5"/></svg><span>Home</span></button>
+    <button data-tab="tasks" aria-label="Tasks"><svg viewBox="0 0 24 24"><path d="M5 7l2 2 4-4M5 15l2 2 4-4M14 8h6M14 16h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Tasks</span></button>
+    <button data-tab="reminders" aria-label="Reminders"><svg viewBox="0 0 24 24"><path d="M6 17V11a6 6 0 0 1 12 0v6l1.5 2h-15zM10 21h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg><span>Remind</span></button>
+    <button data-tab="ideas" aria-label="Ideas"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg><span>Ideas</span></button>
+    <button data-tab="settings" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>Settings</span></button>
+  </nav>
+
+  <div class="toast glass" id="toast" role="status"></div>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
