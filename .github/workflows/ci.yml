@@ -1,0 +1,54 @@
+name: JARVIS CI and Windows installer
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - name: Backend and finance tests
+        run: npm test
+      - name: Desktop unit tests (wake word, actions)
+        working-directory: desktop
+        run: |
+          npm ci
+          npm test
+
+  windows-installer:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Install
+        working-directory: desktop
+        run: npm ci
+      - name: Wake-word and action tests on Windows
+        working-directory: desktop
+        run: npm test
+      - name: Build JARVIS-Setup.exe
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm run dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JARVIS-Windows-Installer
+          path: desktop/dist/*.exe
+      - name: Publish to the "desktop-latest" release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete desktop-latest --yes --cleanup-tag || true
+          gh release create desktop-latest desktop/dist/*.exe --title "JARVIS for Windows (latest)" --notes "Built from ${GITHUB_SHA::7}. Download JARVIS-Setup-*.exe and run it. Windows SmartScreen may warn because the installer isn't code-signed: choose More info → Run anyway." --target "$GITHUB_SHA"

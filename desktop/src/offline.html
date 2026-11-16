@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self'">
+<title>JARVIS — reconnecting</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #06030c; color: #f1ecff; font: 15px/1.5 "Segoe UI", system-ui, sans-serif; text-align: center; }
+  .orb { width: 80px; height: 80px; border-radius: 50%; margin: 0 auto 16px; background: radial-gradient(circle at 35% 30%, #fff, #a78bfa 40%, #4c1d95); animation: p 2s ease-in-out infinite; }
+  @keyframes p { 50% { opacity: .5; transform: scale(.95); } }
+  p { color: rgba(226,216,255,.65); max-width: 420px; }
+</style>
+</head>
+<body>
+  <div><div class="orb"></div><h2>Reconnecting to JARVIS…</h2><p id="m">The server can't be reached right now. I'll keep trying and reconnect automatically. The wake word stays ready on this laptop.</p></div>
+  <script src="offline.js"></script>
+</body>
+</html>

@@ -3,11 +3,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import WebSocket from "ws";
+import { fileURLToPath } from "node:url";
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Start the real backend against the mocks, in a fresh data directory. */
 export async function startServer(mock, extraEnv = {}, port = 3900 + Math.floor(Math.random() * 90)) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-test-"));
-  const proc = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", "server/index.js"], {
+  const proc = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", path.join(ROOT, "server/index.js")], {
+    cwd: ROOT,
     env: { PATH: process.env.PATH, PORT: String(port), JARVIS_DATA_DIR: dataDir, JARVIS_SETUP_TOKEN: "SETUP-1234", IDEAS_ENABLED: "false", REMINDER_POLL_SECONDS: "1", ...mock.env, ...extraEnv },
     stdio: ["ignore", "pipe", "pipe"],
   });

@@ -1,0 +1,92 @@
+[
+  {
+    "name": "app opens the JARVIS window pointed at the server",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "signed in from the desktop app",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "desktop bridge exposed only to the JARVIS origin",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "local wake-word service is listening on the microphone",
+    "ok": true,
+    "detail": "mic: Fake Default Audio Input"
+  },
+  {
+    "name": "backend health shows the laptop online with real wake-word status",
+    "ok": true,
+    "detail": "listening"
+  },
+  {
+    "name": "“Hey JARVIS” spoken into the microphone is detected locally",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "voice session: command transcribed, answered and synced to the account",
+    "ok": true,
+    "detail": "heard: “What's the weather like?”"
+  },
+  {
+    "name": "only the command audio was uploaded (one transcription per session)",
+    "ok": true,
+    "detail": "1 uploads"
+  },
+  {
+    "name": "reply was spoken with the neural voice",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "mute switch stops the wake-word listener",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "unmute resumes listening",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "allowlisted computer action executes on the laptop",
+    "ok": true,
+    "detail": "/tmp/jarvis-electron-kSeudh/JARVIS/JARVIS test note.md"
+  },
+  {
+    "name": "laptop refuses files outside the personal folders",
+    "ok": true,
+    "detail": "Error invoking remote method 'jarvis:runAction': Error: JARVIS only opens files inside your personal folders."
+  },
+  {
+    "name": "closing the window keeps JARVIS running in the tray",
+    "ok": true,
+    "detail": "[{\"t\":\"JARVIS\",\"v\":false,\"d\":false},{\"t\":\"JARVIS audio service\",\"v\":false,\"d\":false}]"
+  },
+  {
+    "name": "still connected to the backend while hidden",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Exit JARVIS ends the process completely",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "backend reports the laptop offline after exit",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "no renderer errors",
+    "ok": true,
+    "detail": ""
+  }
+]

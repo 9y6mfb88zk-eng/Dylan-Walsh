@@ -1,0 +1,41 @@
+# One-click cloud backend for JARVIS on Render (https://render.com).
+# Click "Deploy to Render" in the README, sign in, paste your keys, done.
+services:
+  - type: web
+    name: jarvis
+    runtime: docker
+    plan: starter            # needed for the persistent disk (your data); about $7/month
+    region: frankfurt
+    healthCheckPath: /api/health/ping
+    autoDeploy: true
+    disk:
+      name: jarvis-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JARVIS_DATA_DIR
+        value: /data
+      - key: JARVIS_TZ
+        value: Europe/London
+      # Generated for you: copy it from the Environment tab to finish first-time setup.
+      - key: JARVIS_SETUP_TOKEN
+        generateValue: true
+      # Encrypts bank/calendar tokens at rest. Generated once; never change it after connecting accounts.
+      - key: JARVIS_ENCRYPTION_KEY
+        generateValue: true
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: MONZO_CLIENT_ID
+        sync: false
+      - key: MONZO_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false

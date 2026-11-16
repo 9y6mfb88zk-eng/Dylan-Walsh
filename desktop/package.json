@@ -1,15 +1,66 @@
 {
-  "name": "desktop",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "jarvis-desktop",
+  "productName": "JARVIS",
+  "version": "3.0.0",
+  "description": "JARVIS for Windows: local Hey JARVIS wake word, tray app and laptop control for your JARVIS backend.",
+  "author": "JARVIS",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "main": "src/main.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "test": "node --test test/*.test.js",
+    "sync-shared": "node scripts/sync-shared.js",
+    "dist": "npm run sync-shared && electron-builder --win --x64 --publish never"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
-    "onnxruntime-web": "^1.20.1"
+    "onnxruntime-web": "1.20.1"
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "com.jarvis.desktop",
+    "productName": "JARVIS",
+    "copyright": "Personal use",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "models/**/*",
+      "build/icon.png",
+      "build/tray.png",
+      "package.json",
+      "node_modules/onnxruntime-web/dist/ort.wasm.min.js",
+      "node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm",
+      "node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs",
+      "node_modules/onnxruntime-web/package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "artifactName": "JARVIS-Setup-${version}.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "JARVIS",
+      "runAfterFinish": true
+    }
   }
 }

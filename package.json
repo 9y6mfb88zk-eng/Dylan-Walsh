@@ -1,8 +1,8 @@
 {
   "name": "jarvis",
-  "version": "1.0.0",
+  "version": "3.0.0",
   "private": true,
-  "description": "JARVIS — a voice-first personal assistant PWA with a British butler persona.",
+  "description": "JARVIS \u2014 personal AI operating system: cloud backend, iPhone PWA and Windows app with a local Hey JARVIS wake word.",
   "type": "module",
   "engines": {
     "node": ">=22.13"
@@ -10,7 +10,11 @@
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env server/index.js",
     "dev": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env --watch server/index.js",
-    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js",
+    "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 test/*.test.js",
+    "test:ui": "node test/ui-check.js",
+    "test:desktop": "cd desktop && npm test",
+    "test:electron": "cd desktop && xvfb-run -a node test/electron-e2e.js",
+    "desktop": "cd desktop && npm start",
     "vapid": "node scripts/vapid.js",
     "icons": "node scripts/icons.js"
   },

@@ -122,6 +122,7 @@ export const voice = {
 
   // ---------------- Listening
   sttMode() {
+    if (window.jarvisDesktop) return this.cfg.stt ? "server" : "none";   // Electron has no built-in speech service; Whisper is required
     if (this.cfg.stt && (isIOS || !SR || window.jarvisDesktop)) return "server";   // Whisper is more reliable on iPhone and in the desktop app
     if (SR) return "webspeech";
     return this.cfg.stt ? "server" : "none";
