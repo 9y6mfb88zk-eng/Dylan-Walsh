@@ -1,0 +1,72 @@
+[
+  {
+    "name": "first run shows setup",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "home shows a real 7-day forecast panel",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "money panel shows TEST DATA label",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "core reacts to real audio level while speaking",
+    "ok": true,
+    "detail": "level 0.33"
+  },
+  {
+    "name": "pairing QR code is shown",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "QR link opens the pairing screen",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "iPhone paired into the same account",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "phone sees the conversation started on the laptop",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "laptop sees the message sent from the phone",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "phone agenda shows the reminder created by voice",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "iPhone layout has no horizontal scrolling",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "offline task is queued on the phone",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "after reconnecting, the queued task syncs exactly once",
+    "ok": true,
+    "detail": "1 copies"
+  },
+  {
+    "name": "no JavaScript errors in either device",
+    "ok": true,
+    "detail": ""
+  }
+]

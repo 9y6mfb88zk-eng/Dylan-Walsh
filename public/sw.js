@@ -1,6 +1,6 @@
 // JARVIS service worker: offline shell + web push.
-const CACHE = "jarvis-v1";
-const SHELL = ["/", "/index.html", "/styles.css", "/app.js", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/apple-touch-icon.png"];
+const CACHE = "jarvis-v3";
+const SHELL = ["/", "/index.html", "/styles.css", "/js/app.js", "/js/api.js", "/js/sync.js", "/js/voice.js", "/js/core.js", "/js/util.js", "/js/views/home.js", "/js/views/talk.js", "/js/views/agenda.js", "/js/views/money.js", "/js/views/projects.js", "/js/views/intel.js", "/js/views/memory.js", "/js/views/settings.js", "/js/views/more.js", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -10,7 +10,7 @@ self.addEventListener("activate", (e) => {
 });
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
-  if (e.request.method !== "GET" || url.origin !== location.origin || url.pathname.startsWith("/api/")) return;
+  if (e.request.method !== "GET" || url.origin !== location.origin || url.pathname.startsWith("/api/") || url.pathname.startsWith("/oauth/") || url.pathname === "/ws") return;
   // Network first, falling back to the cached shell when offline.
   e.respondWith(
     fetch(e.request).then((res) => {
