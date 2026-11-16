@@ -3,6 +3,7 @@ import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import { WakeWordEngine, WakeDetector, resampleTo16k } from "../src/wakeword/engine.js";
 
 const require = createRequire(import.meta.url);
@@ -28,7 +29,7 @@ async function detections(audio, opts) {
 }
 
 before(async () => {
-  engine = await WakeWordEngine.load(ort, { melspec: new URL("melspectrogram.onnx", models).pathname, embedding: new URL("embedding_model.onnx", models).pathname, wakeword: new URL("hey_jarvis_v0.1.onnx", models).pathname });
+  engine = await WakeWordEngine.load(ort, { melspec: fileURLToPath(new URL("melspectrogram.onnx", models)), embedding: fileURLToPath(new URL("embedding_model.onnx", models)), wakeword: fileURLToPath(new URL("hey_jarvis_v0.1.onnx", models)) });
 });
 
 test("detects “hey jarvis” in four different voices", async () => {
