@@ -5,19 +5,184 @@
     "detail": ""
   },
   {
-    "name": "home shows a real 7-day forecast panel",
+    "name": "greeting addresses the user as Sir",
     "ok": true,
     "detail": ""
   },
   {
-    "name": "money panel shows TEST DATA label",
+    "name": "status line comes from real diagnostics",
+    "ok": true,
+    "detail": "JARVIS is online. 1 system needs attention."
+  },
+  {
+    "name": "Command Centre core is the 3D (WebGL) core",
+    "ok": true,
+    "detail": "core 3d"
+  },
+  {
+    "name": "weather panel shows UV, sunrise and a 5-day outlook",
     "ok": true,
     "detail": ""
   },
   {
-    "name": "core reacts to real audio level while speaking",
+    "name": "alarm panel shows the next alarm",
     "ok": true,
-    "detail": "level 0.36"
+    "detail": ""
+  },
+  {
+    "name": "priorities show TEST DATA money label",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "quick commands are present",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "core speaks with a level driven by the real voice audio",
+    "ok": true,
+    "detail": "level 0.54"
+  },
+  {
+    "name": "caption shows the streamed reply",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "core returns to idle after speaking",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Ctrl+K palette opens sections",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "section renders: home",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "section renders: talk",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "section renders: briefings",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "section renders: notifications",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "section renders: alarms",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "section renders: calendar",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "section renders: tasks",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "section renders: focus",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "section renders: goals",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "section renders: projects",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "section renders: business",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "section renders: money",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "section renders: intelligence",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "section renders: documents",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "section renders: memory",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "section renders: world",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "section renders: automations",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "section renders: computer",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "section renders: smarthome",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "section renders: diagnostics",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "section renders: settings",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "sidebar lists 21 sections",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "alarm created from the Alarm Centre",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "test alarm rings full-screen in the browser",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "notification centre opens",
+    "ok": true,
+    "detail": ""
   },
   {
     "name": "pairing QR code is shown",
@@ -35,6 +200,16 @@
     "detail": ""
   },
   {
+    "name": "iPhone shows the mobile navigation",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "iPhone layout has no horizontal scrolling",
+    "ok": true,
+    "detail": ""
+  },
+  {
     "name": "phone sees the conversation started on the laptop",
     "ok": true,
     "detail": ""
@@ -45,12 +220,12 @@
     "detail": ""
   },
   {
-    "name": "phone agenda shows the reminder created by voice",
+    "name": "phone More menu lists all sections",
     "ok": true,
     "detail": ""
   },
   {
-    "name": "iPhone layout has no horizontal scrolling",
+    "name": "phone shows the reminder created by voice",
     "ok": true,
     "detail": ""
   },

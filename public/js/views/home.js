@@ -162,7 +162,7 @@ function drawPriorities(root) {
   if (openHabits.length) items.push(`<li class="item clickable" data-go="goals"><span class="dot"></span><div class="grow"><div>Habits left today</div><div class="meta">${openHabits.map((h) => esc(h.name)).join(", ")}</div></div></li>`);
   if (H.focus.active) items.push(`<li class="item clickable" data-go="focus"><span class="dot live"></span><div class="grow"><div>Focus: ${esc(H.focus.active.label)}</div><div class="meta">${Math.ceil(H.focus.active.remainingSeconds / 60)} min left</div></div></li>`);
   if (H.money && !H.money.connected) {} else if (H.money?.connected) items.push(`<li class="item clickable" data-go="money"><span class="dot ok"></span><div class="grow"><div>${gbp(H.money.projected)} projected to month end${H.money.testData ? ' <span class="pill test">TEST DATA</span>' : ""}</div><div class="meta">≈ ${gbp(H.money.perDay)} a day · available ${gbp(H.money.available)}</div></div></li>`);
-  el.innerHTML = items.length ? `<ul class="list">${items.join("")}</ul>` : '<p class="muted" style="margin:0">Nothing pressing. A rare luxury, Sir.</p>';
+  el.innerHTML = items.length ? `<ul class="list">${items.join("")}</ul>` : `<p class="muted" style="margin:0">Nothing pressing. A rare luxury, ${esc(CTX.settings.profile?.title || "Sir")}.</p>`;
   $$("[data-pend]", el).forEach((b) => b.onclick = async () => { try { const r = await api(`/api/pending/${b.dataset.pend}`, { method: "POST", body: { decision: b.dataset.d } }); toast(r.status === "done" ? "Done — confirmed." : "Cancelled."); } catch (e) { toast(e.message); } });
 }
 

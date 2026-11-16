@@ -98,6 +98,7 @@ h1, h2, h3, h4 { font-family: var(--display); font-weight: 600; letter-spacing: 
 .panel.hot { border-color: var(--edge-2); box-shadow: var(--glow), 0 10px 40px rgba(0, 0, 0, .35); }
 .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; min-width: 0; }
 .panel-head .label { display: flex; align-items: center; gap: 8px; }
+.panel-head > svg { width: 16px; height: 16px; color: var(--steel); flex: none; }
 .panel-head .label::before { content: ""; width: 6px; height: 6px; border-radius: 1px; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); transform: rotate(45deg); }
 .tilt { transform: perspective(1000px) rotateX(calc(var(--rx, 0) * 1deg)) rotateY(calc(var(--ry, 0) * 1deg)) translateZ(0); transition: transform .35s cubic-bezier(.2, .7, .2, 1), border-color .2s, box-shadow .2s; transform-style: preserve-3d; }
 .tilt:hover { border-color: var(--edge-2); }

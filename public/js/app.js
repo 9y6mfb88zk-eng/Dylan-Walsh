@@ -74,7 +74,8 @@ function buildNav() {
   $("#collapse").innerHTML = icon("sidebar");
   $("#collapse").onclick = () => { $("#app").classList.toggle("collapsed"); try { localStorage.setItem("jarvis.sidebar", $("#app").classList.contains("collapsed") ? "collapsed" : "expanded"); } catch {} };
   try { if (localStorage.getItem("jarvis.sidebar") === "collapsed") $("#app").classList.add("collapsed"); } catch {}
-  $("#version").textContent = `v${ctx.session?.version || desktop?.version || ""}`;
+  const ver = ctx.session?.version || desktop?.version || "";
+  $("#version").textContent = ver ? `JARVIS v${ver}` : "";
 }
 
 export async function go(tab, params = {}, { push = true } = {}) {

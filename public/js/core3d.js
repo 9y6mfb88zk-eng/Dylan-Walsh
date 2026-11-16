@@ -34,9 +34,9 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
   const test = document.createElement("canvas");
   if (!(test.getContext("webgl2") || test.getContext("webgl"))) throw new Error("WebGL unavailable");
 
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
-  renderer.setClearColor(0x000000, 1);           // black + CSS mix-blend-mode: screen = glow over the page
-  canvas.style.mixBlendMode = "screen";
+  // Transparent canvas with premultiplied alpha: additive light shows over the page like a hologram.
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, premultipliedAlpha: true, powerPreference: "high-performance" });
+  renderer.setClearColor(0x000000, 0);
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
   camera.position.set(0, 0, 7.4);

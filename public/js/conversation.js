@@ -140,10 +140,20 @@ export const conversation = {
     ctx.caption("Listening…", true);
     if (ctx.desktop?.listen) {
       voice.setState("listening");
-      if (ctx.settings?.voice?.chime !== false) voice.chime();
-      const wav = await ctx.desktop.listen({ noSpeechMs, maxMs: 20000 });
-      if (!wav || !this.session) { voice.setState("idle"); return ""; }
-      return this.transcribe(wav);
+      if (ctx.settings?.voice?.chime !== false) { voice.chime(); await new Promise((r) => setTimeout(r, 450)); }  // don't record our own chime
+      const deadline = Date.now() + noSpeechMs;
+      // A capture can turn out to be only noise (a cough, the speakers' echo): keep listening until the timeout.
+      while (this.session) {
+        const left = deadline - Date.now();
+        if (left < 1200) break;
+        const wav = await ctx.desktop.listen({ noSpeechMs: left, maxMs: 20000 });
+        if (!wav || !this.session) break;
+        const text = await this.transcribe(wav);
+        if (text) return text;
+        voice.setState("listening"); ctx.caption("Listening…", true);
+      }
+      voice.setState("idle");
+      return "";
     }
     const t = await voice.listen({ noSpeechMs, onPartial: (p) => ctx.caption(p || "Listening…", true) });
     return isHallucination(t) ? "" : t;

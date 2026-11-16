@@ -62,10 +62,10 @@ what remains, known problems, technical decisions and exactly how to continue.
 |---|---|
 | `npm test` — backend end-to-end (stand-in services), finance engine, local Whisper, upgrade services, voice commands | 61 / 61 pass |
 | `cd desktop && npm test` — wake word accuracy/false triggers, laptop actions (incl. new ones) | 13 / 13 pass |
-| `npm run test:ui` — Chromium at laptop and iPhone size: setup, Command Centre, 3D core, streamed reply + speaking core, palette, all 21 sections, alarm dialog + ringing, notification centre, QR pairing, cross-device sync, mobile nav, offline queue | see `docs/screenshots/ui-results.json` |
+| `npm run test:ui` — Chromium at laptop and iPhone size: setup, Command Centre, 3D core, streamed reply + speaking core, palette, all 21 sections, alarm dialog + ringing, notification centre, QR pairing, cross-device sync, mobile nav, offline queue | 49 / 49 pass |
 | `xvfb-run node desktop/test/electron-e2e.js` — Windows app under Electron with a recorded microphone | 28 / 28 pass |
-| `desktop/test/electron-local-e2e.js` — packaged app running its own server | see `docs/electron-local-results.json` |
-| `desktop/scripts/schtasks-smoke.js` — Windows Task Scheduler accepts the WakeToRun alarm task | runs in CI (Windows) |
+| `desktop/test/electron-local-e2e.js` — packaged app running its own server | 16 / 16 pass |
+| `desktop/scripts/schtasks-smoke.js` — Windows Task Scheduler accepts the WakeToRun alarm task | passes in CI on Windows |
 
 ## Verified vs not yet verified on real hardware
 

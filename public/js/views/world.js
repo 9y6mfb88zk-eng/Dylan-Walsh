@@ -46,8 +46,8 @@ async function addPlace() {
 // ---------------------------------------------------------------- The globe (Three.js)
 async function mountGlobe(canvas, labels, animation) {
   const THREE = await import("/vendor/three/three.module.min.js");
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-  renderer.setClearColor(0x000000, 1); canvas.style.mixBlendMode = "screen";
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, premultipliedAlpha: true });
+  renderer.setClearColor(0x000000, 0);
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
   camera.position.set(0, 0, 4.2);
   const g = new THREE.Group(); scene.add(g);
