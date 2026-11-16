@@ -6,9 +6,12 @@ export const gbp = (p, { sign = false } = {}) => {
   const neg = p < 0, v = Math.abs(Math.round(p));
   return `${neg ? "−" : sign && p > 0 ? "+" : ""}£${Math.floor(v / 100).toLocaleString("en-GB")}.${String(v % 100).padStart(2, "0")}`;
 };
-export const fmtTime = (iso, opts = {}) => new Date(iso).toLocaleString("en-GB", { hour: "2-digit", minute: "2-digit", ...opts });
-export const fmtDay = (iso) => new Date(iso).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
-export const fmtWhen = (iso) => new Date(iso).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+// Times are shown in the time zone set in JARVIS (Settings), not whatever the browser's clock happens to use.
+let TZ;
+export function setDisplayTz(tz) { try { new Intl.DateTimeFormat("en-GB", { timeZone: tz || undefined }); TZ = tz || undefined; } catch { TZ = undefined; } }
+export const fmtTime = (iso, opts = {}) => new Date(iso).toLocaleString("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit", ...opts });
+export const fmtDay = (iso) => new Date(iso).toLocaleDateString("en-GB", { timeZone: TZ, weekday: "short", day: "numeric", month: "short" });
+export const fmtWhen = (iso) => new Date(iso).toLocaleString("en-GB", { timeZone: TZ, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 export const parseDb = (s) => (s ? new Date(String(s).replace(" ", "T") + (/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? "" : "Z")) : null);
 export function ago(s) {
   const d = parseDb(s); if (!d) return "never";

@@ -9,7 +9,7 @@ import { mountCore } from "./core.js";
 import { mission } from "./mission.js";
 import { handleUi, tryMacro } from "./commands.js";
 import { beginStartup } from "./startup.js";
-import { $, $$, esc, toast, icon, fmtWhen, debounce } from "./util.js";
+import { $, $$, esc, toast, icon, fmtWhen, debounce, setDisplayTz } from "./util.js";
 
 const desktop = window.jarvisDesktop || null;           // present only inside the Windows app
 const isPhone = () => matchMedia("(max-width: 900px)").matches;
@@ -448,6 +448,7 @@ onAuthEvent((ev) => { if (ev === "unauthorized") { sync.disconnect(); desktop?.s
 async function reloadSession() {
   try {
     ctx.session = await api("/api/session");
+    setDisplayTz(ctx.session.settings?.timezone);
     const v = ctx.session.settings?.voice || {};
     voice.cfg = { tts: ctx.session.tts, stt: ctx.session.stt, rate: v.rate || 1, voiceName: v.voiceName || "" };
     applyAppearance();
@@ -474,8 +475,8 @@ async function start() {
   tickClock(); setInterval(tickClock, 1000);
   ensurePushSubscription().catch(() => {});
   const diagP = loadDiag();
-  boot?.step("System diagnostics", diagP.then((d) => { if (!d) throw new Error("couldn't run checks"); const n = (d.counts.error || 0) + (d.counts.warn || 0); return n ? `${d.checks.length} checks · ${n} need attention` : `${d.checks.length} checks · all operational`; }));
-  boot?.step("AI core", diagP.then((d) => { const a = d?.checks.find((c) => c.name === "ai"); if (!a || a.status === "off") throw new Error(a?.detail || "not set up"); if (a.status === "error") throw new Error(a.detail); return a.status === "ok" ? "online" : a.detail; }));
+  boot?.step("System diagnostics", diagP.then((d) => { if (!d) throw new Error("couldn't run checks"); const n = (d.counts.error || 0) + (d.counts.warn || 0); return n ? `${d.checks.length} checks · ${n} need${n === 1 ? "s" : ""} attention` : `${d.checks.length} checks · all operational`; }));
+  boot?.step("AI core", diagP.then((d) => { const a = d?.checks.find((c) => c.name === "ai"); if (!a || a.status === "off") throw new Error(a?.detail || "not set up"); if (a.status === "error") throw new Error(a.detail); return a.status === "ok" ? "online" : { warn: a.status === "unknown" ? "configured · not verified yet" : a.detail }; }));
   boot?.step("Voice systems", desktop ? desktop.getStatus().then((st) => { if (st.muted) return "microphone muted"; return st.wakeWord === "listening" ? "“Hey JARVIS” ready" : `wake word ${st.wakeWord || "starting"}`; }) : Promise.resolve(voice.cfg.stt ? "tap the core to talk" : "typing only on this device"));
   if ((ctx.settings.memory?.mode || "ask") !== "off") boot?.step("Personal profile", api("/api/memories/profile").then((p) => `${Object.values(p).flat().length} facts`));
   loadHomeCache(); refreshBadges();

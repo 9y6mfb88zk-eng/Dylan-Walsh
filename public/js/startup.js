@@ -32,7 +32,12 @@ export function beginStartup({ greeting = "" } = {}) {
       const rec = { label, ok: null, detail: "", ms: null };
       (window.__jarvisBoot ||= []).push(rec);
       const p = Promise.resolve(promise).then(
-        (detail) => { rec.ok = true; rec.detail = detail || ""; rec.ms = Math.round(performance.now() - s); li.classList.add("ok"); li.querySelector(".boot-detail").textContent = `${detail ? `${detail} · ` : ""}${rec.ms} ms`; },
+        (v) => {
+          // A step can finish without being verified (e.g. the AI is configured but not yet tested): shown amber, never green.
+          const warn = v && typeof v === "object" && "warn" in v, detail = warn ? v.warn : v;
+          rec.ok = true; rec.warn = warn; rec.detail = detail || ""; rec.ms = Math.round(performance.now() - s);
+          li.classList.add(warn ? "warn" : "ok"); li.querySelector(".boot-detail").textContent = `${detail ? `${detail} · ` : ""}${rec.ms} ms`;
+        },
         (e) => { rec.ok = false; rec.detail = e?.message || String(e); li.classList.add("bad"); li.querySelector(".boot-detail").textContent = rec.detail; },
       );
       pending.push(p);
@@ -42,8 +47,9 @@ export function beginStartup({ greeting = "" } = {}) {
     async finish() {
       await Promise.all(pending);
       if (closed) return;
-      const bad = list.querySelectorAll("li.bad").length;
-      el.querySelector(".boot-final").textContent = bad ? `${bad} start-up step${bad === 1 ? "" : "s"} failed — details in Diagnostics.` : greeting || "All systems online.";
+      const bad = list.querySelectorAll("li.bad").length, warn = [...list.querySelectorAll("li.warn .boot-label")].map((x) => x.textContent);
+      el.querySelector(".boot-final").textContent = bad ? `${bad} start-up step${bad === 1 ? "" : "s"} failed — details in Diagnostics.`
+        : warn.length ? `Ready. ${warn.join(" and ")} ${warn.length === 1 ? "is" : "are"} not verified yet.` : greeting || "All systems online.";
       const elapsed = performance.now() - t0;
       setTimeout(close, Math.max(900, 1600 - elapsed) + (bad ? 1500 : 0));
     },

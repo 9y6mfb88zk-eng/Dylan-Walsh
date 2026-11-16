@@ -507,7 +507,7 @@ button.sys-chip:hover { color: var(--ice); border-color: var(--edge-2); }
 
 /* ---------------------------------------------------------------- Mission Control (immersive mode) */
 .mission { position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column; gap: 14px; padding: 18px 22px 22px; overflow: auto;
-  background: radial-gradient(circle at 50% 38%, rgba(0, 229, 255, .10), transparent 46%), linear-gradient(180deg, rgba(1, 4, 10, .97), rgba(2, 9, 18, .985));
+  background: radial-gradient(circle at 50% 38%, rgba(0, 229, 255, .10), transparent 46%), linear-gradient(180deg, var(--bg-0), var(--bg-1));
   opacity: 0; transform: scale(1.015); transition: opacity .25s ease, transform .25s ease; }
 .mission.in { opacity: 1; transform: none; }
 .mission::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(180deg, rgba(255, 255, 255, .012) 0 1px, transparent 1px 3px); }
@@ -545,14 +545,16 @@ html.idle .mc-ring { animation-play-state: paused; }
 .reduce-motion .mission { transition: none; }
 
 /* ---------------------------------------------------------------- Cinematic start-up (real steps only) */
-.boot { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: radial-gradient(circle at 50% 42%, rgba(0, 229, 255, .12), transparent 50%), var(--bg-0); opacity: 0; transition: opacity .35s ease; cursor: pointer; }
-.boot.in { opacity: 1; } .boot.out { opacity: 0; pointer-events: none; }
+.boot { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: radial-gradient(circle at 50% 42%, rgba(0, 229, 255, .12), transparent 50%), var(--bg-0); opacity: 1; transition: opacity .4s ease; cursor: pointer; }
+.boot.out { opacity: 0; pointer-events: none; }
 .boot-inner { width: min(460px, calc(100vw - 32px)); display: flex; flex-direction: column; align-items: center; gap: 14px; }
 .boot-mark { width: 74px; height: 74px; border-radius: 50%; background: radial-gradient(circle, #fff 0 10%, var(--cyan-3) 16%, rgba(34, 211, 238, .35) 40%, transparent 62%), conic-gradient(from 0deg, transparent, rgba(0, 229, 255, .85), transparent 30%, rgba(47, 127, 224, .85), transparent 70%); box-shadow: 0 0 40px rgba(0, 229, 255, .5); animation: spin 3s linear infinite; }
 .boot-title { font: 700 22px/1 var(--display); letter-spacing: .5em; color: var(--white); text-shadow: 0 0 18px rgba(103, 232, 249, .6); margin-left: .5em; }
 .boot-steps { list-style: none; margin: 8px 0 0; padding: 0; width: 100%; display: flex; flex-direction: column; gap: 7px; font: 500 13px var(--body); }
-.boot-steps li { display: grid; grid-template-columns: 12px 1fr auto; gap: 10px; align-items: center; animation: viewin .3s ease both; }
-.boot-steps .boot-detail { font-size: 12px; text-align: right; }
+.boot-steps li { display: grid; grid-template-columns: 12px auto 1fr; gap: 10px; align-items: center; animation: viewin .3s ease both; }
+.boot-steps .boot-label { white-space: nowrap; }
+.boot-steps .boot-detail { font-size: 12px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.boot-steps li.warn .boot-dot { background: var(--warn); box-shadow: 0 0 8px var(--warn); animation: none; }
 .boot-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--steel-2); box-shadow: 0 0 0 0 transparent; animation: pulse 1s ease-in-out infinite; }
 .boot-steps li.ok .boot-dot { background: var(--good); box-shadow: 0 0 8px var(--good); animation: none; }
 .boot-steps li.bad .boot-dot { background: var(--bad); box-shadow: 0 0 8px var(--bad); animation: none; }

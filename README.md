@@ -20,7 +20,7 @@ JARVIS is your personal AI system. It runs **entirely on your Windows laptop**, 
 ```
 
 **What it costs.** The software is free. You pay only for AI usage on your Anthropic account. With the default Claude Haiku 5.5, everyday use costs pennies a month.
-- **Speech recognition** is free and runs on the laptop.
+- **Speech recognition** is free and runs on the laptop (NVIDIA Parakeet: 2.6 % word errors vs 11.4 % for the previous model in our benchmark — `docs/performance.md`).
 - **ElevenLabs voice** is optional and has a free tier.
 - **Weather** is free (Open-Meteo).
 
@@ -75,6 +75,26 @@ After the first answer, JARVIS keeps listening for a follow-up. No wake word is 
 - **"Stay with me"** keeps listening for 2 minutes. **"Listen again"** restarts listening.
 - **"Repeat that"** replays the last answer. **"Stop speaking"** (or saying "JARVIS" while it talks) interrupts.
 - **When the microphone is on:** only after a wake word, a key press or a tap. It is never recording while idle. Turn continuous mode off in Settings → Voice & conversation if you prefer single questions.
+
+### 5a. What JARVIS knows about you, voice commands and Mission Control
+- **Your personal profile:** **Memory & Notes → Memory → Profile** shows everything JARVIS knows about you, grouped by category (career, ambitions, businesses, creative projects, preferences…).
+  - It starts with only the facts you gave. Edit, pin, delete or add anything there.
+  - **Memory** at the top of that page sets the mode: *Ask before remembering* (default), *Automatic* or *Off*.
+  - JARVIS asks "Would you like me to remember that for future conversations, Sir?" before saving anything new.
+  - Passwords, PINs and bank details are never stored.
+- **Instant commands** (handled on the laptop, no AI round trip):
+  - "Activate Mission Control" / "Exit Mission Control" (Esc also exits).
+  - "Switch to cinematic / concise / professional / focus / standard mode".
+  - "Run a full system diagnostic", or a quick, voice, AI, network, security, performance, hardware or integration diagnostic.
+  - "Status report".
+  - Every spoken diagnostic line comes from a real check.
+- **Command macros:** "Start my working session" and "Prepare my morning" come ready-made. Create your own in **Automations** (When → *Only when asked*, plus a voice trigger). Steps that change your laptop or home ask for a spoken yes first.
+- **Microphone:** **Settings → Microphone & speech** offers:
+  - microphone choice and a live level meter
+  - a background-noise test
+  - a calibration sentence that shows how accurately you were understood
+  - sensitivity and pause settings
+- **Session history:** **Memory & Notes → Session history** is one searchable timeline of conversations, commands, completed tasks, diagnostics, errors, automations and decisions.
 
 ### 6. Talking and typing
 - **Typing:** use the box under the core, or the **Conversation** section (history follows you between laptop and phone).

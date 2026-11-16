@@ -1,6 +1,6 @@
 # JARVIS — Project status
 
-_Last updated: 2026-11-16 — JARVIS 4.0 (Ultimate Upgrade & Redesign complete)_
+_Last updated: 2026-11-16 — JARVIS 4.0 + Personal Intelligence, Voice Enhancement & Performance upgrade_
 
 This file is the hand-over document for the "JARVIS — Ultimate Upgrade & Redesign" specification. It lists what is done,
 what remains, known problems, technical decisions and exactly how to continue.
@@ -11,7 +11,7 @@ what remains, known problems, technical decisions and exactly how to continue.
 |---|---|---|
 | Backend | Node 22, Express 5, `ws`, SQLite via `node:sqlite`, numbered SQL migrations | `server/` |
 | AI | Anthropic Claude (Messages API, tool use, web search, structured output) | `server/brain.js` |
-| Speech | Local Whisper base.en (sherpa-onnx) → OpenAI Whisper fallback; ElevenLabs/OpenAI TTS → system voice fallback | `server/local-asr.js`, `server/voice.js` |
+| Speech | Local Parakeet TDT 0.6B v2 (sherpa-onnx; Whisper base.en still supported) → OpenAI Whisper fallback; ElevenLabs/OpenAI TTS → system voice fallback | `server/local-asr.js`, `server/voice.js` |
 | Web app / PWA | Vanilla ES modules, no build step, strict CSP | `public/` |
 | Windows app | Electron 33: tray, bundled Node 22 + server, wake word (openWakeWord ONNX + sherpa-onnx KWS), allowlisted actions | `desktop/` |
 | Data | `%APPDATA%\JARVIS\data\jarvis.db` (laptop) or `/data/jarvis.db` (cloud) | |
@@ -56,14 +56,65 @@ what remains, known problems, technical decisions and exactly how to continue.
 | 17 | Settings (profile, personality, voice & conversation, appearance, alarms & focus, your data: export / delete with backup) | ✅ done |
 | 18–20 | Full test pass, fixes, installer build, docs | ✅ done (installer built by CI) |
 
+## Personal Intelligence, Voice Enhancement & Performance upgrade
+
+The existing design, navigation, colours, 3D core and panels are unchanged. Everything below is added to them.
+
+| Phase | Scope | Status |
+|---|---|---|
+| 1 | Inspect, find real bugs (list below) | ✅ done |
+| 2 | Personal profile and memory: 13 categories, editable starting profile (only the facts you gave, marked as possibly out of date), always-available profile block, synonym and category search, ask before remembering, `correct_memory`, memory off switch, Memory page (profile by category, recent updates, search, export, mode) | ✅ done |
+| 3 | Microphone recognition: Parakeet replaces Whisper base.en; anti-aliased resampler; hysteresis VAD with adaptive noise floor and longer endpointing; clean-up before decoding; confidence estimate; calibration page; settings for noise suppression, echo cancellation and AGC | ✅ done |
+| 4 | Continuous conversation: low-confidence speech gets "could you say that again?", not a guess; duplicate-request guard | ✅ done |
+| 5 | Personality: five voice modes, formality/humour/cinematic levels; cinematic wording is decoration only | ✅ done |
+| 6 | Diagnostics at nine levels (quick, full, voice, AI, network, security, performance, hardware, integrations), narrated from real results, stored history, system awareness (`system_status`), laptop process list, proactive integration-failure alerts | ✅ done |
+| 7 | Mission Control (voice, palette, Esc) and command macros (voice trigger phrase, interface and systems-check steps, spoken confirmation for consequential steps, two examples) | ✅ done |
+| 8 | Session history timeline (search, filter, clear); voice modes switchable by voice; Focus mode lets only important notices interrupt | ✅ done |
+| 9 | Performance: measured first; idle mode for the core and CSS; faster light-tier switch; Mission Control pauses the home core; live performance view (`docs/performance.md`) | ✅ done |
+| 10 | Bug fixes (below) | ✅ done |
+| 11 | Tests: +12 backend, +14 UI, unit tests for interface commands | ✅ done |
+
+### Bugs found and fixed
+
+| # | Bug | Effect | Fix |
+|---|---|---|---|
+| 1 | Microphone resampler had no anti-aliasing and dropped samples at chunk edges | Hiss and high-frequency noise folded into the speech band (12 kHz tone → full-strength alias) | Windowed-sinc streaming resampler (alias 0.200 → 0.0000) |
+| 2 | Single fixed VAD threshold | Clicks started recordings; short pauses cut sentences off | Hysteresis plus adaptive noise floor; 1.2 s endpoint (1.8 s for very short speech) |
+| 3 | Whisper base.en accuracy | 11.4 % word errors (31.5 % in noise) | Parakeet TDT 0.6B v2: 2.6 % (12 % in noise), faster |
+| 4 | Last word often truncated; quiet speech lost | Wrong commands | Tail padding, high-pass, normalisation of quiet speech |
+| 5 | No confidence signal | Misheard speech acted on | Confidence estimate; low confidence → asks to repeat |
+| 6 | Memory search was keyword-only | "What was that business idea?" found nothing | Profile block always in context, synonyms, category boost |
+| 7 | Old humour setting ("dry"/"none") vs new numeric levels | Prompt would have said "Humour: undefined" | Legacy values mapped to 0–3, input clamped |
+| 8 | Times shown in the browser's time zone, not JARVIS's | Mission Control and lists disagreed with the clock when they differ | `setDisplayTz` from settings for every formatted time |
+| 9 | Memory `updated_at` had one-second resolution | "Recent updates" order wrong for edits in the same second | Millisecond timestamps, id tie-break |
+| 10 | Auto light-tier switch needed 180 slow frames | Slow GPU laptops stuttered for over 20 s | Decides after ~6 s |
+| 11 | Same request sent twice (double Enter, echoed wake) | Duplicate actions | 4 s duplicate guard in `conversation.ask` |
+| 12 | Start-up overlay faded in over the app | The app flashed before the sequence | Opaque from the first frame |
+| 13 | Start-up showed the AI as ✓ when only configured | Claimed a check that hadn't run | Amber "configured · not verified yet"; closing line says so |
+
+### Known limitations (honest)
+
+- **Speech accuracy:** benchmarked on synthetic voices, not your voice. Use **Settings → Microphone & speech →
+  Calibration** to measure it on your own microphone.
+- **Language:** Parakeet v2 is English-only. Other languages fall back to OpenAI Whisper, if a key is set.
+- **Confidence:** a heuristic (audio level, clipping, noise, speech length versus words, repetition). The model gives
+  no probability, and the UI labels it as an estimate.
+- **Not run on Windows here:** the laptop process list (PowerShell `Get-Process`) and Windows audio constraints. The
+  Linux path was run and works.
+- **Rendering CPU:** measured under software WebGL. Real-GPU savings from idle mode are expected but could not be
+  measured here (`docs/performance.md`).
+- **Installer size:** the Parakeet model makes the installer about 500 MB larger than with Whisper base.en.
+- **Intermittent E2E failure:** the Electron end-to-end test failed once in five runs ("Target page, context or browser
+  has been closed") and passed 28/28 on the other four.
+
 ## Test results (latest run)
 
 | Suite | Result |
 |---|---|
-| `npm test` — backend end-to-end (stand-in services), finance engine, local Whisper, upgrade services, voice commands | 61 / 61 pass |
+| `npm test` — backend end-to-end (stand-in services), finance engine, on-device speech recognition, upgrade services, personal intelligence (profile, ask-before-remember, memory off, narrated diagnostics, awareness, macros, history, personality), voice + interface commands | 73 / 73 pass |
 | `cd desktop && npm test` — wake word accuracy/false triggers, laptop actions (incl. new ones) | 13 / 13 pass |
-| `npm run test:ui` — Chromium at laptop and iPhone size: setup, Command Centre, 3D core, streamed reply + speaking core, palette, all 21 sections, alarm dialog + ringing, notification centre, QR pairing, cross-device sync, mobile nav, offline queue | 49 / 49 pass |
-| `xvfb-run node desktop/test/electron-e2e.js` — Windows app under Electron with a recorded microphone | 28 / 28 pass |
+| `npm run test:ui` — Chromium at laptop and iPhone size: setup, Command Centre, 3D core, streamed reply + speaking core, palette, all 21 sections, alarm dialog + ringing, notification centre, QR pairing, cross-device sync, mobile nav, offline queue, personal profile page, session history, Mission Control (open by voice, measured telemetry, Esc), narrated diagnostics, live performance panel, cinematic start-up with real steps | 63 / 63 pass |
+| `xvfb-run node desktop/test/electron-e2e.js` — Windows app under Electron with a recorded microphone (new audio pipeline) | 28 / 28 pass (4 of 5 runs; see known limitations) |
 | `desktop/test/electron-local-e2e.js` — packaged app running its own server | 16 / 16 pass |
 | `desktop/scripts/schtasks-smoke.js` — Windows Task Scheduler accepts the WakeToRun alarm task | passes in CI on Windows |
 

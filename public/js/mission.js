@@ -95,23 +95,25 @@ async function telemetry() {
     push("cpu", p.cpuPct); push("ram", p.ramPct); push("ai", p.ai?.medianMs); push("lag", p.lagMs + p.dbMs);
     for (const k of Object.keys(series)) {
       const s = series[k], box = $(`#mcs-${k}`), v = s.at(-1);
-      $(`#mcv-${k}`).textContent = v == null ? (k === "ai" ? "no calls yet" : "—") : `${Math.round(v)}${box.dataset.unit}`;
-      box.innerHTML = spark(s, k === "cpu" || k === "ram" ? 100 : null);
+      $(`#mcv-${k}`).textContent = v == null ? "—" : `${Math.round(v)}${box.dataset.unit}`;
+      box.innerHTML = k === "ai" && v == null ? '<div class="faint" style="font-size:11px;margin-top:8px">No AI calls in the last 24 h</div>' : spark(s, k === "cpu" || k === "ram" ? 100 : null);
     }
   } catch {}
 }
 function spark(values, fixedMax) {
   if (values.length < 2) return '<div class="faint" style="font-size:11px">Collecting…</div>';
   const H = 42, max = fixedMax ?? (Math.max(...values) * 1.2 || 1);
-  const pts = values.map((v, i) => `${(i / (MAX - 1)) * 100},${H - 2 - (v / max) * (H - 4)}`).join(" ");
-  return `<svg viewBox="0 0 100 ${H}" preserveAspectRatio="none" aria-hidden="true"><polyline points="0,${H} ${pts} ${((values.length - 1) / (MAX - 1)) * 100},${H}" class="fill"/><polyline points="${pts}" class="line"/></svg>`;
+  // Newest sample on the right; history scrolls in from the left like a live trace.
+  const x = (i) => ((MAX - values.length + i) / (MAX - 1)) * 100;
+  const pts = values.map((v, i) => `${x(i).toFixed(2)},${(H - 2 - (Math.min(v, max) / max) * (H - 4)).toFixed(2)}`).join(" ");
+  return `<svg viewBox="0 0 100 ${H}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${x(0).toFixed(2)},${H} ${pts} 100,${H}" class="fill"/><polyline points="${pts}" class="line"/></svg>`;
 }
 async function systems() {
   try {
     const d = await api("/api/diagnostics");
     if (!el) return;
     const n = (d.counts.error || 0) + (d.counts.warn || 0);
-    $("#mcOverall").innerHTML = `<span class="dot ${d.overall === "error" ? "bad" : d.overall}"></span>${d.overall === "ok" ? "All systems operational" : `${n} item${n === 1 ? "" : "s"} need attention`}`;
+    $("#mcOverall").innerHTML = `<span class="dot ${d.overall === "error" ? "bad" : d.overall}"></span>${d.overall === "ok" ? "All systems operational" : `${n} item${n === 1 ? " needs" : "s need"} attention`}`;
     $("#mcChecked").textContent = fmtTime(d.at);
     const main = d.checks.filter((c) => !c.name.startsWith("svc:"));
     $("#mcChecks").innerHTML = main.map((c) => `<li title="${esc(c.detail)}">${statusDot(c.status)}<div><b>${esc(c.label)}</b><div class="faint">${esc(String(c.detail).slice(0, 90))}</div></div></li>`).join("");
@@ -142,7 +144,7 @@ async function feed() {
   try {
     const a = await api("/api/activity?limit=10");
     if (!el) return;
-    $("#mcFeed").innerHTML = a.map((x) => `<li><span class="mc-time">${esc(fmtTime(x.at))}</span><div>${esc(x.summary)}</div></li>`).join("") || '<li class="faint">No activity yet.</li>';
+    $("#mcFeed").innerHTML = a.map((x) => `<li><span class="mc-time">${esc(fmtTime(/[zZ]$/.test(x.at) ? x.at : `${x.at.replace(" ", "T")}Z`))}</span><div>${esc(x.summary)}</div></li>`).join("") || '<li class="faint">No activity yet.</li>';
   } catch {}
 }
 async function processes() {
