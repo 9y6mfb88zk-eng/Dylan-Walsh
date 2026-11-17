@@ -323,9 +323,13 @@ try {
   // Global Events: the list scrolls to its last item; filters and sources fold away
   await L.waitForSelector(".goc-evlist [data-ev]", { timeout: 30000 }).catch(() => {});
   check("Global Events list has a real scroll area and its last item is reachable", await L.evaluate(async () => { const l = document.querySelector(".goc-evlist"); if (!l || l.clientHeight < 150) return false; l.scrollTop = l.scrollHeight; await new Promise((r) => setTimeout(r, 300)); const last = [...l.children].at(-1).getBoundingClientRect(), box = l.getBoundingClientRect(); return last.bottom <= box.bottom + 2 && document.documentElement.scrollHeight <= innerHeight + 1; }));
+  // Filters start open on tall screens and folded on shorter ones; either way they toggle and the list keeps its room.
+  const wasOpen = await L.evaluate(() => !document.querySelector(".goc-feed-filters").hidden);
   await L.click("#gocEvFilt");
-  check("event filters open and close without hiding the list", await L.evaluate(() => !document.querySelector(".goc-feed-filters").hidden && document.querySelector(".goc-evlist").clientHeight > 60));
-  await L.click("#gocEvFilt");
+  const toggled = await L.evaluate((w) => !document.querySelector(".goc-feed-filters").hidden === !w, wasOpen);
+  if (wasOpen) await L.click("#gocEvFilt");
+  check("event filters open and close without hiding the list", toggled && await L.evaluate(() => !document.querySelector(".goc-feed-filters").hidden && document.querySelector(".goc-evlist").clientHeight > 60));
+  if (!wasOpen) await L.click("#gocEvFilt");
   // The shared map: zoom, World Explorer search, selected place, save, click-to-identify
   const z0 = await L.evaluate(() => window.__jarvisGoc?.zoom);
   await L.click(".goc .leaflet-control-zoom-in"); await sleep(900);
@@ -349,6 +353,39 @@ try {
   await L.waitForSelector("#mcView", { state: "detached", timeout: 30000 });
   await L.evaluate(async () => { const { api } = await import("/js/api.js"); await api("/api/settings", { method: "PATCH", body: { interface: { transitions: true } } }); });
   await L.goto(base); await L.waitForSelector("#view canvas#core", { timeout: 20000 });
+  // ---- 6.8: natural conversation and voice
+  const conv68 = await L.evaluate(async () => {
+    const { conversation } = await import("/js/conversation.js"); const { voice } = await import("/js/voice.js"); const { core } = await import("/js/corestate.js");
+    voice.ensureAudio();
+    const p = conversation.ask("Tell me a long story", { speak: true });
+    const t0 = performance.now();
+    while (voice.state !== "speaking" && performance.now() - t0 < 10000) await new Promise((r) => setTimeout(r, 40));
+    const firstAudioMs = Math.round(performance.now() - t0);
+    await new Promise((r) => setTimeout(r, 900));
+    const heard = voice.heard(), clientId = conversation.lastClientId;
+    const ts = performance.now(); conversation.interrupt(); const stopMs = Math.round(performance.now() - ts); await p;
+    core.fault("test", 500); const faultState = core.state;
+    await new Promise((r) => setTimeout(r, 900));
+    return { heard, clientId, firstAudioMs, stopMs, stopped: voice.state !== "speaking", faultState, after: core.state };
+  });
+  check("a spoken reply stops the moment it's interrupted", conv68.stopped && conv68.stopMs < 100 && conv68.heard.length > 3, JSON.stringify(conv68));
+  check("JARVIS records how much of an interrupted reply was actually heard", await L.waitForFunction(async (h) => {
+    const { api } = await import("/js/api.js");
+    const cur = (await api("/api/conversations")).current;
+    const msgs = await api(`/api/conversations/${cur}/messages`);
+    const m = msgs.filter((x) => x.role === "assistant").at(-1);
+    return !!m?.meta && JSON.parse(m.meta).interrupted === true && JSON.parse(m.meta).heard.startsWith(h.slice(0, 12));
+  }, conv68.heard, { timeout: 8000, polling: 300 }).then(() => true, () => false), conv68.heard);
+  check("the core shows a brief “Fault” state, then recovers", conv68.faultState === "error" && conv68.after !== "error", `${conv68.faultState} → ${conv68.after}`);
+  await L.goto(`${base}/?tab=settings`); await L.waitForSelector('.tabs [data-s="conversation"]', { timeout: 15000 });
+  await L.click('.tabs [data-s="conversation"]'); await L.waitForSelector("#vprov", { timeout: 10000 });
+  const provs = await L.$$eval("#vprov option", (o) => o.map((x) => x.value));
+  const sess = await L.evaluate(async () => (await (await import("/js/api.js")).api("/api/session")).ttsProviders);
+  check("Settings → Voice offers only the voices that can actually be used here", JSON.stringify(provs) === JSON.stringify(sess) && provs.includes("browser") && provs.includes("auto"), provs.join(", "));
+  await L.click('.tabs [data-s="profile"]'); await L.waitForSelector("#pSir", { timeout: 10000 });
+  check("Profile & personality has the form-of-address setting", (await L.$$eval("#pSir option", (o) => o.map((x) => x.value))).join() === "never,rarely,occasionally,often");
+  await L.goto(base); await L.waitForSelector("#view canvas#core", { timeout: 20000 });
+  check("in the browser the microphone chip only appears while the microphone is in use", await L.evaluate(() => document.querySelector("#muteBtn").hidden));
   await L.click("#mcBtn");
   check("the Mission Control button activates it", await L.waitForFunction(() => document.documentElement.classList.contains("mc-active"), null, { timeout: 60000 }).then(() => true, () => false));
   // Esc: the first press stops JARVIS speaking (if it is), the next leaves Mission Control.

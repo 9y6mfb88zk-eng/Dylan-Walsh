@@ -230,3 +230,49 @@ Leak check (8 enter/exit cycles, 6.7): active intervals 7 → 7, window/document
 machine it is interactive in 1.6–2.2 s (2.9 s once, under the load of the full UI test run), because slow frames
 delay the timers. A laptop with a GPU draws frames in milliseconds and should land close to 1.6 s. That has not been
 measured here.
+
+## JARVIS 6.8: conversation, voice and recognition
+
+Same container: 4 CPU threads, software rendering, stand-in AI and premium voice.
+
+**Responsiveness**
+
+| Measurement | Result |
+|---|---|
+| Message sent → JARVIS starts speaking (stand-in AI and voice) | 132 ms |
+| Interrupt → playback stopped | under 100 ms (UI check) |
+| Interrupt → AI request cancelled on the server | yes: the stand-in AI sees its stream closed, and only the part already produced is saved (test) |
+| Local voice (Piper), warm | about 0.35 s per sentence; 6.6 s of speech in 0.45 s |
+| Local voice, cold first sentence | 1.5 s (loaded at start-up when it's the voice in use); 2.2 s for a preview when it isn't |
+| Local voice, a repeated short phrase | instant (cache) |
+| Memory search on short remarks ("Brilliant.") | skipped; this saves an embeddings request per turn when an OpenAI key is set |
+
+**Speech recognition with background noise**
+
+Data: `docs/asr-noise-6.8.json`; script: `scripts/asr-noise.mjs`. Word error rate over 20 spoken commands. The
+background is mixed in at the given signal-to-noise ratio (dB: how much quieter the noise is than the speech). The
+speech is synthesised, so read this as a before/after comparison, not your real accuracy.
+
+| Background | Without the gate | With the 6.8 gate (−12 dB) |
+|---|---|---|
+| None | 3.2 % | 1.6 % |
+| Hiss, 20 dB | 7.3 % | 2.4 % |
+| Hiss, 10 dB | 11.3 % | 7.3 % |
+| Hiss, 5 dB | 32.3 % | 37.1 % |
+| Another person talking, 15 dB | 50.8 % | 36.3 % |
+| Another person talking, 10 dB | 79.0 % | 74.2 % |
+| Another person talking, 5 dB | 104 % | 96 % |
+
+- **Background speech** (a TV, people nearby) is the weak point. The recogniser transcribes both voices, and its
+  confidence stays "high", so JARVIS can't tell. The gate helps most when the other voice is clearly quieter than you.
+- **Loud hiss:** the one condition the gate made slightly worse (32.3 % → 37.1 %).
+- **Thresholds tried** on 20 commands (0, −10, −12, −16 dB) varied a lot between runs. −12 dB was the most consistent
+  improvement.
+- **Earlier benchmark** (espeak voices: normal, fast, slow, quiet −24 dB, noisy, clipped): identical with the gate,
+  2.6 % overall.
+
+**Interrupt words**
+
+The laptop's keyword spotter was tested on synthesised speech. "Wait…" and "Hold on…" were detected 8 / 8.
+"Waiting" and "weight" also trigger "Wait", so it is ignored when JARVIS's own current or previous sentence contains
+a similar word. "Stop" was never detected and once false-triggered on "storm over", so it isn't used.

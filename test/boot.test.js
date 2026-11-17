@@ -16,7 +16,7 @@ const STATUSES = ["operational", "connected", "degraded", "not_configured", "per
 
 test("the start-up list names every server-side check and the real version", async () => {
   const r = (await d.call("/api/boot")).data;
-  assert.equal(r.version, "6.7.0");
+  assert.equal(r.version, "6.8.0");
   assert.deepEqual(r.checks.map((c) => c.name), ["runtime", "os", "hardware", "database", "storage", "ai", "stt", "tts", "scheduler", "notifications", "weather", "calendar"]);
   assert.deepEqual(r.checks.filter((c) => c.critical).map((c) => c.name), ["runtime", "database", "storage"]);
 });

@@ -1194,7 +1194,7 @@ h1, h2, h3, h4 { letter-spacing: .03em; }
 .cc { gap: 14px; }
 .cc-col { gap: 12px; }
 .core-stage::before { content: ""; position: absolute; inset: 8% 10% 14%; border-radius: 50%; pointer-events: none;
-  background: radial-gradient(circle at 50% 46%, rgba(79, 195, 220, .1), rgba(30, 70, 110, .06) 45%, transparent 70%); filter: blur(8px); }
+  background: radial-gradient(circle at 50% 46%, rgba(79, 195, 220, .1), rgba(30, 70, 110, .06) 45%, transparent 72%); }
 .core-state { font-size: 11px; letter-spacing: .32em; color: var(--cyan-3); text-shadow: 0 0 10px rgba(79, 195, 220, .35); transition: color .4s ease, text-shadow .4s ease; }
 .core-state.error { color: #e8b48a; text-shadow: 0 0 10px rgba(232, 164, 106, .35); }
 html.mc-mode .core-state.error { color: #e8b48a; }

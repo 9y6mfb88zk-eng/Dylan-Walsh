@@ -1,4 +1,4 @@
-# JARVIS 6.7
+# JARVIS 6.8
 
 JARVIS is your personal AI system. It runs **entirely on your Windows laptop**, with no cloud server and no hosting bill.
 - **On the laptop** it listens for **"Hey JARVIS"** (or just **"JARVIS"**), keeps the conversation going without the wake word, rings alarms even with the window closed, and sits in the system tray.
@@ -23,6 +23,18 @@ JARVIS is your personal AI system. It runs **entirely on your Windows laptop**, 
 - **Speech recognition** is free and runs on the laptop (NVIDIA Parakeet: 2.6 % word errors vs 11.4 % for the previous model in our benchmark — `docs/performance.md`).
 - **ElevenLabs voice** is optional and has a free tier.
 - **Weather** is free (Open-Meteo).
+
+## What's new in 6.8
+
+| Area | What you get |
+|---|---|
+| **Personality** | JARVIS answers directly and naturally: no "Certainly, Sir" or stock phrases, no narrating what it's doing, short answers to simple questions. You choose how often it says "Sir" |
+| **Conversation** | Interrupt with "JARVIS", "Wait…" or "Hold on…": it stops at once and knows how much you heard ("Wait, explain that again"). "Speak more slowly", "Be brief" and "Repeat that" work mid-conversation. Follow-ups keep the subject ("What about the weekend?") |
+| **Voice** | A free local British voice (Piper) that runs on the laptop. Choose the voice (only ones that work are offered), speed, volume and pronunciations, with previews |
+| **Listening** | Better recognition with a TV or people in the background (measured). Live microphone status, and a microphone chip in the top bar that always shows what the microphone is doing |
+| **Look** | A more refined Command Centre in line with Mission Control: a restrained palette, finer borders, consistent type, and a brief "Fault" state on the core when something fails |
+
+Details: `docs/voice.md`, `PROJECT_STATUS.md` → "JARVIS 6.8".
 
 ## What's new in 6.7
 
@@ -53,7 +65,7 @@ Details and measurements: `PROJECT_STATUS.md` → "JARVIS 6.7" and `docs/perform
 ## The 15 things to know
 
 ### 1. Install or update to 6.6
-Download **`JARVIS-Setup-6.7.exe`** from **[Releases → "JARVIS for Windows (latest)"](https://github.com/9y6mfb88zk-eng/Dylan-Walsh/releases/tag/desktop-latest)** and run it.
+Download **`JARVIS-Setup-6.8.exe`** from **[Releases → "JARVIS for Windows (latest)"](https://github.com/9y6mfb88zk-eng/Dylan-Walsh/releases/tag/desktop-latest)** and run it.
 - **Updating from 3.x:** your data, keys and settings are kept.
   - Before the database is upgraded, JARVIS saves a full copy to `%APPDATA%\JARVIS\data\backups\pre-migration-007-….db`.
 - **SmartScreen or Smart App Control** may block the unsigned installer:

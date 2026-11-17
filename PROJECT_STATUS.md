@@ -183,6 +183,42 @@ See `docs/performance.md` → "JARVIS 6.4" for every number.
 - **Real hardware:** the startup sound on real speakers; real-GPU frame rates and the async-compile benefit; Windows-only checks (wake-word agent status, the Windows 11 name and build, the GPU name on your laptop).
 - **Map-tile World Explorer:** not part of the parts received.
 
+## JARVIS 6.8: natural conversation, living personality and visual refinement
+
+No new AI provider, no model change and no paid service. Claude, the app and its layout are unchanged; the
+conversation, voice, recognition and look are improved. Full description: `docs/voice.md`. Measurements:
+`docs/performance.md` → "JARVIS 6.8".
+
+### Inspected first
+
+| Area | Already there | Changed in 6.8 |
+|---|---|---|
+| Personality | Prompt with modes, formality, humour and cinematic sliders | Rewritten for natural speech: direct answers, no stock phrases or narration, length matched to the question, varied openings, tone illustrations. "Sir" frequency setting, enforced turn by turn |
+| Conversation | Continuous session after "Hey JARVIS"; end/stay/listen/repeat/mute; interrupt by saying "JARVIS" | Interruptions recorded (what was heard); AI request cancelled on interrupt; "Wait…" / "Hold on…" interrupt on the laptop; "speak more slowly / faster", "be brief" |
+| Context | Last 20 turns plus a running summary | What was looked up for recent replies; interruption details; "be brief"; no memory search for short remarks |
+| Memory | Ask-before-remember, categories, edit/delete UI | Long-conversation summaries no longer copied into long-term memory unless turned on |
+| Voice | ElevenLabs/OpenAI/browser, sentence-by-sentence | Free local Piper voice; provider choice (only usable ones offered) with previews; speed; volume; pronunciations; shared text clean-up |
+| Recognition | Parakeet on the laptop, VAD endpointing, calibration, confidence | Background gate against other talkers (measured); live microphone status; device-change refresh |
+| Look | Mission Control restrained, Command Centre brighter and rounder | Refinement layer: restrained palette, smaller radii, finer borders, no glowing outlines, consistent type, tabular numerals, softer core atmosphere; microphone privacy chip; core "Fault" state; subtle conversation sounds |
+
+### Testing
+
+| Suite | Result |
+|---|---|
+| Conversation tests (`test/conversation.test.js`) | 15 / 15, including the local voice (run with `JARVIS_TEST_TTS_DIR`) |
+| Server and unit tests (`npm test`) | see the 6.8 release run |
+| UI checks (`npm run test:ui`) | see the 6.8 release run |
+| Speech recognition with noise (`scripts/asr-noise.mjs`) | `docs/asr-noise-6.8.json` |
+| Earlier recogniser benchmark (`scripts/asr-bench.mjs`, gate off/on) | Identical: 2.6 % overall, 0 % quiet speech |
+| "Wait" / "Hold on" keyword spotting on synthesised speech | 8 / 8 detected; "Stop" dropped (0 / 2, plus a false trigger) |
+
+### Not verified
+
+- **Your real Claude account:** the personality and context changes were tested with a stand-in AI. The prompt Claude receives is verified; how natural Claude's replies sound is not.
+- **Your voice and microphone:** recognition was measured with synthesised speech and synthetic noise, and the keyword spotter with synthesised speech.
+- **Echo of JARVIS's own voice through laptop speakers:** handled by the echo guard and Windows echo cancellation, but not measured on real hardware.
+- **Speakers:** sounds and voices were measured as audio data. This machine has no audio output.
+
 ## JARVIS 6.7: Mission Control refinement, bug fixes and interaction upgrade
 
 No redesign: the same look, layout, colours and features, with the bugs fixed and the transitions, sounds and map
