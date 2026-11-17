@@ -27,9 +27,12 @@ export function cleanCommand(text) {
 // Interface commands handled on the device straight away (no AI round trip). Diagnostics still run on the server
 // and every spoken line comes from the real result.
 const LEVEL_WORDS = { quick: "quick", full: "full", complete: "full", comprehensive: "full", voice: "voice", audio: "voice", ai: "ai", "a.i.": "ai", network: "network", security: "security", performance: "performance", hardware: "hardware", integration: "integrations", integrations: "integrations" };
-const MC_SECTION_WORDS = [["overview", /^(the )?(operational )?overview$/], ["global", /^(the )?(global information|world map|map|globe)$/], ["architecture", /^(the )?(system )?architecture$/],
-  ["diagnostics", /^(the )?diagnostics?( panel)?$/], ["processes", /^(the )?(active )?processes$/], ["intelligence", /^(the )?intelligence( feed)?$|^research$/], ["comms", /^(the )?communications$|^comms$/],
+const MC_SECTION_WORDS = [["overview", /^(the )?(operational )?overview$/], ["globalops", /^(the )?(global operations|operations centre|operations center|global information)$/],
+  ["world", /^(the )?(world explorer|world map|map|globe)$/], ["events", /^(the )?(global events|events feed|conflict tracker|war tracker)$/], ["flights", /^(the )?(flight tracking|flights|air traffic)$/],
+  ["architecture", /^(the )?(system )?architecture$/], ["diagnostics", /^(the )?(system )?diagnostics?( panel)?$/], ["processes", /^(the )?(active )?processes$/], ["intelligence", /^(the )?intelligence( feed)?$|^research$/], ["comms", /^(the )?communications$|^comms$/],
   ["projects", /^(the |my )?projects$/], ["personal", /^(the |my )?personal operations$/]];
+const REGION_WORDS = { cyprus: "cyprus", europe: "europe", mediterranean: "mediterranean", "middle east": "middleeast", "north america": "northamerica", "south america": "southamerica", africa: "africa", "south asia": "southasia", "east asia": "eastasia", oceania: "oceania", uk: "uk", "united kingdom": "uk", britain: "uk" };
+const EVENT_WORDS = { "global events": null, conflict: "conflict", conflicts: "conflict", war: "conflict", wars: "conflict", "war tracker": "conflict", "armed conflict": "conflict", "armed conflicts": "conflict", "natural disaster": "disaster", "natural disasters": "disaster", disaster: "disaster", disasters: "disaster", ceasefire: "ceasefire", ceasefires: "ceasefire", protest: "unrest", protests: "unrest", "civil unrest": "unrest", "humanitarian emergencies": "humanitarian" };
 /** missionOpen: section names ("show system architecture") only mean something while Mission Control is open. */
 export function uiCommand(text, { missionOpen = false } = {}) {
   const t = String(text || "").toLowerCase().replace(/^(hey |ok |okay )?jarvis[,.!]?\s*/, "").replace(/[,.!?]+$/g, "").replace(/\bplease\b/g, "").replace(/\s+/g, " ").trim();
@@ -43,6 +46,17 @@ export function uiCommand(text, { missionOpen = false } = {}) {
     const s = t.match(/^(?:show|open|go to|switch to|display|view)(?: me)? (.+)$/);
     if (s) for (const [id, re] of MC_SECTION_WORDS) if (re.test(s[1])) return { kind: "mcSection", section: id };
   }
+  // Global Operations: flight tracking and events. Places other than the region presets go to the AI (it geocodes them).
+  if (/^(hide|turn off|switch off|disable|stop) (the )?(flight tracking|aircraft|flights|air traffic)$/.test(t)) return { kind: "goc", action: "flights_hide" };
+  if (/^(show|turn on|switch on|enable|start) (the )?(flight tracking|aircraft|flights)$/.test(t)) return { kind: "goc", action: "flights_show" };
+  if (/^(zoom out to|show me|show|go to|return to) (the )?(worldwide|world|global) (air traffic|flight|flights|aircraft)( map| view)?$/.test(t) || /^zoom out to (the )?(worldwide|global) (view|map)$/.test(t)) return { kind: "goc", action: "flights_world" };
+  if (/^(select|show me|find|pick|highlight) (the )?nearest (visible )?(aircraft|plane|flight)$/.test(t)) return { kind: "goc", action: "nearest" };
+  m = t.match(/^(?:show(?: me)?|display|view)(?: the)?(?: commercial| civil| public)? (?:aircraft|air traffic|flights|planes)(?: flying)? (?:around|over|near|in|above) (?:the )?(cyprus|europe|the mediterranean|mediterranean|middle east|north america|south america|africa|south asia|east asia|oceania|uk|united kingdom|britain)$/);
+  if (m) return { kind: "goc", action: "flights_area", region: REGION_WORDS[m[1].replace(/^the /, "")] };
+  m = t.match(/^(?:find|track|locate|show me|follow)(?: flight| the flight| aircraft)? ([a-z]{2,3} ?\d{1,4}[a-z]?|[a-z0-9]{1,2}-[a-z0-9]{3,5})$/);
+  if (m && /\d/.test(m[1])) return { kind: "goc", action: "flights_find", query: m[1].replace(/\s+/g, "").toUpperCase() };
+  m = t.match(/^(?:show(?: me)?|display|open)(?: the)? (global events|conflicts?|wars?|war tracker|armed conflicts?|natural disasters?|disasters?|ceasefires?|protests?|civil unrest|humanitarian emergencies)$/);
+  if (m) return { kind: "goc", action: "events", category: EVENT_WORDS[m[1]] ?? null };
   if (/^(full |complete )?(system )?status report$/.test(t) || /^are all systems (operational|online|working)$/.test(t)) return { kind: "diagnostics", level: /^(full|complete)/.test(t) ? "full" : "quick" };
   return null;
 }

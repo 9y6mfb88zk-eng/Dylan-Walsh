@@ -185,21 +185,34 @@ try {
   const stages = await L.evaluate(() => (window.__mcTimeline || []).filter((x) => x.stage).map((x) => x.stage));
   check("the four stages run in order: activating, transformation, initialisation, active", JSON.stringify(stages) === "[1,2,3,4]", JSON.stringify(stages));
   const init = await L.$$eval(".mc-init li", (l) => l.map((x) => `${x.dataset.state}: ${x.querySelector("b").textContent} — ${x.querySelector(".faint").textContent}`));
-  check("initialisation shows the real service checks", init.length === 6 && /Checking AI core/.test(init[1]) && /Verifying voice interface/.test(init[2]) && /Mission Control (ready|active)/.test(init[5]), init.join(" | "));
+  check("initialisation shows the real service checks", init.length === 8 && /Checking AI core/.test(init[1]) && /Verifying voice interface/.test(init[2]) && /Connecting public flight data/.test(init[4]) && /Retrieving global events/.test(init[5]) && /Mission Control (ready|active)/.test(init[7]), init.join(" | "));
+  check("the flight and events checks report what was actually retrieved", /^ok: Connecting public flight data — [\d,]+ aircraft visible · (ADSB\.lol|OpenSky Network)$/.test(init[4]) && /^(ok|warn): Retrieving global events — \d+ reports · \d of \d sources live$/.test(init[5]), `${init[4]} | ${init[5]}`);
   check("no check is shown as passed without a result", init.every((l) => /^(ok|warn|bad): /.test(l)));
   check("the same living core moved into Mission Control (no second 3D scene)", await L.evaluate(() => !!document.querySelector("#mcView canvas#core") && !document.querySelector("#view canvas#core") && (window.__jarvisCore?.alive ?? 1) === 1));
-  check("sidebar became Mission Control navigation", await L.evaluate(() => document.querySelector("#nav").hidden && !document.querySelector("#mcNav").hidden && document.querySelectorAll("#mcNav [data-mc]").length === 9));
-  const overviewPanels = await L.$$eval("#mcView [data-panel]:not([hidden])", (p) => p.map((x) => x.dataset.panel));
-  check("operational overview shows all ten areas", ["core", "overview", "ops", "arch", "diag", "map", "res", "intel", "comms", "act"].every((x) => overviewPanels.includes(x)), overviewPanels.join(","));
-  check("Mission Control confirms in JARVIS's voice", await L.waitForFunction(() => /Mission control activated, Sir\./.test(document.querySelector("#mcCaption")?.textContent || ""), null, { timeout: 8000 }).then(() => true, () => false));
-  const tele = await L.waitForFunction(() => /\d+%/.test(document.querySelector('[data-panel="res"]')?.textContent || ""), null, { timeout: 15000 }).then(() => true, () => false);
-  check("resource monitoring shows measured values", tele);
-  check("architecture diagram shows live component status", (await L.locator('#mcView .mc-node').count()) === 11 && (await L.locator("#mcView .mc-node.hub").count()) === 1);
+  check("sidebar became Mission Control navigation", await L.evaluate(() => document.querySelector("#nav").hidden && !document.querySelector("#mcNav").hidden && document.querySelectorAll("#mcNav [data-mc]").length === 12));
+  // Global Operations: the default Mission Control layout
+  check("Global Operations opens first: core on the left, map in the centre, events on the right, six status panels below", await L.evaluate(() => {
+    const g = document.querySelector("#mcView .goc"); if (!g || document.querySelector("#mcView").dataset.section !== "globalops") return false;
+    const left = g.querySelector(".goc-left").getBoundingClientRect(), centre = g.querySelector(".goc-centre").getBoundingClientRect(), right = g.querySelector(".goc-right").getBoundingClientRect();
+    return !!g.querySelector(".goc-core-host canvas#core") && left.right <= centre.left + 1 && centre.right <= right.left + 1 && centre.width > left.width && g.querySelectorAll(".goc-bottom > .goc-box").length === 6 && !!g.querySelector(".leaflet-container");
+  }));
+  check("the core panel is prominent (not a logo)", await L.evaluate(() => document.querySelector(".goc-core-host canvas#core").getBoundingClientRect().width >= 150));
+  check("Mission Control announces only what initialised", await L.waitForFunction(() => /^Mission Control is online, Sir\. (Global operations interface ready\.|(One service needs|\d services need) attention: .+\.)$/.test(document.querySelector("#mcCaption")?.textContent || ""), null, { timeout: 8000 }).then(() => true, () => false), await L.textContent("#mcCaption"));
+  check("aircraft from the flight provider are on the map, privacy-flagged ones excluded", await L.waitForFunction(() => (window.__jarvisGoc?.aircraft || 0) > 0, null, { timeout: 15000 }).then(() => true, () => false));
+  check("the events feed lists real items with their source and verification", await L.waitForFunction(() => document.querySelectorAll(".goc-ev").length >= 3 && [...document.querySelectorAll(".goc-ev-status")].every((x) => x.textContent.trim().length > 5), null, { timeout: 15000 }).then(() => true, () => false));
+  const tele = await L.waitForFunction(() => /CPU.*\d+% · \d+ cores/.test(document.querySelector("#gocSys")?.textContent || "") && /RAM.*\d+% in use/.test(document.querySelector("#gocSys")?.textContent || ""), null, { timeout: 15000 }).then(() => true, () => false);
+  check("system readings are measured values", tele);
+  check("GPU usage is not invented", /usage not measurable/.test(await L.textContent("#gocSys")));
+  await L.click(".goc-ev .goc-ev-head");
+  check("an event opens with dates, location accuracy and a link to the original report", await L.evaluate(() => { const e = document.querySelector(".goc-ev.open"); return !!e && /Retrieved/.test(e.textContent) && /Location accuracy/.test(e.textContent) && !!e.querySelector(".goc-srcs a[href^='https://']"); }));
   await sleep(2500);
   await L.screenshot({ path: path.join(out, "laptop-mission-control.png") });
   const sectionChecks = {
-    global: async () => /Dhekelia/.test(await L.textContent('[data-panel="map"]')) && await L.evaluate(() => document.querySelector('[data-panel="map"] canvas').width > 100),
-    architecture: async () => (await L.locator('[data-panel="arch"] .mc-tbl tbody tr').count()) >= 10,
+    world: async () => /Dhekelia/.test(await L.textContent(".goc-right")) && await L.evaluate(() => !document.querySelector("#gocLayers").hidden),
+    events: async () => (await L.locator(".goc-ev").count()) >= 3 && /Natural disaster/.test(await L.textContent(".goc-chips")),
+    flights: async () => (await L.locator(".goc-flist button").count()) >= 1,
+    overview: async () => { const v = await L.$$eval("#mcView [data-panel]:not([hidden])", (p) => p.map((x) => x.dataset.panel)); return ["core", "overview", "ops", "arch", "diag", "map", "res", "intel", "comms", "act"].every((x) => v.includes(x)) && /\d+%/.test(await L.textContent('[data-panel="res"]')); },
+    architecture: async () => (await L.locator('[data-panel="arch"] .mc-tbl tbody tr').count()) >= 10 && (await L.locator('#mcView .mc-node').count()) === 11,
     diagnostics: async () => (await L.locator('[data-panel="diag"] [data-level]').count()) === 9,
     processes: async () => /Windows app, which isn't connected/.test(await L.textContent('[data-panel="procs"]')),
     intelligence: async () => /Research|research/.test(await L.textContent('[data-panel="intel"]')),
@@ -214,6 +227,18 @@ try {
     check(`Mission Control section “${sec}” shows real data`, good);
   }
   await L.screenshot({ path: path.join(out, "laptop-mission-control-personal.png") });
+  // Flight tracking: select an aircraft from the list → the information card shows what's known and says what isn't.
+  await L.click('#mcNav [data-mc="flights"]');
+  await L.waitForSelector(".goc-flist button", { timeout: 15000 }).catch(() => {});
+  await L.click(".goc-flist button");
+  check("selecting an aircraft opens its card with ICAO24, freshness and source", await L.waitForFunction(() => { const c = document.querySelector("#gocCard"); return c && !c.hidden && /ICAO24/.test(c.textContent) && /(live|recent|stale)/.test(c.textContent) && /Data source/.test(c.textContent); }, null, { timeout: 10000 }).then(() => true, () => false));
+  await L.fill("#gocFQ", "ZZZ999"); await L.click("#gocFSearch .goc-btn");
+  check("a flight that can't be found is reported as not visible", await L.waitForFunction(() => /not visible in the available data/.test(document.querySelector("#gocFRes")?.textContent || ""), null, { timeout: 10000 }).then(() => true, () => false));
+  await L.fill("#mcSay", "Hide flight tracking"); await L.press("#mcSay", "Enter");
+  check("“Hide flight tracking” works by voice/text", await L.waitForFunction(() => document.querySelector("#gocFShow")?.checked === false && /Flight tracking hidden/.test(document.querySelector("#mcCaption")?.textContent || ""), null, { timeout: 10000 }).then(() => true, () => false));
+  await L.fill("#mcSay", "Show me aircraft around Cyprus"); await L.press("#mcSay", "Enter");
+  check("“Show me aircraft around Cyprus” answers with the real count", await L.waitForFunction(() => /^\d+ aircraft visible over Cyprus, Sir, from (ADSB\.lol|OpenSky Network)\.$/.test(document.querySelector("#mcCaption")?.textContent || ""), null, { timeout: 20000 }).then(() => true, () => false), await L.textContent("#mcCaption"));
+  await L.screenshot({ path: path.join(out, "laptop-flight-tracking.png") });
   await L.fill("#mcSay", "Show system architecture"); await L.press("#mcSay", "Enter");
   check("“Show system architecture” switches section by voice/text", await L.waitForFunction(() => document.querySelector("#mcView")?.dataset.section === "architecture", null, { timeout: 8000 }).then(() => true, () => false));
   await L.fill("#mcSay", "Tell me a long story"); await L.press("#mcSay", "Enter");

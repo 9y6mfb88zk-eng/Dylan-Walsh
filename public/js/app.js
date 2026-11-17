@@ -314,6 +314,7 @@ sync.on("notify", (m) => {
 sync.on("ui", (m) => {
   if (m.action === "mission_control_on") mission.show(ctx);
   else if (m.action === "mission_control_off") mission.hide();
+  else if (m.action === "goc" && m.cmd) mission.gocCommand(m.cmd).catch((e) => console.error("[goc]", e));
   else if (m.action === "open_section" && m.section) { if (mission.open) mission.hide().then(() => go(m.section)); else go(m.section); }
 });
 sync.on("alarm.ringing", (m) => showAlarm(m.alarm, m.speech));

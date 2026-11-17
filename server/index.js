@@ -12,6 +12,7 @@ import { router as coreRoutes } from "./routes/core.js";
 import { router as financeRoutes, callback as monzoCallback } from "./routes/finance.js";
 import { router as calendarRoutes, callback as googleCallback } from "./routes/calendar.js";
 import { router as upgradeRoutes } from "./routes/upgrade.js";
+import { router as globalopsRoutes } from "./routes/globalops.js";
 import { logError } from "./services/diagnostics.js";
 import { startScheduler } from "./scheduler.js";
 import { brainReady } from "./brain.js";
@@ -52,6 +53,7 @@ app.use(coreRoutes);
 app.use(financeRoutes);
 app.use(calendarRoutes);
 app.use(upgradeRoutes);
+app.use(globalopsRoutes);
 app.use("/api", (_req, res) => res.status(404).json({ error: "Not found" }));
 
 app.use((err, req, res, _next) => {

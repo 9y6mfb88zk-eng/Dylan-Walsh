@@ -13,7 +13,7 @@ const MODE_LINES = {
   professional: (t) => `Professional mode enabled, ${t}.`,
   focus: (t) => `Focus mode, ${t}. I'll keep interruptions to a minimum.`,
 };
-const SECTION_LINES = { overview: "Operational overview", global: "Global information on screen", architecture: "System architecture on screen", diagnostics: "Diagnostics on screen", processes: "Active processes on screen", intelligence: "Intelligence feed on screen", comms: "Communications on screen", projects: "Projects on screen", personal: "Personal operations on screen" };
+const SECTION_LINES = { overview: "Operational overview", globalops: "Global operations on screen", world: "World Explorer on screen", events: "Global events on screen", flights: "Flight tracking on screen", architecture: "System architecture on screen", diagnostics: "Diagnostics on screen", processes: "Active processes on screen", intelligence: "Intelligence feed on screen", comms: "Communications on screen", projects: "Projects on screen", personal: "Personal operations on screen" };
 const LEVEL_LABEL = { quick: "quick diagnostics", full: "full system diagnostics", voice: "voice diagnostics", ai: "AI diagnostics", network: "network diagnostics", security: "security diagnostics", performance: "performance diagnostics", hardware: "hardware diagnostics", integrations: "integration diagnostics" };
 
 /** Say (and caption) one line. Resolves when spoken, immediately when speech is off. */
@@ -30,7 +30,10 @@ export async function handleUi(cmd, ctx, { speak = true, text = "" } = {}) {
       const already = mission.open;
       const r = await mission.show(ctx);
       if (!already) logCommand("Mission Control activated", text);
-      const line = already ? `Mission control is already active, ${t}.` : `Mission control activated, ${t}.${r?.issues ? ` ${r.issues} ${r.issues === 1 ? "check needs" : "checks need"} attention.` : ""}`;
+      // Only services that actually initialised are claimed as ready.
+      const down = (r?.lines || []).filter((l) => l.state !== "ok").map((l) => l.label.replace(/^(Connecting|Retrieving|Checking|Verifying|Loading|Establishing|Initialising) /, "").toLowerCase());
+      const line = already ? `Mission control is already active, ${t}.` : !down.length && !r?.error ? `Mission Control is online, ${t}. Global operations interface ready.`
+        : `Mission Control is online, ${t}. ${down.length ? `${down.length === 1 ? "One service needs" : `${down.length} services need`} attention: ${down.join(", ")}.` : "The operations display reported a problem."}`;
       await say(ctx, line, speak);
       return line;
     }
@@ -50,6 +53,7 @@ export async function handleUi(cmd, ctx, { speak = true, text = "" } = {}) {
     return line;
   }
   if (cmd.kind === "diagnostics") return narrateDiagnostics(cmd.level, ctx, { speak });
+  if (cmd.kind === "goc") return gocCommand(cmd, ctx, { speak, text });
   if (cmd.kind === "mcSection") {
     if (!mission.open) return null;
     mission.setSection(cmd.section);
@@ -115,4 +119,27 @@ export async function tryMacro(text, ctx, { speak = true } = {}) {
     await say(ctx, line, speak);
     return { reply: line };
   } finally { core.tool("routine", "done"); }
+}
+
+/** Global Operations voice commands: every reply describes what was actually retrieved. */
+const REGION_NAME = { cyprus: "Cyprus", europe: "Europe", mediterranean: "the Mediterranean", middleeast: "the Middle East", northamerica: "North America", southamerica: "South America", africa: "Africa", southasia: "South Asia", eastasia: "East Asia", oceania: "Oceania", uk: "the UK and Ireland", world: "the world" };
+async function gocCommand(cmd, ctx, { speak, text }) {
+  const t = title(ctx);
+  let r;
+  try { r = await mission.gocCommand(cmd); } catch (e) { r = { ok: false, error: e.message }; }
+  logCommand(`Global Operations: ${cmd.action}${cmd.region ? ` ${cmd.region}` : ""}${cmd.query ? ` ${cmd.query}` : ""}`, text);
+  const n = (x) => Number(x || 0).toLocaleString("en-GB");
+  let line;
+  switch (cmd.action) {
+    case "flights_hide": line = `Flight tracking hidden, ${t}.`; break;
+    case "flights_show": line = `Flight tracking on, ${t}.`; break;
+    case "flights_world": line = r.ok && !r.error ? `Worldwide air traffic on screen, ${t}: ${n(r.aircraft)} aircraft currently visible from ${r.source}. Coverage is incomplete.` : `I couldn't load worldwide flight data, ${t}: ${r.error}.`; break;
+    case "flights_area": line = r.ok ? `${n(r.aircraft)} aircraft visible over ${REGION_NAME[cmd.region] || "that area"}, ${t}, from ${r.source}.` : `Flight data for ${REGION_NAME[cmd.region] || "that area"} isn't available right now, ${t}: ${r.error}.`; break;
+    case "flights_find": line = r?.ok && r.results?.length ? `Found ${r.results[0].callsign || cmd.query}, ${t}: ${r.results[0].ground ? "on the ground" : `${n(r.results[0].alt)} feet`}${r.results[0].gs != null ? `, ${Math.round(r.results[0].gs)} knots` : ""}.` : `${cmd.query} isn't visible in the available flight data right now, ${t}.${r?.error && !/not visible/.test(r.error) ? ` ${r.error}.` : ""}`; break;
+    case "nearest": line = r.ok ? `Nearest visible aircraft selected, ${t}: ${r.aircraft.callsign || r.aircraft.hex.toUpperCase()}${r.aircraft.alt != null ? ` at ${n(r.aircraft.alt)} feet` : ""}.` : `No aircraft are visible near there, ${t}.${r.error ? ` ${r.error}.` : ""}`; break;
+    case "events": line = r.ok ? `${n(r.count)} ${cmd.category ? `${cmd.category} ` : ""}reports on screen, ${t}. Each links to its original source.` : `Global events aren't available right now, ${t}.`; break;
+    default: line = r.ok ? `Done, ${t}.` : `I couldn't do that, ${t}: ${r.error}.`;
+  }
+  await say(ctx, line, speak);
+  return line;
 }

@@ -1,6 +1,6 @@
 # JARVIS — Project status
 
-_Last updated: 2026-11-17 — JARVIS 6.4 (startup sequence, performance pass; includes every earlier upgrade)_
+_Last updated: 2026-11-17 — JARVIS 6.5 (Global Operations: flight tracking, Global Events, map layers; includes every earlier upgrade)_
 
 This file is the hand-over document for the "JARVIS — Ultimate Upgrade & Redesign" specification. It lists what is done,
 what remains, known problems, technical decisions and exactly how to continue.
@@ -182,6 +182,41 @@ See `docs/performance.md` → "JARVIS 6.4" for every number.
 
 - **Real hardware:** the startup sound on real speakers; real-GPU frame rates and the async-compile benefit; Windows-only checks (wake-word agent status, the Windows 11 name and build, the GPU name on your laptop).
 - **Map-tile World Explorer:** not part of the parts received.
+
+## JARVIS 6.5: Global Operations (Mission Control redesign)
+
+Full description, data sources, limits and licences: `docs/global-operations.md`.
+
+### Inspected before building
+
+- **World Explorer:** the existing World section, a 3D globe of your places with live times and weather. It's kept
+  unchanged; Global Operations reuses its globe for the 3D view.
+- **Global Events / war tracker:** **did not exist.** The brief asked to preserve it, but there was nothing to
+  preserve, so it was built new: `server/services/events.js`.
+- **Mission Control:** extended rather than replaced. The nine earlier sections remain; Global Operations is the new
+  first section.
+
+### What was built
+
+| Part | Implementation |
+|---|---|
+| 1. Visual identity | `.goc` styles: near-black, navy and graphite, steel-blue lines, little cyan or violet, red and amber only for real alerts (emergency squawks, GDACS red alerts, failures). Fine 1 px borders, compact mono labels, no glow |
+| 2. AI core | The same live 3D core moves into a dedicated left panel (about 200 px), with state, caption and command line. It reacts to voice, thinking and Mission Control exactly as before |
+| 3. Layout | Top strip (brand, local/UTC/places clocks, AI, network and systems status); left (core plus systems: AI, voice, database, background services, World Explorer, events feed, flight data, CPU, RAM, GPU, frame rate); centre map; right events feed; bottom panels (flights, imagery, event activity, system timeline, network, recent operations) |
+| 4. Global Events | GDACS, USGS, GDELT, plus ReliefWeb and UCDP with free credentials. Every item carries its source link, event, publication and retrieval dates, location accuracy and a verification label. Filters: category, country, region, date, source, verification |
+| 5. Flights | ADSB.lol for views up to 250 nm, OpenSky for wider ones. Allowance-aware caching, backoff and deduplicated in-flight requests. Military, LADD and PIA aircraft are hidden. Canvas rendering with clustering. Card, search (callsign, ICAO24, registration), filters (type, altitude, region), trails from observed positions, follow |
+| 6. Voice | Instant local commands for the phrases in the brief; the AI's `global_operations` tool for anything needing a lookup. Answers come only from retrieved data, and "not visible in the available data" when a flight isn't found |
+| 7. Layers | Standard (OSM, darkened), satellite (Sentinel-2 cloudless), satellite latest day (NASA MODIS), terrain (OpenTopoMap), relief (NASA Blue Marble), OSM, country boundaries (Natural Earth), country names, events, conflict-only, flights, trails, weather radar (RainViewer), 3D globe. Tiles go through JARVIS's own disk cache (`server/services/tiles.js`) |
+| 8. Activation | The core brightens and speeds up; the screen dims; the map expands; the core column locks in; the events column and status panels follow; real checks for flight data and events. JARVIS says "Mission Control is online, Sir. Global operations interface ready." only if every check passed; otherwise it names the services needing attention |
+| 9. Free only | Each provider's pricing, limits, licence and registration was checked. CARTO now needs a key, so it was dropped. Esri was not used (terms unclear). The GDELT GEO API is retired. ReliefWeb and UCDP need free credentials and stay "not configured" without them |
+| 10. Testing | See the results and measurements below |
+
+### Not verified
+
+- **GDELT live:** this cloud container gets HTTP 429 for every request, even spaced minutes apart. It should work from
+  a home connection. Tested with a stand-in.
+- **ReliefWeb and UCDP live:** they need your approved appname and token.
+- **Real-GPU frame rates and map smoothness on your laptop.**
 
 ## iPhone
 

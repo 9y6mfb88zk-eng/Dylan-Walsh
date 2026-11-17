@@ -26,6 +26,8 @@ import { localDate, describeLocal } from "./services/time.js";
 import { CATEGORIES as FIN_CATS } from "./finance/categorize.js";
 import { TASK_CATEGORIES, REMINDER_REPEATS } from "./services/work.js";
 import * as smarthome from "./services/smarthome.js";
+import * as flights from "./services/flights.js";
+import * as gevents from "./services/events.js";
 
 export const client = config.anthropicKey ? new Anthropic({ apiKey: config.anthropicKey }) : null;
 export const brainReady = () => !!client;
@@ -181,6 +183,9 @@ const TOOLS = [
   { name: "run_diagnostics", description: "Run real system checks. level: quick | full | voice | ai | network | security | performance | hardware | integrations. Returns narration lines and real results.", input_schema: obj({ level: { type: "string", enum: ["quick", "full", "voice", "ai", "network", "security", "performance", "hardware", "integrations"] } }, ["level"]) },
   { name: "system_status", description: "Live system awareness: service health, errors detected, resource use (CPU, memory, storage), what's using the most resources on the laptop, recent errors.", input_schema: obj({}) },
   { name: "interface", description: "Control the JARVIS interface on the user's current device: mission_control_on, mission_control_off, set_mode (standard|cinematic|concise|professional|focus), open_section (section id).", input_schema: obj({ action: { type: "string", enum: ["mission_control_on", "mission_control_off", "set_mode", "open_section"] }, mode: { type: "string", enum: ["standard", "cinematic", "concise", "professional", "focus"] }, section: S }, ["action"]) },
+  { name: "global_operations", description: "Mission Control Global Operations on the user's screen: public civil flight tracking (ADS-B, incomplete coverage; military/private-flagged aircraft are never shown) and the Global Events tracker (published reports of conflicts, attacks, unrest, disasters, humanitarian crises, diplomacy, ceasefires — each with its source). action: flights_area {place or region, radius_nm} | flights_find {query: callsign, ICAO24 hex or registration} | flights_world | flights_show | flights_hide | nearest {place?} | events {category?, country?, days?} | layer {base: dark|satellite|today|terrain|relief|osm, layer: boundaries|labels|events|conflict|flights|trails|radar|3d, on}. Answer ONLY from the returned data; if something isn't found say it isn't visible in the available data.",
+    input_schema: obj({ action: { type: "string", enum: ["flights_area", "flights_find", "flights_world", "flights_show", "flights_hide", "nearest", "events", "layer"] }, place: S, region: { type: "string", enum: ["world", "europe", "mediterranean", "cyprus", "uk", "middleeast", "northamerica", "southamerica", "africa", "southasia", "eastasia", "oceania"] }, radius_nm: I, query: S,
+      category: { type: "string", enum: ["conflict", "attack", "unrest", "disaster", "humanitarian", "diplomacy", "ceasefire"] }, country: S, days: I, base: S, layer: S, on: B }, ["action"]) },
   { name: "recall", description: "Search long-term memory.", input_schema: obj({ query: S }, ["query"]) },
   { name: "forget", description: "Delete a memory by id.", input_schema: obj({ id: I }, ["id"]) },
   { name: "computer", description: "Do something on the user's Windows laptop through the allowlisted actions: open_app {app}, open_folder {folder}, open_bookmark {name}, open_url {url}, create_document {title, content, format}, search_files {query, folder}, open_file {path}, create_folder {name, parent}, screenshot, list_windows, focus_window {target}, minimize_window {target}, close_window {target} (needs confirmation), clipboard_read, clipboard_write {text}, lock_screen, system_status.",
@@ -377,6 +382,37 @@ async function runTool(name, input, ctx) {
       if (input.action === "set_mode") { const { updateSettings } = await import("./db.js"); updateSettings({ personality: { mode: input.mode || "standard" } }); changed("settings"); return { ok: true, mode: input.mode }; }
       const sent = sendToDevice(ctx.deviceId, { type: "ui", action: input.action, section: input.section });
       return sent ? { ok: true } : { ok: false, error: "This device isn't connected live." };
+    }
+    case "global_operations": {
+      const { sendToDevice } = await import("./realtime.js");
+      const show = (cmd) => sendToDevice(ctx.deviceId, { type: "ui", action: "goc", cmd });
+      const a = input.action;
+      if (a === "flights_area" || a === "nearest") {
+        let lat = null, lon = null, label = input.region || null;
+        if (input.place) { const g = (await geocode(input.place))[0]; if (!g) return { ok: false, error: `I couldn't find a place called ${input.place}.` }; lat = g.lat; lon = g.lon; label = g.name; }
+        else if (!input.region && a === "nearest") { const st = getSettings(); lat = st.home.lat; lon = st.home.lon; label = st.home.place; }
+        if (lat != null) {
+          const nm = Math.max(20, Math.min(250, input.radius_nm || 120));
+          const r = await flights.near(lat, lon, nm);
+          const shown = show(a === "nearest" && r.nearby?.[0] ? { action: "select", hex: r.nearby[0].hex, section: "flights" } : { action: "flights_area", lat, lon, nm });
+          if (!r.ok) return { ok: false, error: r.error, onScreen: shown };
+          return { ok: true, area: label, radius_nm: nm, aircraftVisible: r.count, nearest: r.nearby.slice(0, 8), source: r.attribution?.name, dataAgeSec: r.ageSec, coverageNote: "Only aircraft seen by volunteer ADS-B receivers appear; many are not visible.", onScreen: shown };
+        }
+        const shown = show({ action: "flights_area", region: input.region });
+        return { ok: true, region: input.region, onScreen: shown, note: "The map is showing that region; the aircraft count appears on screen." };
+      }
+      if (a === "flights_find") {
+        const r = await flights.search(input.query);
+        if (r.ok && r.results.length) show({ action: "select", hex: r.results[0].hex, follow: true, section: "flights" });
+        return r.ok && r.results.length ? { ok: true, found: r.results.slice(0, 3), source: r.from } : { ok: false, query: r.query, error: r.error || "not currently visible in the available data" };
+      }
+      if (a === "events") {
+        const r = await gevents.list({ category: input.category, country: input.country, days: input.days || 3, limit: 12 });
+        show({ action: "events", category: input.category || null, country: input.country || "" });
+        return { ok: true, total: r.total, items: r.items.map((e) => ({ title: e.title, place: e.placeName || e.country, category: e.category, published: e.publishedAt || e.eventDate, verification: r.statusLabels[e.status], source: e.sources?.[0]?.name, url: e.sources?.[0]?.url })),
+          sourcesUnavailable: Object.values(r.providers).filter((p) => p.configured && p.state !== "operational").map((p) => `${p.name}: ${p.state}`) };
+      }
+      return { ok: true, onScreen: show({ action: a, base: input.base, layer: input.layer, on: input.on }) };
     }
     case "forget": return { ok: memory.remove(input.id) };
     case "computer": {

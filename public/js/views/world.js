@@ -44,7 +44,7 @@ async function addPlace() {
 }
 
 // ---------------------------------------------------------------- The globe (Three.js)
-async function mountGlobe(canvas, labels, animation, mapQuality = "auto") {
+export async function mountGlobe(canvas, labels, animation, mapQuality = "auto") {
   const maxPr = mapQuality === "low" ? 1 : mapQuality === "high" ? 2 : 1.75;
   const THREE = await import("/vendor/three/three.module.min.js");
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, premultipliedAlpha: true });
@@ -92,6 +92,17 @@ async function mountGlobe(canvas, labels, animation, mapQuality = "auto") {
       markers.push({ v, el, ring });
     }
   }
+  // Extra points (Global Operations: event locations), one draw call however many there are.
+  let pointCloud = null;
+  function setPoints(ps) {
+    if (pointCloud) { g.remove(pointCloud); pointCloud.geometry.dispose(); pointCloud.material.dispose(); pointCloud = null; }
+    if (!ps?.length) return;
+    const pos = new Float32Array(ps.length * 3), col = new Float32Array(ps.length * 3), c = new THREE.Color();
+    ps.forEach((p, i) => { const v = toV(p.lat, p.lon, 1.012); pos.set([v.x, v.y, v.z], i * 3); c.set(p.color || "#9fb4c8"); col.set([c.r, c.g, c.b], i * 3); });
+    const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.BufferAttribute(pos, 3)); geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    pointCloud = new THREE.Points(geo, new THREE.PointsMaterial({ size: 0.028, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false }));
+    g.add(pointCloud);
+  }
   // Interaction
   let rotY = -0.6, rotX = 0.35, velY = 0.0015, drag = null, target = null;
   const reduced = animation === "reduced" || animation === "off" || matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -122,8 +133,8 @@ async function mountGlobe(canvas, labels, animation, mapQuality = "auto") {
   }
   frame();
   return {
-    setPlaces,
+    setPlaces, setPoints,
     flyTo(lat, lon) { const ry = -((lon + 180) * Math.PI / 180) + Math.PI / 2 + Math.PI; let d = ((ry - rotY) % (Math.PI * 2) + Math.PI * 3) % (Math.PI * 2) - Math.PI; target = { ry: rotY + d, rx: lat * Math.PI / 180 }; },
-    destroy() { cancelAnimationFrame(raf); ro.disconnect(); renderer.dispose(); renderer.forceContextLoss?.(); },
+    destroy() { cancelAnimationFrame(raf); ro.disconnect(); setPoints(null); renderer.dispose(); renderer.forceContextLoss?.(); },
   };
 }

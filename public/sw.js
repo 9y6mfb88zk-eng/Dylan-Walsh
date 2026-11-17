@@ -1,6 +1,6 @@
 // JARVIS service worker: offline shell + web push.
-const CACHE = "jarvis-v6.4";
-const SHELL = ["/", "/index.html", "/styles.css", "/js/app.js", "/js/api.js", "/js/sync.js", "/js/voice.js", "/js/core.js", "/js/core3d.js", "/js/corestate.js", "/js/conversation.js", "/js/voicecommands.js", "/js/icons.js", "/js/util.js", "/js/views/home.js", "/js/views/talk.js", "/js/views/briefings.js", "/js/views/notifications.js", "/js/views/alarms.js", "/js/views/calendar.js", "/js/views/tasks.js", "/js/views/focus.js", "/js/views/goals.js", "/js/views/projects.js", "/js/views/business.js", "/js/views/money.js", "/js/views/intelligence.js", "/js/views/documents.js", "/js/views/memory.js", "/js/views/world.js", "/js/views/automations.js", "/js/views/computer.js", "/js/views/smarthome.js", "/js/views/diagnostics.js", "/js/views/settings.js", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/apple-touch-icon.png", "/vendor/fonts/rajdhani-latin-600-normal.woff2", "/vendor/fonts/inter-latin-400-normal.woff2", "/sounds/chime.wav", "/js/commands.js", "/js/iphone.js", "/js/mc-panels.js", "/js/mission.js", "/js/resample.js", "/js/resample-worker.js", "/js/startup.js", "/js/sounds.js"];
+const CACHE = "jarvis-v6.5";
+const SHELL = ["/", "/index.html", "/styles.css", "/js/app.js", "/js/api.js", "/js/sync.js", "/js/voice.js", "/js/core.js", "/js/core3d.js", "/js/corestate.js", "/js/conversation.js", "/js/voicecommands.js", "/js/icons.js", "/js/util.js", "/js/views/home.js", "/js/views/talk.js", "/js/views/briefings.js", "/js/views/notifications.js", "/js/views/alarms.js", "/js/views/calendar.js", "/js/views/tasks.js", "/js/views/focus.js", "/js/views/goals.js", "/js/views/projects.js", "/js/views/business.js", "/js/views/money.js", "/js/views/intelligence.js", "/js/views/documents.js", "/js/views/memory.js", "/js/views/world.js", "/js/views/automations.js", "/js/views/computer.js", "/js/views/smarthome.js", "/js/views/diagnostics.js", "/js/views/settings.js", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/apple-touch-icon.png", "/vendor/fonts/rajdhani-latin-600-normal.woff2", "/vendor/fonts/inter-latin-400-normal.woff2", "/sounds/chime.wav", "/js/commands.js", "/js/iphone.js", "/js/mc-panels.js", "/js/mission.js", "/js/resample.js", "/js/resample-worker.js", "/js/startup.js", "/js/sounds.js", "/js/goc.js", "/vendor/leaflet/leaflet-src.esm.js", "/vendor/leaflet/leaflet.css", "/vendor/countries-110m.geojson"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -10,7 +10,7 @@ self.addEventListener("activate", (e) => {
 });
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
-  if (e.request.method !== "GET" || url.origin !== location.origin || url.pathname.startsWith("/api/") || url.pathname.startsWith("/oauth/") || url.pathname === "/ws") return;
+  if (e.request.method !== "GET" || url.origin !== location.origin || url.pathname.startsWith("/api/") || url.pathname.startsWith("/tiles/") || url.pathname.startsWith("/oauth/") || url.pathname === "/ws") return;
   // Network first, falling back to the cached shell when offline.
   e.respondWith(
     fetch(e.request).then((res) => {

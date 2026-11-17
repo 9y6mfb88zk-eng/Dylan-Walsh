@@ -13,21 +13,27 @@ import { core, STATE_LABEL } from "./corestate.js";
 import { mountBestCore, coreOptions } from "./core.js";
 import { $, $$, esc, icon } from "./util.js";
 import { PANELS, RENDER, SERIES_MAX } from "./mc-panels.js";
+import { mountGoc } from "./goc.js";
 
+// The first six are the Global Operations navigation; the rest are the earlier Mission Control views, kept as they were.
 export const MC_SECTIONS = [
-  ["overview", "Operational Overview", "home"],
-  ["global", "Global Information", "globe"],
-  ["architecture", "System Architecture", "cpu"],
-  ["diagnostics", "Diagnostics", "diagnostics"],
-  ["processes", "Active Processes", "wave"],
+  ["globalops", "Global Operations", "globe"],
+  ["world", "World Explorer", "world"],
   ["intelligence", "Intelligence", "intel"],
+  ["events", "Global Events", "fire"],
+  ["flights", "Flight Tracking", "send"],
+  ["diagnostics", "System Diagnostics", "diagnostics"],
+  ["overview", "Operational Overview", "home"],
+  ["architecture", "System Architecture", "cpu"],
+  ["processes", "Active Processes", "wave"],
   ["comms", "Communications", "notifications"],
   ["projects", "Projects", "projects"],
   ["personal", "Personal Operations", "tasks"],
 ];
+const GOC_SECTIONS = ["globalops", "world", "events", "flights"];
+const isGoc = (sec) => GOC_SECTIONS.includes(sec);
 const OVERVIEW = ["core", "overview", "ops", "arch", "diag", "map", "res", "intel", "comms", "act"];
 const FOCUS = {
-  global: { main: "map", side: ["core", "overview", "intel"] },
   architecture: { main: "arch", side: ["core", "diag", "res"] },
   diagnostics: { main: "diag", side: ["core", "arch", "res"] },
   processes: { main: "procs", side: ["core", "res", "act"] },
@@ -75,7 +81,11 @@ const html = document.documentElement;
 const mark = (label) => (window.__mcTimeline ||= []).push({ label, t: Math.round(performance.now()) });
 const D = { series: { cpu: [], ram: [], ai: [], lag: [] } };
 let phase = "off", CTX = null, root = null, navEl = null, bannerEl = null, section = "overview", prevTitle = "";
-let borrowed = null, ownCore = null, coreCanvas = null, timers = [], offs = [], readyP = null, hideP = null;
+let borrowed = null, ownCore = null, coreCanvas = null, timers = [], offs = [], readyP = null, hideP = null, goc = null, gocP = null;
+// Resolves with the Global Operations display once it has been created during activation (checks start before that).
+let gocMounted = null, gocMountedResolve = null;
+const resetGocMounted = () => { gocMounted = new Promise((r) => { gocMountedResolve = r; }); };
+resetGocMounted();
 
 const reduced = () => html.classList.contains("reduce-motion") || matchMedia("(prefers-reduced-motion: reduce)").matches;
 const EASE = "cubic-bezier(.2,.75,.15,1)";
@@ -114,6 +124,18 @@ export const mission = {
     return hideP;
   },
   setSection,
+  /** The Global Operations display (null until Mission Control is active). */
+  get goc() { return goc; },
+  /** Voice/AI commands for Global Operations: switches to the right section first. */
+  async gocCommand(cmd) {
+    if (phase === "off" || phase === "deactivating") await mission.show(CTX);
+    else if (phase === "activating") await readyP;
+    const want = cmd.section || (/^flights|^select|^nearest/.test(cmd.action) ? "flights" : cmd.action === "events" ? "events" : null);
+    if (want && section !== want && !(section === "globalops" && want !== "world")) await setSection(want);
+    else if (!isGoc(section)) await setSection("globalops");
+    await gocP;
+    return goc ? goc.command(cmd) : { ok: false, error: "Global Operations isn't available." };
+  },
   /** Live entity changes from the server. */
   refresh(entities) {
     if (phase !== "active") return;
@@ -150,7 +172,7 @@ async function activate() {
   // Stage 2 — INTERFACE TRANSFORMATION
   banner("RECONFIGURING INTERFACE", 2);
   build();
-  applyLayout("overview");
+  applyLayout("globalops");
   const outs = animateOut(blocks);
   const navDone = navSwap(true);
   root.hidden = true;
@@ -161,6 +183,8 @@ async function activate() {
   scrollTo(0, 0);
   root.hidden = false;
   root.classList.add("mc-building");
+  await ensureGoc(ctx, "globalops").catch((e) => console.error("[mission] goc", e));
+  placeCore();
   const slot = $(".mc-core-slot", root);
   if (coreCanvas) {
     borrowed = { canvas: coreCanvas, parent: coreCanvas.parentNode, next: coreCanvas.nextSibling };
@@ -180,14 +204,22 @@ async function activate() {
     ? anim(coreCanvas, [{ transform: `translate(${first.left - last.left}px, ${first.top - last.top}px) scale(${first.width / last.width}, ${first.height / last.height})`, transformOrigin: "0 0" }, { transform: "none", transformOrigin: "0 0" }], { duration: 950 })
     : anim(coreCanvas, [{ opacity: 0, transform: "scale(.4)" }, { opacity: 1, transform: "none" }], { duration: 800 }));
   root.classList.remove("mc-building");
-  for (const id of visibleIds()) {
+  if (isGoc(section) && goc) {
+    // Global Operations: the map expands, the core column locks into place, the events column and status panels follow.
+    const g = goc.root;
+    enters.push(anim($(".goc-strip", g), [{ opacity: 0 }, { opacity: 1 }], { duration: 500, delay: 80 }));
+    enters.push(anim($(".goc-centre", g), [{ opacity: 0, transform: "scale(.92)" }, { opacity: 1, transform: "none" }], { duration: 750, delay: 160 }));
+    enters.push(anim($(".goc-left", g), ENTER.slideL, { duration: 600, delay: 260 }));
+    enters.push(anim($(".goc-right", g), ENTER.slideR, { duration: 600, delay: 420 }));
+    $$(".goc-bottom > *", g).forEach((b, i) => enters.push(anim(b, ENTER.rise, { duration: 500, delay: 560 + i * 60 })));
+  } else for (const id of visibleIds()) {
     const p = panelEl(id);
     enters.push(anim(p, ENTER[PANELS[id].enter] || ENTER.rise, { duration: id === "map" ? 750 : 600, delay: ENTER_DELAY[id] || 0 }));
   }
   if (!reduced()) $(".mc-arch", root)?.classList.add("mc-draw");
   await settle(enters);
   mark("enters done");
-  clearAnims([coreCanvas, ...$$("[data-panel]", root)]);
+  clearAnims([coreCanvas, ...$$("[data-panel]", root), ...(goc ? $$(".goc-strip, .goc-centre, .goc-left, .goc-right, .goc-bottom > *", goc.root) : [])]);
   await navDone;
   mark("nav done");
 
@@ -217,8 +249,8 @@ async function deactivate({ instant }) {
   if (!fast) banner("DEACTIVATING MISSION CONTROL", 2);
   html.classList.add("mc-deactivating");
   wakeUi();
-  const panels = root ? visibleIds().filter((id) => id !== "core").map(panelEl) : [];
-  const outs = fast ? [] : panels.map((p, i) => anim(p, [...(ENTER[PANELS[p.dataset.panel].enter] || ENTER.rise)].reverse(), { duration: 380, delay: i * 35, easing: "cubic-bezier(.5,0,.75,0)" }));
+  const panels = root ? (isGoc(section) && goc ? [...$$(".goc-strip, .goc-right, .goc-bottom > *, .goc-centre", goc.root)] : visibleIds().filter((id) => id !== "core").map(panelEl)) : [];
+  const outs = fast ? [] : panels.map((p, i) => anim(p, [...(ENTER[PANELS[p.dataset.panel]?.enter] || ENTER.rise)].reverse(), { duration: 380, delay: i * 35, easing: "cubic-bezier(.5,0,.75,0)" }));
   const navDone = navSwap(false, fast);
   await settle(outs);
   const first = coreCanvas?.getBoundingClientRect();
@@ -244,12 +276,13 @@ async function deactivate({ instant }) {
   clearAnims([...blocks, borrowed?.canvas]);
   await navDone;
   teardown();
-  html.classList.remove("mc-activating", "mc-initialising", "mc-active", "mc-deactivating");
+  html.classList.remove("mc-activating", "mc-initialising", "mc-active", "mc-deactivating", "mc-goc");
   hideBanner(0);
   const t = $("#pageTitle"); if (t && prevTitle) t.textContent = prevTitle;
 }
 function teardown() {
   for (const id of ALL_PANELS) panelEl(id)?.querySelector(".mc-body")?.__map?.destroy?.();
+  goc?.destroy(); goc = null; gocP = null; resetGocMounted();
   root?.remove(); root = null;
   navEl?.remove(); navEl = null;
   borrowed = null; coreCanvas = null;
@@ -336,6 +369,19 @@ function startChecks(ctx) {
       const agent = ctx.desktop ? (ctx.agent ? "Windows agent connected" : "Windows agent not reporting") : "browser session";
       return { state: ctx.desktop && !ctx.agent ? "warn" : "ok", detail: `live link up · ${agent}${live != null ? ` · ${live} device${live === 1 ? "" : "s"} online` : ""}` };
     }),
+    run("Connecting public flight data", async () => {
+      const g = await gocMounted; if (!g) return { state: "bad", detail: "Global Operations display didn't start" };
+      const r = (await g.ready).flights;
+      if (!r) return { state: "warn", detail: "flight layer off" };
+      return r.ok ? { state: "ok", detail: `${r.n.toLocaleString("en-GB")} aircraft visible · ${r.source}` } : { state: "warn", detail: `unavailable — ${r.error}` };
+    }),
+    run("Retrieving global events", async () => {
+      const g = await gocMounted; if (!g) return { state: "bad", detail: "Global Operations display didn't start" };
+      const r = (await g.ready).events;
+      if (!r?.ok) return { state: "warn", detail: `unavailable — ${r?.error || "no response"}` };
+      const pv = Object.values(r.providers).filter((p) => p.configured), live = pv.filter((p) => p.state === "operational").length;
+      return { state: live === pv.length ? "ok" : live ? "warn" : "bad", detail: `${r.n.toLocaleString("en-GB")} reports · ${live} of ${pv.length} sources live` };
+    }),
     run("Loading operational overview", async () => {
       const [h, n, a] = await Promise.all([FETCH.home(), FETCH.notif(), FETCH.activity()]);
       D.home = h; D.notif = n; D.activity = a;
@@ -382,6 +428,7 @@ function build() {
   root.id = "mcView"; root.className = "mcv view-mc";
   root.setAttribute("aria-label", "Mission Control");
   root.innerHTML = `<div class="mc-tabs" role="tablist" aria-label="Mission Control sections">${MC_SECTIONS.map(([id, l, ic]) => `<button class="mc-tab" role="tab" data-mc="${id}">${icon(ic)}<span>${esc(l)}</span></button>`).join("")}<button class="mc-tab exit" data-mcexit>${icon("x")}<span>Exit</span></button></div>
+    <div class="mc-goc" hidden></div>
     <div class="mc-grid">
       <article class="panel mc-panel mc-core-panel" data-panel="core" aria-label="JARVIS core">
         <div class="mc-core-slot"><span class="mc-ring r1" aria-hidden="true"></span><span class="mc-ring r2" aria-hidden="true"></span></div>
@@ -400,6 +447,16 @@ function build() {
 }
 function applyLayout(sec) {
   section = sec;
+  html.classList.toggle("mc-goc", isGoc(sec));
+  if (isGoc(sec)) {
+    root.dataset.layout = "goc"; root.dataset.section = sec;
+    $(".mc-goc", root).hidden = false; $(".mc-grid", root).hidden = true;
+    for (const p of $$(".mc-grid > [data-panel]", root)) if (p.dataset.panel !== "core") { p.hidden = true; p.style.gridArea = ""; p.classList.remove("expanded"); }
+    $$("[data-mc]").forEach((b) => { const on = b.dataset.mc === sec; b.classList.toggle("active", on); if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
+    const t = $("#pageTitle"); if (t) t.textContent = `Mission Control · ${sectionLabel(sec)}`;
+    return;
+  }
+  $(".mc-goc", root).hidden = true; $(".mc-grid", root).hidden = false;
   const F = FOCUS[sec];
   root.dataset.layout = F ? "focus" : "overview";
   root.dataset.section = sec;
@@ -414,8 +471,19 @@ function applyLayout(sec) {
   const t = $("#pageTitle"); if (t) t.textContent = `Mission Control · ${sectionLabel(sec)}`;
 }
 /** Switch section: panels glide to their new places (FLIP); newly shown ones appear. */
-function setSection(sec) {
+async function setSection(sec) {
   if (!root || !MC_SECTIONS.some((s) => s[0] === sec) || (sec === section && root.dataset.section === sec)) return;
+  if (isGoc(sec) || isGoc(section)) {
+    const was = section;
+    applyLayout(sec);
+    if (isGoc(sec)) { await ensureGoc(CTX, sec); goc?.setMode(sec); }
+    placeCore();
+    if (!isGoc(sec)) { renderAll(); load(neededKeys()).then(renderAll); }
+    const shown = isGoc(sec) ? [goc?.root].filter(Boolean) : $$("[data-panel]", root).filter((x) => !x.hidden);
+    if (isGoc(sec) !== isGoc(was)) settle(shown.map((p) => anim(p, [{ opacity: 0, transform: "scale(.98)" }, { opacity: 1, transform: "none" }], { duration: 380 }))).then(() => clearAnims(shown));
+    scrollTo({ top: 0, behavior: reduced() ? "auto" : "smooth" });
+    return;
+  }
   const before = new Map($$("[data-panel]", root).filter((p) => !p.hidden).map((p) => [p, p.getBoundingClientRect()]));
   applyLayout(sec);
   renderAll();
@@ -428,6 +496,21 @@ function setSection(sec) {
   settle(moves).then(() => clearAnims($$("[data-panel]", root || document.createElement("div"))));
   load(neededKeys()).then(renderAll);
   scrollTo({ top: 0, behavior: reduced() ? "auto" : "smooth" });
+}
+
+// ---------------------------------------------------------------- Global Operations
+function ensureGoc(ctx, mode) {
+  if (gocP) return gocP;
+  const host = $(".mc-goc", root);
+  gocP = mountGoc(host, ctx, { mode }).then((g) => { goc = g; gocMountedResolve(g); return g; }).catch((e) => { gocMountedResolve(null); host.innerHTML = `<p class="mc-empty">Global Operations couldn't start: ${esc(e.message)}</p>`; throw e; });
+  return gocP;
+}
+/** The core panel lives in the Global Operations left column, or first in the panel grid for the other sections. */
+function placeCore() {
+  const cp = panelEl("core"); if (!cp) return;
+  if (isGoc(section) && goc) { if (cp.parentNode !== goc.coreHost) goc.coreHost.append(cp); cp.style.gridArea = ""; }
+  else { const grid = $(".mc-grid", root); if (cp.parentNode !== grid) grid.prepend(cp); cp.style.gridArea = FOCUS[section] ? `side${FOCUS[section].side.indexOf("core") + 1}` : "core"; }
+  cp.hidden = false;
 }
 
 // ---------------------------------------------------------------- Data

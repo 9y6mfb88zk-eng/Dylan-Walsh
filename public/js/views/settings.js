@@ -438,3 +438,33 @@ Object.assign(SECTIONS, {
     $("#pfB", el).onchange = (e) => P3({ bloom: Number(e.target.value) });
   },
 });
+
+// ---------------------------------------------------------------- Global Operations data sources (JARVIS 6.5)
+TABS.splice(TABS.findIndex((t) => t[0] === "integrations") + 1, 0, ["globalops", "Global Operations"]);
+const GOC_KEYS = [
+  { k: "adsbKey", name: "ADSB.lol API key", what: "Flight positions for zoomed-in views. Without a key: 500 requests a day from your connection. A free key (request form, no payment) raises it to 1,000.", url: "https://www.adsb.lol/mmb", secret: true },
+  { k: "openskyClientId", name: "OpenSky client ID", what: "Continental and worldwide flight views. Anonymous: 400 credits a day (a worldwide view costs 4). A free account's API client gives 4,000. Non-commercial use only.", url: "https://opensky-network.org/my-opensky/account", secret: false },
+  { k: "openskyClientSecret", name: "OpenSky client secret", what: "Goes with the client ID above.", url: null, secret: true },
+  { k: "reliefwebAppname", name: "ReliefWeb appname", what: "UN OCHA disasters and humanitarian situations. ReliefWeb only answers requests carrying an appname they've approved; request one with their short form (free, reply by email).", url: "https://apidoc.reliefweb.int/parameters#appname", secret: false },
+  { k: "ucdpToken", name: "UCDP access token", what: "Researcher-coded conflict events from Uppsala University. Free; request a token by email (reply in 3–5 working days). Data is published with a delay of weeks.", url: "https://ucdp.uu.se/apidocs/", secret: true },
+];
+Object.assign(SECTIONS, {
+  async globalops(el) {
+    const st = await api("/api/globalops/status");
+    const prov = (name, p) => `<tr><td>${esc(name)}</td><td>${esc(String(p.state).replace(/_/g, " "))}</td><td class="faint">${p.lastOkAt ? esc(ago(p.lastOkAt)) : "—"}</td><td class="faint">${esc(p.lastError || (p.remaining != null ? `${p.remaining} of ${p.limit} left today` : ""))}</td></tr>`;
+    el.innerHTML = `<article class="panel" style="max-width:860px"><div class="panel-head"><span class="label">Global Operations data sources</span></div>
+      <p class="muted" style="margin-top:0;font-size:13.5px">Mission Control's flight tracking, Global Events and maps use only free public sources. None of these keys is required: without them JARVIS uses each provider's anonymous allowance or leaves that source off, and says so. Keys are stored encrypted on this computer and never shown again.</p>
+      ${GOC_KEYS.map((x) => row(`${esc(x.name)} ${st.keys[x.k] ? '<span class="pill ok">set</span>' : '<span class="pill">not set</span>'}`, `${esc(x.what)}${x.url ? ` <a href="${esc(x.url)}" target="_blank" rel="noopener">How to get one ↗</a>` : ""}`,
+        `<div class="row"><input class="input" data-gk="${x.k}" type="${x.secret ? "password" : "text"}" autocomplete="off" placeholder="${st.keys[x.k] ? "saved" : "paste here"}" aria-label="${esc(x.name)}" style="width:220px"><button class="btn tiny" data-gsave="${x.k}">Save</button>${st.keys[x.k] ? `<button class="btn tiny ghost" data-gclear="${x.k}">Clear</button>` : ""}</div>`)).join("")}
+      <div class="label" style="margin-top:16px">Status now</div>
+      <div class="scroll-x"><table class="tbl"><thead><tr><th>Source</th><th>State</th><th>Last success</th><th>Detail</th></tr></thead><tbody>
+        ${prov("ADSB.lol (flights)", st.flights.providers.adsb)}${prov("OpenSky (flights)", st.flights.providers.opensky)}
+        ${Object.values(st.events).map((p) => prov(p.name, p)).join("")}
+      </tbody></table></div>
+      <p class="faint" style="font-size:12.5px;margin-bottom:0">Map tiles: ${esc(st.tiles.hits)} served from the cache, ${esc(st.tiles.misses)} fetched, cache limit ${esc(st.tiles.capMb)} MB. Aircraft that ADSB.lol flags as military, LADD or privacy (PIA) are never shown.</p>
+    </article>`;
+    const save = async (k, v) => { try { await api("/api/globalops/keys", { method: "PATCH", body: { [k]: v } }); toast(v ? "Saved." : "Cleared."); SECTIONS.globalops(el); } catch (e) { toast(e.message); } };
+    $$("[data-gsave]", el).forEach((b) => b.onclick = () => { const v = $(`[data-gk="${b.dataset.gsave}"]`, el).value.trim(); if (v) save(b.dataset.gsave, v); });
+    $$("[data-gclear]", el).forEach((b) => b.onclick = () => save(b.dataset.gclear, ""));
+  },
+});

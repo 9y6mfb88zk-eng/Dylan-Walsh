@@ -58,7 +58,8 @@ function writeSSE(res, m) {
 
 export function startMock() {
   const log = { anthropic: [], tts: [], stt: 0, push: [], meteo: 0, monzo: [], google: [] };
-  const state = { monzoApproved: false, monzoTokenVersion: 0, googleEvents: [] };
+  const state = { monzoApproved: false, monzoTokenVersion: 0, googleEvents: [], adsbRemaining: 500, adsbDown: false, openskyDown: false, openskyCount: 3000, gdelt429: false, gdeltCalls: 0 };
+  log.adsb = []; log.opensky = []; log.gdelt = []; log.tiles = 0;
   let ideaN = 0, toolCounter = 0;
 
   const msg = (content, stop_reason = "end_turn") => ({
@@ -90,12 +91,16 @@ export function startMock() {
       if (/gym/i.test(firstUser)) return text(/needsConfirmation/.test(results) ? "That clashes. Shall I go ahead?" : "Booked, sir.");
       if (/business/i.test(firstUser)) return text("I've set up the project, sir.");
       if (/alarm/i.test(firstUser)) { const next = results.match(/"next":"([^"]+)"/)?.[1]; return text(next ? `Alarm set, Sir — ${next}.` : `I couldn't set that: ${results}`); }
+      if (/aircraft around/i.test(firstUser)) { try { const r = JSON.parse(last.content[0].content); return text(r.ok ? `${r.aircraftVisible} aircraft visible around ${r.area}, Sir, from ${r.source}.` : `Flight data isn't available: ${r.error}`); } catch { return text(`Couldn't read: ${results}`); } }
+      if (/flight zzz999/i.test(firstUser)) { const r = JSON.parse(last.content[0].content); return text(r.ok ? "Found it." : `ZZZ999 isn't visible in the available data, Sir.`); }
       if (/time is it in/i.test(firstUser)) return text(`In Tokyo it's ${results.match(/"localTime":"([^"]+)"[^}]*"timezone":"Asia\/Tokyo"|Tokyo[^}]*"localTime":"([^"]+)"/)?.slice(1).find(Boolean) || "unknown"}.`);
       return text("Very good, sir. Consider it done.");
     }
     const t = typeof last.content === "string" ? last.content : "";
     if (/business idea/i.test(t)) { const m = JSON.stringify(body.system || "").match(/#(\d+) [^#]*website design agency[^\\|]*/i); return text(m ? `That would be the website design agency for small businesses, Sir (memory #${m[1]}).` : "I don't have a business idea on file, Sir."); }
     if (body.tools) {
+      if (/aircraft around cyprus/i.test(t)) return toolUse("global_operations", { action: "flights_area", place: "Cyprus", radius_nm: 120 });
+      if (/find flight zzz999/i.test(t)) return toolUse("global_operations", { action: "flights_find", query: "ZZZ999" });
       if (/yes, remember that i've started boxing/i.test(t)) return toolUse("remember", { fact: "Has started boxing training", category: "hobby", user_confirmed: true });
       if (/i've started boxing/i.test(t)) return toolUse("remember", { fact: "Has started boxing training", category: "hobby", user_confirmed: false });
       if (/run a full diagnostic/i.test(t)) return toolUse("run_diagnostics", { level: "full" });
@@ -215,6 +220,79 @@ export function startMock() {
       return json(404, { error: { message: "nope" } });
     }
 
+    // ---- Global Operations stand-ins (flights, events, tiles). Deterministic, clearly synthetic test traffic.
+    if (p.startsWith("/adsb/")) {
+      log.adsb.push(p);
+      if (state.adsbDown) return json(503, { msg: "down" });
+      if (state.adsbRemaining <= 0) { res.writeHead(429, { "content-type": "application/json", "retry-after": "60", "x-ratelimit-limit": "500", "x-ratelimit-remaining": "0", "x-ratelimit-reset": "60" }); return res.end("{}"); }
+      state.adsbRemaining--;
+      const hdr = { "content-type": "application/json", "x-ratelimit-limit": "500, 500;w=86400", "x-ratelimit-remaining": String(state.adsbRemaining), "x-ratelimit-reset": "3600" };
+      const now = Date.now();
+      const ac = (i, lat, lon, extra = {}) => ({ hex: `7a${String(i).padStart(4, "0")}`, type: "adsb_icao", flight: `TST${i}  `, r: `5B-T${String(i).padStart(2, "0")}`, t: i % 2 ? "A320" : "B738", alt_baro: i % 7 === 0 ? "ground" : 2000 + i * 1500, gs: 300 + i, track: (i * 37) % 360, baro_rate: i % 3 ? 0 : -640, lat, lon, seen_pos: i % 11 === 0 ? 90 : 2, seen: 1, category: "A3", ...extra });
+      let m;
+      if ((m = p.match(/^\/adsb\/v2\/point\/([-\d.]+)\/([-\d.]+)\/(\d+)$/))) {
+        const lat = +m[1], lon = +m[2];
+        const list = Array.from({ length: 12 }, (_, i) => ac(i + 1, lat + ((i % 4) - 1.5) * 0.3, lon + (Math.floor(i / 4) - 1) * 0.4));
+        list.push(ac(90, lat + 0.1, lon + 0.1, { dbFlags: 1, flight: "MIL01   " }));       // military: must be hidden
+        list.push({ ...ac(91, lat - 0.1, lon - 0.1), hex: "7a9999", flight: "PRIV1   " });   // on the PIA list: must be hidden
+        res.writeHead(200, hdr); return res.end(JSON.stringify({ ac: list, msg: "No error", now, total: list.length }));
+      }
+      if (p === "/adsb/v2/mil") { res.writeHead(200, hdr); return res.end(JSON.stringify({ ac: [{ hex: "7a0090" }, { hex: "ae1234" }], now })); }
+      if (p === "/adsb/v2/pia") { res.writeHead(200, hdr); return res.end(JSON.stringify({ ac: [{ hex: "7a9999" }, { hex: "000001" }], now })); }
+      if (p === "/adsb/v2/ladd") { res.writeHead(200, hdr); return res.end(JSON.stringify({ ac: [{ hex: "000002" }], now })); }
+      if ((m = p.match(/^\/adsb\/v2\/(hex|callsign|reg)\/(.+)$/))) {
+        const q = decodeURIComponent(m[2]).toUpperCase();
+        const found = q === "7A0005" || q === "TST5" || q === "5B-T05" ? [ac(5, 34.9, 33.6)] : [];
+        res.writeHead(200, hdr); return res.end(JSON.stringify({ ac: found, now }));
+      }
+      return json(404, {});
+    }
+    if (p.startsWith("/opensky/")) {
+      log.opensky.push(p + url.search);
+      if (state.openskyDown) return json(503, {});
+      if (p === "/opensky/states/all") {
+        const q = Object.fromEntries(url.searchParams);
+        const box = q.lamin ? [+q.lamin, +q.lomin, +q.lamax, +q.lomax] : [-90, -180, 90, 180];
+        const t = Math.floor(Date.now() / 1000), states = [];
+        for (let i = 0; i < state.openskyCount; i++) {
+          const lat = -55 + ((i * 7.31) % 125), lon = -175 + ((i * 13.7) % 350);
+          if (lat < box[0] || lat > box[2] || lon < box[1] || lon > box[3]) continue;
+          const hex = i === 0 ? "ae1234" : `b${String(i).padStart(5, "0")}`;            // i=0 is on the military list
+          states.push([hex, `OSK${i}`.padEnd(8), "Testland", t - 3, t - 1, lon, lat, 9000 + (i % 30) * 100, false, 230, (i * 11) % 360, 0, null, 9100, "1000", false, 0, 3]);
+        }
+        res.writeHead(200, { "content-type": "application/json", "x-rate-limit-remaining": "390" }); return res.end(JSON.stringify({ time: t, states }));
+      }
+      return json(404, {});
+    }
+    if (p === "/gdacs") return json(200, { type: "FeatureCollection", features: [
+      { type: "Feature", geometry: { type: "Point", coordinates: [101.8, -4.0] }, properties: { eventtype: "FL", eventid: 1, name: "Flood in Indonesia", htmldescription: "Green Flood in Indonesia", alertlevel: "Green", iscurrent: "true", country: "Indonesia", iso3: "IDN", fromdate: "2026-11-10T01:00:00", datemodified: new Date(Date.now() - 3600_000).toISOString().slice(0, 19), polygonlabel: "Centroid", url: { report: "https://www.gdacs.org/report.aspx?eventid=1" } } },
+      { type: "Feature", geometry: { type: "Point", coordinates: [86.9, 21.0] }, properties: { eventtype: "TC", eventid: 2, name: "Tropical Cyclone TEST-26", htmldescription: "Red Tropical Cyclone", alertlevel: "Red", iscurrent: "true", country: "India", iso3: "IND", fromdate: "2026-11-15T00:00:00", datemodified: new Date(Date.now() - 7200_000).toISOString().slice(0, 19), polygonlabel: "Centroid", url: { report: "https://www.gdacs.org/report.aspx?eventid=2" } } }] });
+    if (p === "/usgs") return json(200, { type: "FeatureCollection", metadata: { count: 1 }, features: [
+      { id: "us7000test", geometry: { type: "Point", coordinates: [140.1, 35.9, 10] }, properties: { mag: 5.1, magType: "mb", place: "100 km E of Noda, Japan", time: Date.now() - 5400_000, updated: Date.now() - 5000_000, url: "https://earthquake.usgs.gov/earthquakes/eventpage/us7000test", status: "reviewed", tsunami: 0, title: "M 5.1 - 100 km E of Noda, Japan" } }] });
+    if (p === "/gdelt") {
+      state.gdeltCalls++; log.gdelt.push(url.searchParams.get("query"));
+      if (state.gdelt429) { res.writeHead(429, { "content-type": "text/plain" }); return res.end("Please limit requests to one every 5 seconds"); }
+      const q = url.searchParams.get("query") || "";
+      const d = (h) => new Date(Date.now() - h * 3600_000).toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
+      if (/ceasefire/.test(q)) return json(200, { articles: [
+        { url: "https://news-a.example/ceasefire-1", title: "Ceasefire agreed in Sudan after talks in Jeddah", seendate: d(5), domain: "news-a.example", language: "English", sourcecountry: "United Kingdom" },
+        { url: "https://news-b.example/sudan-truce", title: "Sudan ceasefire agreed after Jeddah talks", seendate: d(3), domain: "news-b.example", language: "English", sourcecountry: "United States" },
+        { url: "https://news-c.example/x", title: "Truce holds in disputed region, officials say", seendate: d(2), domain: "news-c.example", language: "English", sourcecountry: "France" }] });
+      return json(200, {});
+    }
+    if (p === "/reliefweb/disasters") {
+      if (url.searchParams.get("appname") !== "approved-test-app") return json(403, { status: 403, error: { message: "You are not using an approved appname." } });
+      return json(200, { data: [{ id: "51234", fields: { name: "Test Region: Cholera Outbreak - Nov 2026", status: "ongoing", date: { created: new Date(Date.now() - 86400_000).toISOString(), event: new Date(Date.now() - 2 * 86400_000).toISOString() }, primary_country: { iso3: "yem", location: { lat: 15.5, lon: 48.5 } }, country: [{ name: "Yemen", iso3: "yem" }], type: [{ name: "Epidemic" }], url_alias: "https://reliefweb.int/disaster/ep-2026-test" } }] });
+    }
+    if (p.startsWith("/ucdp/gedevents/")) {
+      if (req.headers["x-ucdp-access-token"] !== "ucdp-test-token") { res.writeHead(401); return res.end("API token required"); }
+      const v = p.split("/").pop(), now0 = new Date(), d = new Date(Date.UTC(now0.getUTCFullYear(), now0.getUTCMonth() - 1, 1)); const want = `${String(d.getUTCFullYear()).slice(2)}.0.${d.getUTCMonth() + 1}`;   // last month's candidate release
+      if (v !== want) return json(404, { error: "no such version" });
+      return json(200, { TotalCount: 1, Result: [{ id: 990001, type_of_violence: 1, dyad_name: "Government of Testland - Test Front", conflict_name: "Testland: Government", country: "Sudan", adm_1: "Khartoum state", latitude: 15.5527, longitude: 32.5324, where_prec: 1, date_start: new Date(Date.now() - 20 * 86400_000).toISOString().slice(0, 10), best: 7, source_article: "Test source A; Test source B" }] });
+    }
+    if (p === "/rainviewer") return json(200, { version: "2.0", host: url.origin === "http://x" ? `http://${req.headers.host}` : url.origin, radar: { past: [{ time: Math.floor(Date.now() / 1000) - 600, path: "/v2/radar/test1" }] } });
+    if (p.startsWith("/tile/") || p.startsWith("/v2/radar/")) { log.tiles++; res.writeHead(200, { "content-type": "image/png" }); return res.end(Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082", "hex")); }
+
     if (p.startsWith("/push/")) { log.push.push({ path: p, bytes: raw.length }); res.writeHead(201); return res.end(); }
     json(404, { error: "mock: not found " + p });
   };
@@ -235,6 +313,8 @@ export function startMock() {
         MONZO_CLIENT_ID: "monzo-client", MONZO_CLIENT_SECRET: "monzo-secret", MONZO_AUTH_URL: `${url}/monzo-auth`, MONZO_API_URL: `${url}/monzo`,
         GOOGLE_CLIENT_ID: "g-client", GOOGLE_CLIENT_SECRET: "g-secret", GOOGLE_AUTH_URL: `${url}/google-auth`, GOOGLE_TOKEN_URL: `${url}/google/token`, GOOGLE_API_URL: `${url}/google`,
         NODE_EXTRA_CA_CERTS: tls.certPath,
+        ADSB_LOL_URL: `${url}/adsb`, OPENSKY_URL: `${url}/opensky`, OPENSKY_AUTH_URL: `${url}/opensky-auth`, GDACS_URL: `${url}/gdacs`, USGS_URL: `${url}/usgs`, GDELT_URL: `${url}/gdelt`, GDELT_SPACING_MS: "20",
+        RELIEFWEB_URL: `${url}/reliefweb`, UCDP_URL: `${url}/ucdp`, RAINVIEWER_URL: `${url}/rainviewer`, TILES_TEST_URL: `${url}/tile`,
       },
     });
   })));

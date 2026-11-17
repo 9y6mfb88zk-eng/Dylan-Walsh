@@ -1,4 +1,4 @@
-# JARVIS 6.4
+# JARVIS 6.5
 
 JARVIS is your personal AI system. It runs **entirely on your Windows laptop**, with no cloud server and no hosting bill.
 - **On the laptop** it listens for **"Hey JARVIS"** (or just **"JARVIS"**), keeps the conversation going without the wake word, rings alarms even with the window closed, and sits in the system tray.
@@ -40,8 +40,8 @@ JARVIS is your personal AI system. It runs **entirely on your Windows laptop**, 
 
 ## The 15 things to know
 
-### 1. Install or update to 6.4
-Download **`JARVIS-Setup-6.4.exe`** from **[Releases → "JARVIS for Windows (latest)"](https://github.com/9y6mfb88zk-eng/Dylan-Walsh/releases/tag/desktop-latest)** and run it.
+### 1. Install or update to 6.5
+Download **`JARVIS-Setup-6.5.exe`** from **[Releases → "JARVIS for Windows (latest)"](https://github.com/9y6mfb88zk-eng/Dylan-Walsh/releases/tag/desktop-latest)** and run it.
 - **Updating from 3.x:** your data, keys and settings are kept.
   - Before the database is upgraded, JARVIS saves a full copy to `%APPDATA%\JARVIS\data\backups\pre-migration-007-….db`.
 - **SmartScreen or Smart App Control** may block the unsigned installer:
@@ -102,12 +102,17 @@ Mission Control is a second operating mode of JARVIS, not a separate app. Say **
 **How it switches on:**
 1. **Activating:** the screen dims, the core brightens and turns violet, an energy pulse goes out, and the banner reads "ACTIVATING MISSION CONTROL".
 2. **Transformation:** the panels move away and the sidebar becomes Mission Control navigation. The same living core travels into the centre, the architecture diagram unfolds, diagnostics slide in and the map expands.
-3. **Initialisation:** real checks run and are shown as they finish: system architecture, AI core (a real test call), voice interface, local connections and operational overview. A line only turns green if that check actually passed.
-4. **Active.**
+3. **Initialisation:** real checks run and are shown as they finish: system architecture, AI core (a real test call), voice interface, local connections, **public flight data**, **global events** and operational overview. A line only turns green if that check actually passed.
+4. **Active:** JARVIS says "Mission Control is online, Sir. Global operations interface ready." — or, if something didn't start, which services need attention.
+
+**Global Operations (6.5)** is the first screen: the living core on the left with live system readings, a world map in the centre (public civil flights, event markers, satellite/terrain/relief/radar layers, a 3D globe), the Global Events feed on the right, and six status panels below. Everything comes from free public sources — ADSB.lol, OpenSky, GDACS, USGS, GDELT, and ReliefWeb/UCDP once you add their free credentials in **Settings → Global Operations**. Full details, limits and licences: [`docs/global-operations.md`](docs/global-operations.md).
+- **Flight tracking:** search by callsign, ICAO24 or registration; filter by type, altitude and region; select an aircraft for its card (freshness, source, trail); follow it. Coverage is incomplete (volunteer receivers), and aircraft flagged military, LADD or privacy are never shown.
+- **Global Events:** conflicts, attacks, unrest, disasters, humanitarian emergencies, diplomacy and ceasefires — each with its source link, dates, location accuracy and a verification label. Filter by category, country, region, date, source and verification.
+- **Voice:** "Show me aircraft around Cyprus", "Zoom out to the worldwide air traffic map", "Select the nearest visible aircraft", "Find flight BA123", "Hide flight tracking", "Show me conflicts".
 
 **Sections:**
+- **Global Operations, World Explorer, Global Events, Flight Tracking:** the operations display in its four modes.
 - **Operational Overview:** all ten areas on one screen.
-- **Global Information:** a map of your places with live local times, weather and the real day/night line.
 - **System Architecture:** a live diagram of every component, with test buttons.
 - **Diagnostics:** every check, plus the spoken diagnostic levels.
 - **Active Processes:** your laptop's programs (Windows app only), JARVIS's background services, and what's running right now.
