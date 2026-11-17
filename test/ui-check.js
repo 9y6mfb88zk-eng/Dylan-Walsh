@@ -157,16 +157,74 @@ try {
   await L.click('[data-t="timeline"]');
   check("session history timeline lists real events", await L.waitForSelector("#hl .item", { timeout: 5000 }).then(() => true, () => false));
   await L.click('[data-tab="home"]'); await L.waitForSelector("#core");
-  await L.fill("#say", "Activate mission control"); await L.press("#say", "Enter");
-  check("“Activate mission control” opens Mission Control", await L.waitForSelector("#mission.in", { timeout: 15000 }).then(() => true, () => false));
-  check("Mission Control confirms in JARVIS's voice", await L.waitForFunction(() => /Mission control activated, Sir\./.test(document.querySelector("#mcCaption")?.textContent || ""), null, { timeout: 5000 }).then(() => true, () => false));
-  const tele = await L.waitForFunction(() => /\d+%/.test(document.querySelector("#mcv-cpu")?.textContent || "") && /\d+%/.test(document.querySelector("#mcv-ram")?.textContent || ""), null, { timeout: 12000 }).then(() => true, () => false);
-  check("Mission Control telemetry shows measured CPU and memory", tele, `${await L.textContent("#mcv-cpu")} / ${await L.textContent("#mcv-ram")}`);
-  check("Mission Control lists real system checks", (await L.locator("#mcChecks li .dot").count()) >= 8);
-  await sleep(1500);
+  // ---- Mission Control: a transformation of the same interface, driven by real checks
+  await L.evaluate(() => { window.__mcTimeline = []; });
+  await L.fill("#say", "JARVIS, activate Mission Control"); await L.press("#say", "Enter");
+  check("Stage 1: dims the interface and shows “ACTIVATING MISSION CONTROL”", await L.waitForFunction(() => document.documentElement.classList.contains("mc-activating") && /ACTIVATING MISSION CONTROL/.test(document.querySelector(".mc-banner")?.textContent || ""), null, { timeout: 8000, polling: 30 }).then(() => true, () => false));
+  const active = await L.waitForFunction(() => document.documentElement.classList.contains("mc-active"), null, { timeout: 60000 }).then(() => true, () => false);
+  check("Mission Control becomes active", active);
+  const stages = await L.evaluate(() => (window.__mcTimeline || []).filter((x) => x.stage).map((x) => x.stage));
+  check("the four stages run in order: activating, transformation, initialisation, active", JSON.stringify(stages) === "[1,2,3,4]", JSON.stringify(stages));
+  const init = await L.$$eval(".mc-init li", (l) => l.map((x) => `${x.dataset.state}: ${x.querySelector("b").textContent} — ${x.querySelector(".faint").textContent}`));
+  check("initialisation shows the real service checks", init.length === 6 && /Checking AI core/.test(init[1]) && /Verifying voice interface/.test(init[2]) && /Mission Control (ready|active)/.test(init[5]), init.join(" | "));
+  check("no check is shown as passed without a result", init.every((l) => /^(ok|warn|bad): /.test(l)));
+  check("the same living core moved into Mission Control (no second 3D scene)", await L.evaluate(() => !!document.querySelector("#mcView canvas#core") && !document.querySelector("#view canvas#core") && (window.__jarvisCore?.alive ?? 1) === 1));
+  check("sidebar became Mission Control navigation", await L.evaluate(() => document.querySelector("#nav").hidden && !document.querySelector("#mcNav").hidden && document.querySelectorAll("#mcNav [data-mc]").length === 9));
+  const overviewPanels = await L.$$eval("#mcView [data-panel]:not([hidden])", (p) => p.map((x) => x.dataset.panel));
+  check("operational overview shows all ten areas", ["core", "overview", "ops", "arch", "diag", "map", "res", "intel", "comms", "act"].every((x) => overviewPanels.includes(x)), overviewPanels.join(","));
+  check("Mission Control confirms in JARVIS's voice", await L.waitForFunction(() => /Mission control activated, Sir\./.test(document.querySelector("#mcCaption")?.textContent || ""), null, { timeout: 8000 }).then(() => true, () => false));
+  const tele = await L.waitForFunction(() => /\d+%/.test(document.querySelector('[data-panel="res"]')?.textContent || ""), null, { timeout: 15000 }).then(() => true, () => false);
+  check("resource monitoring shows measured values", tele);
+  check("architecture diagram shows live component status", (await L.locator('#mcView .mc-node').count()) === 11 && (await L.locator("#mcView .mc-node.hub").count()) === 1);
+  await sleep(2500);
   await L.screenshot({ path: path.join(out, "laptop-mission-control.png") });
+  const sectionChecks = {
+    global: async () => /Dhekelia/.test(await L.textContent('[data-panel="map"]')) && await L.evaluate(() => document.querySelector('[data-panel="map"] canvas').width > 100),
+    architecture: async () => (await L.locator('[data-panel="arch"] .mc-tbl tbody tr').count()) >= 10,
+    diagnostics: async () => (await L.locator('[data-panel="diag"] [data-level]').count()) === 9,
+    processes: async () => /Windows app, which isn't connected/.test(await L.textContent('[data-panel="procs"]')),
+    intelligence: async () => /Research|research/.test(await L.textContent('[data-panel="intel"]')),
+    comms: async () => /device/.test(await L.textContent('[data-panel="comms"]')),
+    projects: async () => /Website business/.test(await L.textContent('[data-panel="projects"]')),
+    personal: async () => /Call the accountant about VAT/.test(await L.textContent('[data-panel="personal"]')),
+  };
+  for (const [sec, ok] of Object.entries(sectionChecks)) {
+    await L.click(`#mcNav [data-mc="${sec}"]`);
+    await L.waitForFunction((s) => document.querySelector("#mcView")?.dataset.section === s, sec, { timeout: 5000 }).catch(() => {});
+    const good = await (async () => { for (let i = 0; i < 30; i++) { if (await ok().catch(() => false)) return true; await sleep(300); } return false; })();
+    check(`Mission Control section “${sec}” shows real data`, good);
+  }
+  await L.screenshot({ path: path.join(out, "laptop-mission-control-personal.png") });
+  await L.fill("#mcSay", "Show system architecture"); await L.press("#mcSay", "Enter");
+  check("“Show system architecture” switches section by voice/text", await L.waitForFunction(() => document.querySelector("#mcView")?.dataset.section === "architecture", null, { timeout: 8000 }).then(() => true, () => false));
+  await L.fill("#mcSay", "Tell me a long story"); await L.press("#mcSay", "Enter");
+  check("conversation works inside Mission Control", await L.waitForFunction(() => /Once upon a time/.test(document.querySelector("#mcCaption")?.textContent || ""), null, { timeout: 15000 }).then(() => true, () => false));
+  await post(L, "/api/alarms/test", {});
+  check("an alarm still rings over Mission Control", await L.waitForSelector("#alarmOverlay:not([hidden])", { timeout: 8000 }).then(() => true, () => false));
+  await L.click("#alarmDismiss");
+  check("Mission Control is still active after the alarm", await L.evaluate(() => document.documentElement.classList.contains("mc-active")));
+  await L.fill("#mcSay", "JARVIS, deactivate Mission Control"); await L.press("#mcSay", "Enter");
+  check("“Deactivate Mission Control” reverses the transformation", await L.waitForSelector("#mcView", { state: "detached", timeout: 30000 }).then(() => true, () => false));
+  check("Command Centre is back with its core, normal colours and sidebar", await L.evaluate(() => !!document.querySelector("#view .core-stage canvas#core") && !document.documentElement.classList.contains("mc-mode") && !document.querySelector("#nav").hidden && !document.querySelector("#mcNav")));
+  await L.click("#mcBtn");
+  check("the Mission Control button activates it", await L.waitForFunction(() => document.documentElement.classList.contains("mc-active"), null, { timeout: 60000 }).then(() => true, () => false));
+  // Esc: the first press stops JARVIS speaking (if it is), the next leaves Mission Control.
   await L.keyboard.press("Escape");
-  check("Esc leaves Mission Control", await L.waitForSelector("#mission", { state: "detached", timeout: 3000 }).then(() => true, () => false));
+  if (!(await L.waitForSelector("#mcView", { state: "detached", timeout: 2500 }).then(() => true, () => false))) await L.keyboard.press("Escape");
+  check("Esc leaves Mission Control", await L.waitForSelector("#mcView", { state: "detached", timeout: 30000 }).then(() => true, () => false));
+  // Reduced motion: the same stages and checks, without the movement.
+  const rm = await browser.newContext({ viewport: { width: 1280, height: 800 }, reducedMotion: "reduce", storageState: await lap.storageState() });
+  const R = await rm.newPage(); watch(R, "reduced-motion");
+  await R.goto(base); await R.waitForSelector("#core");
+  await R.waitForSelector(".boot", { state: "detached", timeout: 15000 }).catch(() => {});
+  await R.evaluate(() => { window.__mcTimeline = []; });
+  await R.click("#mcBtn");
+  await R.waitForFunction(() => document.documentElement.classList.contains("mc-active"), null, { timeout: 30000 }).catch(() => {});
+  const full = await R.evaluate(() => window.__mcTimeline || []);
+  const tl = full.filter((x) => x.stage);
+  const moving = await R.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.closest?.("#mcView, #mcNav")).map((a) => a.constructor.name + ":" + (a.animationName || "js")));
+  check("reduced motion: the same stages and checks, with no movement", tl.length === 4 && moving.length === 0, `${tl.length >= 4 ? tl[3].t - tl[0].t : "?"} ms · ${full.map((x) => `${x.label || x.stage}@${x.t - full[0].t}`).join(" ")} · moving: ${moving.join(",")}`);
+  await rm.close();
   await L.fill("#say", "Run a quick diagnostic"); await L.press("#say", "Enter");
   check("“Run a quick diagnostic” shows the narrated report", await L.waitForSelector("#report .check-card", { timeout: 15000 }).then(() => true, () => false));
   const spoken = await L.textContent("#report");
@@ -183,6 +241,17 @@ try {
   check("start-up steps report real results", labels.some((l) => /Live link.*ok/.test(l)) && labels.some((l) => /System diagnostics.*ok/.test(l)), labels.join(" | "));
   check("start-up closes by itself", await F.waitForSelector(".boot", { state: "detached", timeout: 8000 }).then(() => true, () => false));
   await fresh.close();
+
+  // ---------------- Mission Control on the phone
+  await P.click("#mcBtn");
+  check("phone: Mission Control activates", await P.waitForFunction(() => document.documentElement.classList.contains("mc-active"), null, { timeout: 60000 }).then(() => true, () => false));
+  check("phone: no sideways scrolling in Mission Control", await P.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2));
+  check("phone: sections are reachable from the tab bar", await P.isVisible('.mc-tabs [data-mc="personal"]'));
+  await P.click('.mc-tabs [data-mc="personal"]');
+  await sleep(1500);
+  await P.screenshot({ path: path.join(out, "phone-mission-control.png") });
+  await P.click(".mc-tabs [data-mcexit]");
+  check("phone: Mission Control exits", await P.waitForSelector("#mcView", { state: "detached", timeout: 30000 }).then(() => true, () => false));
 
   // ---------------- Offline → reconnect
   await P.click('[data-t="tasks"]');

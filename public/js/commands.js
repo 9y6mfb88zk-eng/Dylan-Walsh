@@ -13,6 +13,7 @@ const MODE_LINES = {
   professional: (t) => `Professional mode enabled, ${t}.`,
   focus: (t) => `Focus mode, ${t}. I'll keep interruptions to a minimum.`,
 };
+const SECTION_LINES = { overview: "Operational overview", global: "Global information on screen", architecture: "System architecture on screen", diagnostics: "Diagnostics on screen", processes: "Active processes on screen", intelligence: "Intelligence feed on screen", comms: "Communications on screen", projects: "Projects on screen", personal: "Personal operations on screen" };
 const LEVEL_LABEL = { quick: "quick diagnostics", full: "full system diagnostics", voice: "voice diagnostics", ai: "AI diagnostics", network: "network diagnostics", security: "security diagnostics", performance: "performance diagnostics", hardware: "hardware diagnostics", integrations: "integration diagnostics" };
 
 /** Say (and caption) one line. Resolves when spoken, immediately when speech is off. */
@@ -26,13 +27,15 @@ export async function handleUi(cmd, ctx, { speak = true, text = "" } = {}) {
   const t = title(ctx);
   if (cmd.kind === "mission") {
     if (cmd.on) {
-      await mission.show(ctx);
-      logCommand("Mission Control activated", text);
-      await say(ctx, `Mission control activated, ${t}.`, speak);
-      return `Mission control activated, ${t}.`;
+      const already = mission.open;
+      const r = await mission.show(ctx);
+      if (!already) logCommand("Mission Control activated", text);
+      const line = already ? `Mission control is already active, ${t}.` : `Mission control activated, ${t}.${r?.issues ? ` ${r.issues} ${r.issues === 1 ? "check needs" : "checks need"} attention.` : ""}`;
+      await say(ctx, line, speak);
+      return line;
     }
     const was = mission.open;
-    mission.hide();
+    await mission.hide();
     if (was) logCommand("Mission Control closed", text);
     const line = was ? `Mission control deactivated. Standing by, ${t}.` : `Mission control isn't active, ${t}.`;
     await say(ctx, line, speak);
@@ -47,6 +50,13 @@ export async function handleUi(cmd, ctx, { speak = true, text = "" } = {}) {
     return line;
   }
   if (cmd.kind === "diagnostics") return narrateDiagnostics(cmd.level, ctx, { speak });
+  if (cmd.kind === "mcSection") {
+    if (!mission.open) return null;
+    mission.setSection(cmd.section);
+    const line = `${SECTION_LINES[cmd.section] || "Showing that"}, ${t}.`;
+    await say(ctx, line, speak);
+    return line;
+  }
   return null;
 }
 

@@ -7,6 +7,7 @@ import { vapidPublicKey } from "../push.js";
 import { brainReady } from "../brain.js";
 import { localAsrAvailable } from "../local-asr.js";
 import { getSettings } from "../db.js";
+import { connectedDevices } from "../realtime.js";
 
 export const router = express.Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -60,7 +61,7 @@ router.post("/api/pair/create", wrap(async (req, res) => {
   res.json({ url, shortCode: p.shortCode, expiresAt: p.expiresAt, qrSvg });
 }));
 
-router.get("/api/devices", (req, res) => res.json(auth.listDevices().map((d) => ({ ...d, current: d.id === req.auth.deviceId }))));
+router.get("/api/devices", (req, res) => { const live = new Set(connectedDevices()); res.json(auth.listDevices().map((d) => ({ ...d, current: d.id === req.auth.deviceId, online: live.has(d.id) }))); });
 router.patch("/api/devices/:id", (req, res) => { auth.renameDevice(req.params.id, req.body?.name || "Device"); auditFromReq(req, "device.renamed", { target: req.params.id }); res.json({ ok: true }); });
 router.delete("/api/devices/:id", (req, res) => {
   const ok = auth.revokeDevice(req.params.id);

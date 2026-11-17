@@ -29,7 +29,7 @@ export const conversation = {
     const ctx = this.ctx;
     voice.stop();
     // Interface commands and command macros run here, without an AI round trip.
-    const ui = uiCommand(text);
+    const ui = uiCommand(text, { missionOpen: !!ctx.mission?.open });
     const local = ui && ctx.handleUi ? { run: () => ctx.handleUi(ui, { speak, text }) }
       : ctx.tryMacro && text.split(/\s+/).length <= 8 ? await ctx.tryMacro(text, { speak }).then((m) => (m && !m.needsConfirmation ? { done: m.reply } : null)) : null;
     if (local) {

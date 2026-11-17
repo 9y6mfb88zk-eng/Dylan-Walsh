@@ -86,6 +86,7 @@ function buildNav() {
 }
 
 export async function go(tab, params = {}, { push = true } = {}) {
+  if (mission.open) await mission.hide({ instant: true });
   tab = ALIASES[tab] || tab;
   if (!VIEWS[tab]) tab = "home";
   cleanup?.(); cleanup = null;
@@ -225,6 +226,9 @@ $("#palInput").addEventListener("keydown", (e) => {
   if (e.key === "Enter") { e.preventDefault(); runPal(palSel); }
 });
 $("#searchBtn").addEventListener("click", () => openPalette());
+// Mission Control button (also: "JARVIS, activate Mission Control").
+$("#mcBtn").innerHTML = `${icon("cpu")}<span class="hide-m">Mission Control</span>`;
+$("#mcBtn").addEventListener("click", () => { if (mission.phase === "activating" || mission.phase === "deactivating") return; ctx.handleUi({ kind: "mission", on: !mission.open }, { speak: shouldSpeakTyped() }); });
 $("#searchBtn").innerHTML = icon("search");
 $("#gearBtn").innerHTML = icon("settings");
 $("#gearBtn").addEventListener("click", () => go("settings"));
@@ -242,7 +246,7 @@ voice.onState((s) => { updateHud(); desktop?.voiceState?.(s); });
 core.on((s) => { updateHud(); document.documentElement.dataset.core = s; });
 function updateHud() {
   const hud = $("#hud");
-  const show = (voice.state !== "idle" || core.state === "thinking" || core.state === "executing" || core.state === "researching") && current !== "home" && current !== "talk" && !$("#app").hidden;
+  const show = (voice.state !== "idle" || core.state === "thinking" || core.state === "executing" || core.state === "researching") && current !== "home" && current !== "talk" && !mission.open && !$("#app").hidden;
   hud.hidden = !show;
   if (show && !hudCore) hudCore = mountCore($("#hudCore"), { animation: ctx.settings.appearance?.animation });
   $("#hudState").textContent = STATE_LABEL[core.state] || "";
@@ -307,7 +311,7 @@ sync.on("notify", (m) => {
 sync.on("ui", (m) => {
   if (m.action === "mission_control_on") mission.show(ctx);
   else if (m.action === "mission_control_off") mission.hide();
-  else if (m.action === "open_section" && m.section) { if (mission.open) mission.hide(); go(m.section); }
+  else if (m.action === "open_section" && m.section) { if (mission.open) mission.hide().then(() => go(m.section)); else go(m.section); }
 });
 sync.on("alarm.ringing", (m) => showAlarm(m.alarm, m.speech));
 sync.on("alarm.test", (m) => showAlarm({ ...m.alarm, label: "Test alarm" }, m.speech));

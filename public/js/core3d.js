@@ -15,6 +15,11 @@ const STATES = {
   offline:     ["#60778f", "#3a4c60", 0.35, 0.08, 0.0, 0.1, 0, 0, 0.1],
 };
 
+// Mission Control palette: the same states and behaviour, in violet. Alarm and offline keep their warning colours.
+const PALETTES = {
+  mission: { idle: ["#c084fc", "#7c3aed"], listening: ["#e879f9", "#c084fc"], thinking: ["#f5d0fe", "#7c3aed"], speaking: ["#d946ef", "#a855f7"], researching: ["#c084fc", "#6d28d9"], executing: ["#faf5ff", "#a78bfa"] },
+};
+
 const NOISE = `
 vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;} vec4 mod289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}
 vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);} vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-0.85373472095314*r;}
@@ -194,7 +199,7 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
   const WHITE = new THREE.Color(1, 1, 1);
   const cur = { c1: new THREE.Color(STATES.idle[0]), c2: new THREE.Color(STATES.idle[1]), intensity: 0.85, spin: 0.25, agit: 0, pspeed: 0.35, scan: 0, sats: 0, spec: 0.25 };
   const tgt = { c1: new THREE.Color(), c2: new THREE.Color() };
-  let gone = false;
+  let gone = false, palette = null, boost = 1, boostTarget = 1;
   let state = core.state, level = 0, prevLevel = 0, t = 0, lastFrame = performance.now(), raf = 0, slow = 0, frames = 0;
   const offState = core.on((s, _d, same) => {
     touch();
@@ -210,7 +215,9 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
     lastFrame = now;
     t += dt;
     const S = STATES[state] || STATES.idle;
-    tgt.c1.set(S[0]); tgt.c2.set(S[1]);
+    const P = palette?.[state];
+    boost += (boostTarget - boost) * Math.min(1, dt * 4);
+    tgt.c1.set(P ? P[0] : S[0]); tgt.c2.set(P ? P[1] : S[1]);
     const k = 1 - Math.pow(0.0015, dt);              // frame-rate independent easing
     cur.c1.lerp(tgt.c1, k); cur.c2.lerp(tgt.c2, k);
     for (const [key, idx] of [["intensity", 2], ["spin", 3], ["agit", 4], ["pspeed", 5], ["scan", 6], ["sats", 7], ["spec", 8]]) cur[key] += (S[idx] - cur[key]) * k;
@@ -228,7 +235,7 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
     uni.uTime.value = t; uni.uLevel.value = level; uni.uAgit.value = cur.agit;
     uni.uC1.value.copy(cur.c1); uni.uC2.value.copy(cur.c2);
     const strobe = state === "alarm" ? 1 + 0.5 * Math.max(0, Math.sin(t * 8)) : state === "offline" ? 0.8 + 0.2 * Math.sin(t * 13) * (Math.random() > 0.97 ? 1 : 0) : 1;
-    uni.uIntensity.value = cur.intensity * strobe;
+    uni.uIntensity.value = cur.intensity * strobe * boost;
     coreMesh.scale.setScalar(1 + level * 0.12);
     nucleus.scale.setScalar(0.85 + level * 0.9 + 0.08 * Math.sin(t * 3));
     nucleusMat.color.copy(cur.c1).lerp(WHITE, 0.65);
@@ -288,7 +295,7 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
     // Dimensional parallax: the core leans gently towards the pointer.
     root.rotation.y += ((ptrX * 0.22) - root.rotation.y) * 0.04;
     root.rotation.x += ((ptrY * 0.14) - root.rotation.x) * 0.04;
-    if (bloom) bloom.strength = 0.75 + cur.intensity * 0.45 + level * 0.5;
+    if (bloom) bloom.strength = (0.75 + cur.intensity * 0.45 + level * 0.5) * (0.6 + 0.4 * boost);
     if (composer) composer.render(); else renderer.render(scene, camera);
   }
 
@@ -324,7 +331,11 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
   return {
     kind: "3d",
     get tier() { return tier; },
-    pulse: () => emitWave(1.2),
+    pulse: (strength = 1.2) => emitWave(strength),
+    /** "mission" (violet) or null (normal colours); colours blend over about a second. */
+    setPalette(name) { palette = PALETTES[name] || null; if (still) draw(performance.now()); },
+    /** Temporary brightness, e.g. 1.6 while Mission Control powers up; eases back when set to 1. */
+    setBoost(b) { boostTarget = Math.max(0.3, Math.min(2.5, b)); },
     destroy() {
       if (gone) return; gone = true; stats.alive--;
       cancelAnimationFrame(raf); offState(); ro.disconnect(); io.disconnect();

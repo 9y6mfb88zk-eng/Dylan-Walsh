@@ -104,16 +104,40 @@ The existing design, navigation, colours, 3D core and panels are unchanged. Ever
 - **Rendering CPU:** measured under software WebGL. Real-GPU savings from idle mode are expected but could not be
   measured here (`docs/performance.md`).
 - **Installer size:** the Parakeet model makes the installer about 500 MB larger than with Whisper base.en.
+- **Intermittent speech test:** `test/local-asr.test.js` ("transcribes speech on this machine") failed once in four full-suite runs. It passed every time when run alone; the cause wasn't captured.
 - **Intermittent E2E failure:** the Electron end-to-end test failed once in five runs ("Target page, context or browser
   has been closed") and passed 28/28 on the other four.
+
+## Mission Control transformation mode
+
+| Requirement | How it's done |
+|---|---|
+| Activation | Voice ("JARVIS, activate Mission Control", local, no AI round trip), the top-bar button, the palette |
+| Stage 1 | Command Centre panels dim; the same core switches to the violet palette with a brightness boost and shock-wave; purple energy pulse (transform/opacity only); banner "ACTIVATING MISSION CONTROL" |
+| Stage 2 | Panels slide out towards their side; the sidebar swaps to Mission Control navigation (staggered); the core canvas itself moves (FLIP) into the Mission Control layout, so no second WebGL scene; architecture unfolds, diagnostics slide in, map expands, operational panels rise |
+| Stage 3 | Five real checks, run in parallel with the animation and shown in order: architecture (`/api/diagnostics`), AI core (real `models.retrieve` test), voice interface (speech recognition, voice output, wake word), local connections (WebSocket, Windows agent, devices online), operational overview (home, notifications, activity). A line is green only if it passed; final line "Mission Control ready" or "active — N need attention" |
+| Stage 4 | Live layout; polling only for visible panels (resources 3 s, diagnostics 20 s, processes 15 s in the Windows app, the rest 60 s and on server change events) |
+| Layout | Ten areas on the overview: core, operational overview, active operations, architecture, live diagnostics, world map, resources, intelligence, communications, activity. Plus processes, projects and personal operations for their sections |
+| Navigation | Nine sections in the sidebar (tab bar on phones). FLIP re-layout between sections. Voice: "show system architecture". "Open …" buttons leave Mission Control (reversed) and open the normal page |
+| Real data only | Every panel reads existing endpoints; unavailable data is labelled. New: `/api/devices` reports which devices are online now |
+| Deactivation | Voice, button, Esc, sidebar Exit: panels fold away, navigation swaps back, the core flies back to the Command Centre and returns to cyan |
+| Not interrupted | Alarms (overlay above), conversations (core and caption keep working; the command box sends to JARVIS), background services, the duplicate guard. Opening any other page leaves Mission Control instantly first |
+| Performance | Web Animations API on transform/opacity only; glass blur off while panels move; no new libraries; the map is a 2D canvas redrawn once a minute; CSS animations pause in idle mode |
+| Reduced motion | Same stages, checks and layout with no movement (verified: no animations on Mission Control elements) |
+
+Measured here (software WebGL, no GPU):
+
+- JavaScript work during the transformation is small: the longest main-thread task was 64 ms.
+- The animation itself is designed to take ~2.3 s, but here frames come at 1–2 fps, so stages 1–4 took 7–8 s, mostly waiting for frames.
+- On a real GPU the animations run at display rate. That could not be measured here.
 
 ## Test results (latest run)
 
 | Suite | Result |
 |---|---|
-| `npm test` — backend end-to-end (stand-in services), finance engine, on-device speech recognition, upgrade services, personal intelligence (profile, ask-before-remember, memory off, narrated diagnostics, awareness, macros, history, personality), voice + interface commands | 73 / 73 pass |
+| `npm test` — backend end-to-end (stand-in services), finance engine, on-device speech recognition, upgrade services, personal intelligence (profile, ask-before-remember, memory off, narrated diagnostics, awareness, macros, history, personality), voice + interface commands | 74 / 74 pass |
 | `cd desktop && npm test` — wake word accuracy/false triggers, laptop actions (incl. new ones) | 13 / 13 pass |
-| `npm run test:ui` — Chromium at laptop and iPhone size: setup, Command Centre, 3D core, streamed reply + speaking core, palette, all 21 sections, alarm dialog + ringing, notification centre, QR pairing, cross-device sync, mobile nav, offline queue, personal profile page, session history, Mission Control (open by voice, measured telemetry, Esc), narrated diagnostics, live performance panel, cinematic start-up with real steps | 63 / 63 pass |
+| `npm run test:ui` — Chromium at laptop and iPhone size: setup, Command Centre, 3D core, streamed reply + speaking core, palette, all 21 sections, alarm dialog + ringing, notification centre, QR pairing, cross-device sync, mobile nav, offline queue, personal profile page, session history, Mission Control transformation (4 stages in order, real checks, the same core moved, 10 areas, all 9 sections with real data, voice section switching, conversation and an alarm during Mission Control, reverse transition, button, Esc, reduced motion, phone layout), narrated diagnostics, live performance panel, cinematic start-up with real steps | 90 / 90 pass |
 | `xvfb-run node desktop/test/electron-e2e.js` — Windows app under Electron with a recorded microphone (new audio pipeline) | 28 / 28 pass (4 of 5 runs; see known limitations) |
 | `desktop/test/electron-local-e2e.js` — packaged app running its own server | 16 / 16 pass |
 | `desktop/scripts/schtasks-smoke.js` — Windows Task Scheduler accepts the WakeToRun alarm task | passes in CI on Windows |

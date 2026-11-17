@@ -83,7 +83,7 @@ After the first answer, JARVIS keeps listening for a follow-up. No wake word is 
   - JARVIS asks "Would you like me to remember that for future conversations, Sir?" before saving anything new.
   - Passwords, PINs and bank details are never stored.
 - **Instant commands** (handled on the laptop, no AI round trip):
-  - "Activate Mission Control" / "Exit Mission Control" (Esc also exits).
+  - "Activate Mission Control" / "Deactivate Mission Control" (also the **Mission Control** button in the top bar, or Esc to leave). See below.
   - "Switch to cinematic / concise / professional / focus / standard mode".
   - "Run a full system diagnostic", or a quick, voice, AI, network, security, performance, hardware or integration diagnostic.
   - "Status report".
@@ -95,6 +95,36 @@ After the first answer, JARVIS keeps listening for a follow-up. No wake word is 
   - a calibration sentence that shows how accurately you were understood
   - sensitivity and pause settings
 - **Session history:** **Memory & Notes → Session history** is one searchable timeline of conversations, commands, completed tasks, diagnostics, errors, automations and decisions.
+
+### 5b. Mission Control
+Mission Control is a second operating mode of JARVIS, not a separate app. Say **"JARVIS, activate Mission Control"** or press the **Mission Control** button in the top bar.
+
+**How it switches on:**
+1. **Activating:** the screen dims, the core brightens and turns violet, an energy pulse goes out, and the banner reads "ACTIVATING MISSION CONTROL".
+2. **Transformation:** the panels move away and the sidebar becomes Mission Control navigation. The same living core travels into the centre, the architecture diagram unfolds, diagnostics slide in and the map expands.
+3. **Initialisation:** real checks run and are shown as they finish: system architecture, AI core (a real test call), voice interface, local connections and operational overview. A line only turns green if that check actually passed.
+4. **Active.**
+
+**Sections:**
+- **Operational Overview:** all ten areas on one screen.
+- **Global Information:** a map of your places with live local times, weather and the real day/night line.
+- **System Architecture:** a live diagram of every component, with test buttons.
+- **Diagnostics:** every check, plus the spoken diagnostic levels.
+- **Active Processes:** your laptop's programs (Windows app only), JARVIS's background services, and what's running right now.
+- **Intelligence:** research and briefings.
+- **Communications:** notifications, connected devices and the latest conversation.
+- **Projects:** progress and next tasks.
+- **Personal Operations:** tasks you can tick off, today's events, reminders, alarms and focus.
+
+You can say "show system architecture" (or any section name) while Mission Control is open. Buttons inside sections open the full normal page.
+
+**What Mission Control never invents:** threat levels, incidents, locations, activity, network traffic or system health. If something isn't available, it says so.
+
+**What carries on as normal:** alarms ring over it, conversations carry on, and background services aren't touched.
+
+**Switching off:** say **"JARVIS, deactivate Mission Control"**, press the button or Esc, or use **Exit** in the sidebar. The transformation runs in reverse back to the Command Centre.
+
+With "reduce motion" on (Windows setting or Settings → Appearance), the same stages and checks run without the movement.
 
 ### 6. Talking and typing
 - **Typing:** use the box under the core, or the **Conversation** section (history follows you between laptop and phone).

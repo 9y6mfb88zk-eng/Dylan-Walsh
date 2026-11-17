@@ -41,3 +41,13 @@ test("interface commands: Mission Control, voice modes and diagnostic levels are
   // Ordinary requests go to the AI.
   for (const t of ["Run the dishwasher", "What mode are you in?", "Start a focus session", "Check my emails", "Tell me about mission control in Houston", "run a check"]) assert.equal(uiCommand(t), null, t);
 });
+
+test("Mission Control sections can be opened by voice, but only while Mission Control is active", () => {
+  assert.deepEqual(uiCommand("JARVIS, deactivate Mission Control"), { kind: "mission", on: false });
+  assert.deepEqual(uiCommand("Show system architecture", { missionOpen: true }), { kind: "mcSection", section: "architecture" });
+  assert.deepEqual(uiCommand("Open the world map", { missionOpen: true }), { kind: "mcSection", section: "global" });
+  assert.deepEqual(uiCommand("show me personal operations", { missionOpen: true }), { kind: "mcSection", section: "personal" });
+  assert.deepEqual(uiCommand("go to communications", { missionOpen: true }), { kind: "mcSection", section: "comms" });
+  assert.equal(uiCommand("Show system architecture"), null, "outside Mission Control this goes to the AI");
+  assert.equal(uiCommand("Show me the weather", { missionOpen: true }), null);
+});

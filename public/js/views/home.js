@@ -50,7 +50,8 @@ export async function render(root, ctx, params = {}) {
 
   // Core: 3D where possible. Clicking it talks (or interrupts).
   const anim = ctx.settings.appearance?.animation || "full";
-  mountBestCore($("#core", root), { quality: ctx.settings.appearance?.quality || "auto", animation: anim }).then((c) => { const cv = $("#core", root); if (cv) { coreCtl = c; cv.dataset.core = c.kind; cv.dataset.tier = c.tier || ""; } else c.destroy(); });
+  const coreCanvas = $("#core", root);
+  mountBestCore(coreCanvas, { quality: ctx.settings.appearance?.quality || "auto", animation: anim }).then((c) => { if (coreCanvas.isConnected) { coreCtl = c; coreCanvas.dataset.core = c.kind; coreCanvas.dataset.tier = c.tier || ""; if (document.documentElement.classList.contains("mc-mode")) c.setPalette?.("mission"); } else c.destroy(); });
   const offCore = core.on((s) => { const l = $("#coreState", root); if (l) { l.textContent = STATE_LABEL[s] || s; l.className = `core-state ${s}`; } $("#mic", root)?.classList.toggle("live", s === "listening"); });
   const offCap = ctx.onCaption((t, user) => { const c = $("#caption", root); if (!c) return; c.textContent = t || ""; c.classList.toggle("user", !!user); });
 

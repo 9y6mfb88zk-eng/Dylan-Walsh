@@ -93,14 +93,14 @@ export function mountCore(canvas, { animation = "full" } = {}) {
   }
   const off = still ? core.on(() => frame(performance.now())) : () => {};
   if (!still) raf = requestAnimationFrame(frame);
-  return { kind: "2d", destroy() { gone = true; cancelAnimationFrame(raf); ro.disconnect(); off(); } };
+  return { kind: "2d", pulse() {}, setPalette() {}, setBoost() {}, destroy() { gone = true; cancelAnimationFrame(raf); ro.disconnect(); off(); } };
 }
 
 /** The best core this device can show: 3D with a 2D fallback. */
 export async function mountBestCore(canvas, opts = {}) {
   if (opts.animation !== "off" && opts.quality !== "2d") {
-    try { const { mountCore3D } = await import("./core3d.js"); return await mountCore3D(canvas, opts); }
+    try { const { mountCore3D } = await import("./core3d.js"); const c = await mountCore3D(canvas, opts); canvas.__core = c; return c; }
     catch (e) { console.warn("[core] 3D unavailable, using 2D:", e.message); }
   }
-  return mountCore(canvas, opts);
+  const c = mountCore(canvas, opts); canvas.__core = c; return c;
 }

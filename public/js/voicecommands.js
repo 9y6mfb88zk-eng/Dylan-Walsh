@@ -27,7 +27,11 @@ export function cleanCommand(text) {
 // Interface commands handled on the device straight away (no AI round trip). Diagnostics still run on the server
 // and every spoken line comes from the real result.
 const LEVEL_WORDS = { quick: "quick", full: "full", complete: "full", comprehensive: "full", voice: "voice", audio: "voice", ai: "ai", "a.i.": "ai", network: "network", security: "security", performance: "performance", hardware: "hardware", integration: "integrations", integrations: "integrations" };
-export function uiCommand(text) {
+const MC_SECTION_WORDS = [["overview", /^(the )?(operational )?overview$/], ["global", /^(the )?(global information|world map|map|globe)$/], ["architecture", /^(the )?(system )?architecture$/],
+  ["diagnostics", /^(the )?diagnostics?( panel)?$/], ["processes", /^(the )?(active )?processes$/], ["intelligence", /^(the )?intelligence( feed)?$|^research$/], ["comms", /^(the )?communications$|^comms$/],
+  ["projects", /^(the |my )?projects$/], ["personal", /^(the |my )?personal operations$/]];
+/** missionOpen: section names ("show system architecture") only mean something while Mission Control is open. */
+export function uiCommand(text, { missionOpen = false } = {}) {
   const t = String(text || "").toLowerCase().replace(/^(hey |ok |okay )?jarvis[,.!]?\s*/, "").replace(/[,.!?]+$/g, "").replace(/\bplease\b/g, "").replace(/\s+/g, " ").trim();
   if (/^(activate|engage|enter|open|start|launch|initiate|go to|switch to) mission control( mode)?$/.test(t) || t === "mission control") return { kind: "mission", on: true };
   if (/^(exit|close|leave|deactivate|disengage|end|stop|quit) mission control( mode)?$/.test(t) || /^(stand down|exit mission mode)$/.test(t)) return { kind: "mission", on: false };
@@ -35,6 +39,10 @@ export function uiCommand(text) {
   if (m) return { kind: "mode", mode: { normal: "standard", short: "concise" }[m[1]] || m[1] };
   m = t.match(/^(?:run|perform|start|initiate|begin|do)(?: an?| the| me a)? ?(quick|full|complete|comprehensive|voice|audio|ai|a\.i\.|network|security|performance|hardware|integrations?)? ?(?:system |systems )?(?:diagnostics?|diagnostic check|systems? check|check)$/);
   if (m && (m[1] || /diagnostic/.test(t))) return { kind: "diagnostics", level: LEVEL_WORDS[m[1]] || "quick" };
+  if (missionOpen) {
+    const s = t.match(/^(?:show|open|go to|switch to|display|view)(?: me)? (.+)$/);
+    if (s) for (const [id, re] of MC_SECTION_WORDS) if (re.test(s[1])) return { kind: "mcSection", section: id };
+  }
   if (/^(full |complete )?(system )?status report$/.test(t) || /^are all systems (operational|online|working)$/.test(t)) return { kind: "diagnostics", level: /^(full|complete)/.test(t) ? "full" : "quick" };
   return null;
 }
