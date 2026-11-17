@@ -80,4 +80,37 @@ if (ASR.files.every((f) => fs.existsSync(path.join(asrDir, f))) && fs.existsSync
   fs.writeFileSync(path.join(asrDir, ".source"), ASR.sha256);
   fs.rmSync(atmp, { recursive: true, force: true });
 }
-console.log(`Bundled Node ${NODE_VERSION} (${target}), the JARVIS server and the Parakeet speech model into desktop/bundle/`);
+// Local voice (6.8): Piper "northern_english_male" (medium) as converted by sherpa-onnx, checksum-pinned.
+// Dataset licence CC-BY-SA 4.0 (OpenSLR 83). Only the model and its token table are kept (the phonemiser is an npm package).
+const TTS = { file: "vits-piper-en_GB-northern_english_male-medium.tar.bz2", dir: "vits-piper-en_GB-northern_english_male-medium", sha256: "2bb2c1e709f58c11f17c693b3b38f500e110e7f54f2651774ec48b8d41f12c55", files: ["en_GB-northern_english_male-medium.onnx", "tokens.txt", "MODEL_CARD"] };
+const ttsDir = path.join(bundle, "tts");
+if (TTS.files.every((f) => fs.existsSync(path.join(ttsDir, f))) && fs.existsSync(path.join(ttsDir, ".source")) && fs.readFileSync(path.join(ttsDir, ".source"), "utf8").trim() === TTS.sha256) {
+  console.log("Local voice already bundled");
+} else {
+  const url = `https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/${TTS.file}`;
+  console.log(`Downloading ${url}`);
+  const ttmp = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-tts-"));
+  const archivePath = path.join(ttmp, TTS.file);
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Voice model download failed: ${r.status}`);
+  const hash = (await import("node:crypto")).createHash("sha256");
+  const out = fs.createWriteStream(archivePath);
+  for await (const chunk of r.body) { hash.update(chunk); if (!out.write(chunk)) await new Promise((res) => out.once("drain", res)); }
+  await new Promise((res, j) => out.end((e) => (e ? j(e) : res())));
+  if (hash.digest("hex") !== TTS.sha256) throw new Error(`Checksum mismatch for ${TTS.file}`);
+  const tars = process.platform === "win32" ? ["C:\\Program Files\\Git\\usr\\bin\\tar.exe", "tar"] : ["tar"];
+  const gitPath = (p) => p.replace(/\\/g, "/").replace(/^([A-Za-z]):/, "/$1");
+  let ok = false;
+  for (const t of tars) {
+    const git = process.platform === "win32" && t.includes("Git");
+    try { execFileSync(t, ["-xjf", git ? gitPath(archivePath) : archivePath, "-C", git ? gitPath(ttmp) : ttmp, ...TTS.files.map((f) => `${TTS.dir}/${f}`)], { stdio: "inherit" }); ok = true; break; }
+    catch (e) { console.warn(`${t} could not extract: ${e.message}`); }
+  }
+  if (!ok) throw new Error("Could not extract the voice model archive");
+  fs.rmSync(ttsDir, { recursive: true, force: true });
+  fs.mkdirSync(ttsDir, { recursive: true });
+  for (const f of TTS.files) { const from = path.join(ttmp, TTS.dir, f), to = path.join(ttsDir, f); try { fs.renameSync(from, to); } catch (e) { if (e.code !== "EXDEV") throw e; fs.copyFileSync(from, to); fs.unlinkSync(from); } }
+  fs.writeFileSync(path.join(ttsDir, ".source"), TTS.sha256);
+  fs.rmSync(ttmp, { recursive: true, force: true });
+}
+console.log(`Bundled Node ${NODE_VERSION} (${target}), the JARVIS server, the Parakeet speech model and the local voice into desktop/bundle/`);

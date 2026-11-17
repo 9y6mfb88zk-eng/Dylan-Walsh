@@ -110,6 +110,26 @@ export const sounds = {
     }
     utone("sine", 110, t + 0.6, 0.6, 0.08, { a: 0.05, to: 98 });
   },
+  /** Conversation over (back to standby): two soft descending notes. */
+  standby() {
+    if (!uiLive()) return;
+    const t = ctx.currentTime + 0.02;
+    utone("sine", 988, t, 0.16, 0.035, { a: 0.01 });
+    utone("sine", 740, t + 0.11, 0.26, 0.03, { a: 0.01 });
+  },
+  /** JARVIS stopped because you spoke over it: one short, quiet acknowledgement. */
+  interrupted() {
+    if (!uiLive() || ui.reduced) return;
+    const t = ctx.currentTime + 0.01;
+    utone("triangle", 1174.7, t, 0.06, 0.022, { a: 0.004 });
+  },
+  /** Something failed (the AI couldn't be reached, the voice couldn't play): a low two-step, never alarming. */
+  fault() {
+    if (!uiLive()) return;
+    const t = ctx.currentTime + 0.02;
+    utone("triangle", 330, t, 0.14, 0.04, { a: 0.01 });
+    utone("triangle", 262, t + 0.15, 0.22, 0.04, { a: 0.01 });
+  },
   /** Low electronic power-on: a sub sweep with a filtered noise swell. */
   powerOn() {
     if (!live()) return;

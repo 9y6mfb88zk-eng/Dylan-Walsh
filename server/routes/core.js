@@ -8,7 +8,8 @@ import * as pending from "../services/pending.js";
 import { healthReport } from "../services/health.js";
 import { runComputerAction } from "../services/computer.js";
 import { getWeather, geocode } from "../integrations/weather.js";
-import { streamTTS, transcribe, transcribeDetailed } from "../voice.js";
+import { streamTTS, transcribe, transcribeDetailed, speechProvider, speechProviders } from "../voice.js";
+import { localTtsStatus } from "../local-tts.js";
 import { chat, briefing, startResearch, friendlyAiError } from "../brain.js";
 import { notifyAll } from "../push.js";
 import { runIdeaJob, runBriefingJob, fireDueReminders, backup } from "../scheduler.js";
@@ -49,7 +50,7 @@ router.post("/api/tts", rateLimit({ name: "tts", limit: 60, windowMs: 60_000 }),
   if (!text) return res.status(400).json({ error: "No text" });
   const ac = new AbortController();
   res.on("close", () => { if (!res.writableFinished) ac.abort(); });
-  await streamTTS(text, res, ac.signal);
+  await streamTTS(text, res, ac.signal, { speedFactor: Number(req.body?.speed) || 1, provider: req.body?.preview && speechProviders().includes(req.body.preview) && req.body.preview !== "auto" && req.body.preview !== "browser" ? req.body.preview : null });
 }));
 const sttLimit = rateLimit({ name: "stt", limit: 40, windowMs: 60_000 }), partialLimit = rateLimit({ name: "stt-partial", limit: 90, windowMs: 60_000 });
 router.post("/api/transcribe", (req, res, next) => (req.headers["x-partial"] === "1" ? partialLimit : sttLimit)(req, res, next), express.raw({ type: () => true, limit: "15mb" }), wrap(async (req, res) => {
@@ -115,6 +116,19 @@ router.patch("/api/settings", (req, res) => {
   if (patch.personality?.mode && !["standard", "cinematic", "concise", "professional", "focus"].includes(patch.personality.mode)) return res.status(400).json({ error: "Unknown voice mode" });
   for (const k of ["formality", "humour", "cinematic"]) if (patch.personality?.[k] != null && typeof patch.personality[k] === "number") patch.personality[k] = clamp(patch.personality[k], 0, 3, 1);
   if (patch.memory?.mode && !["ask", "auto", "off"].includes(patch.memory.mode)) return res.status(400).json({ error: "Memory mode must be ask, auto or off" });
+  // 6.8: how often JARVIS says "Sir"; whether long conversations' summaries are kept as memories; voice delivery.
+  if (patch.personality?.sir != null && !["never", "rarely", "occasionally", "often"].includes(patch.personality.sir)) return res.status(400).json({ error: "Form of address must be never, rarely, occasionally or often" });
+  if (patch.memory && "saveSummaries" in patch.memory) patch.memory.saveSummaries = patch.memory.saveSummaries === true;
+  if (patch.voice) {
+    const v = patch.voice;
+    if (v.provider != null && !["auto", "elevenlabs", "openai", "piper", "browser"].includes(v.provider)) return res.status(400).json({ error: "Unknown speech provider" });
+    if (v.speed != null) v.speed = clamp(v.speed, 0.7, 1.3, 1);
+    if (v.volume != null) v.volume = clamp(v.volume, 0, 1, 1);
+    if (v.pronunciations != null) {
+      if (!Array.isArray(v.pronunciations) || v.pronunciations.length > 60) return res.status(400).json({ error: "Pronunciations must be a list of up to 60 entries" });
+      v.pronunciations = v.pronunciations.map((x) => ({ from: String(x?.from || "").trim().slice(0, 60), to: String(x?.to || "").trim().slice(0, 80) })).filter((x) => x.from && x.to);
+    }
+  }
   const s = updateSettings(patch);
   onSettingsChanged(patch);
   auditFromReq(req, "settings.changed", { keys: Object.keys(patch) });
@@ -208,7 +222,7 @@ router.get("/api/health", (req, res) => {
     connectedDevices: connectedDevices().length,
     integrations: {
       ai: { configured: !!config.anthropicKey, model: config.model },
-      voice: { tts: config.elevenKey ? "elevenlabs" : config.openaiKey ? "openai" : null, stt: !!config.openaiKey || localAsrStatus().available, sttLocal: localAsrStatus() },
+      voice: { tts: speechProvider(), ttsProviders: speechProviders(), ttsLocal: localTtsStatus(), stt: !!config.openaiKey || localAsrStatus().available, sttLocal: localAsrStatus() },
       monzo: { configured: !!(config.monzoClientId && config.monzoClientSecret), connection: conns.find((c) => c.provider === "monzo") || null },
       google: { configured: !!(config.googleClientId && config.googleClientSecret), connection: conns.find((c) => c.provider === "google") || null },
       webSearch: config.webSearch,

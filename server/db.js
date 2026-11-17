@@ -66,14 +66,14 @@ export const DEFAULT_SETTINGS = {
   briefing: { time: config.briefingTime, enabled: true, sections: { weather: true, calendar: true, tasks: true, finance: true, projects: true, news: false } },
   ideas: { enabled: config.ideasEnabled, everyMinutes: config.ideasEveryMinutes },
   finance: { enabled: true, buffer: 5000 },     // keep £50 aside in affordability checks
-  memory: { autoSave: true, mode: "ask" },
+  memory: { autoSave: true, mode: "ask", saveSummaries: false },
   awareness: { integrationAlerts: true, headsUp: true },   // proactive notices: integration failures, upcoming events     // ask = ask before remembering things you mention; auto; off = memory disabled
   computer: { enabled: true },
   timezone: config.timezone,
   // How JARVIS talks and listens. continuous: after "Hey JARVIS", follow-up questions need no wake word until
   // `timeoutSec` of silence; "Stay with me" extends that to `stayWithMeSec`.
-  voice: { continuous: true, timeoutSec: 8, stayWithMeSec: 120, bargeIn: true, rate: 1, voiceName: "", speakReplies: true, speakBriefings: true, speakNotifications: true, chime: true },
-  personality: { style: "jarvis", humour: "dry", verbosity: "brief" },
+  voice: { continuous: true, timeoutSec: 8, stayWithMeSec: 120, bargeIn: true, rate: 1, voiceName: "", speakReplies: true, speakBriefings: true, speakNotifications: true, chime: true, provider: "auto", speed: 1, volume: 1, pronunciations: [], interruptWords: true },
+  personality: { style: "jarvis", humour: "dry", verbosity: "brief", sir: "occasionally" },
   appearance: { animation: "full", quality: "auto", reduceMotion: false, accent: "cyan", sidebar: "expanded", particles: 1, bloom: 1, updates: "normal", mapQuality: "auto" },
   interface: { transitions: true, transitionSpeed: "normal", sound: true, soundVolume: 0.5, silent: false, reducedSound: false, reducedEffects: false, mapAutoResize: true, mapAnimate: true },
   startup: { screen: "cinematic", skipAnimation: false, sound: true, volume: 0.6, silent: false, reducedAudio: false, autoOpen: false, fullDiagnostics: true },

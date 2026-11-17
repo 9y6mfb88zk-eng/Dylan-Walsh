@@ -6,6 +6,7 @@ import { api, send, uid } from "./api.js";
 import { voice } from "./voice.js";
 import { core } from "./corestate.js";
 import { localCommand, isHallucination, cleanCommand, uiCommand } from "./voicecommands.js";
+import { phrase, noteTitleUsed } from "./phrases.js";
 export { localCommand, isHallucination, cleanCommand, uiCommand };
 
 const streamListeners = new Set();
@@ -27,7 +28,7 @@ export const conversation = {
   },
   async askInner(text, { viaVoice, speak }) {
     const ctx = this.ctx;
-    voice.stop();
+    if (voice.state === "speaking" || this.abort) this.interrupt(); else voice.stop();   // a new request cuts the old reply short
     // Interface commands and command macros run here, without an AI round trip.
     const ui = uiCommand(text, { missionOpen: !!ctx.mission?.open });
     const local = ui && ctx.handleUi ? { run: () => ctx.handleUi(ui, { speak, text }) }
@@ -46,6 +47,9 @@ export const conversation = {
     const speaker = speak ? voice.createSpeaker() : null;
     let reply = "", sources = [], failed = null, gotFirst = false;
     const clientId = uid();
+    this.lastClientId = clientId;
+    // An interruption of the previous reply travels with this message too (in case the separate report was lost).
+    const cut = this.pendingCut; this.pendingCut = null;
     const ac = new AbortController();
     let interrupted = false;
     this.abort = () => { interrupted = true; ac.abort(); };
@@ -54,7 +58,7 @@ export const conversation = {
       const res = await fetch("/api/chat/stream", {
         method: "POST", credentials: "same-origin", signal: ac.signal,
         headers: { "content-type": "application/json", "x-jarvis": "1" },
-        body: JSON.stringify({ text, clientId, voice: viaVoice, loc: ctx.loc?.() || undefined, screen: ctx.mission?.context?.() || undefined }),
+        body: JSON.stringify({ text, clientId, voice: viaVoice, loc: ctx.loc?.() || undefined, screen: ctx.mission?.context?.() || undefined, session: this.session ? { brief: !!this.session.brief } : undefined, interrupted: cut || undefined }),
       });
       if (!res.ok || !res.body) { const j = await res.json().catch(() => ({})); throw Object.assign(new Error(j.error || `Request failed (${res.status})`), { status: res.status }); }
       const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
@@ -92,11 +96,13 @@ export const conversation = {
       this.abort = null;
     }
     if (interrupted) { speaker?.cancel(); streamListeners.forEach((fn) => fn({ type: "done", reply, sources, interrupted: true })); return { reply, interrupted: true }; }
+    if (failed) core.fault(failed);
     if (failed && !reply) {
       reply = failed;
       speaker?.push(`${failed}`);
     }
     this.lastReply = reply;
+    noteTitleUsed(reply, title(ctx));
     ctx.caption(reply);
     streamListeners.forEach((fn) => fn({ type: "done", reply, sources, failed }));
     speaker?.finish();
@@ -129,16 +135,24 @@ export const conversation = {
         const heard = this.lastHeard;
         if (!cmd && heard?.text === said && heard.confidence?.level === "low") {
           this.lastHeard = null;
-          ctx.caption(`I heard “${said}”, but I'm not confident (${heard.confidence.reasons.join(", ")}). Could you say that again?`);
-          await voice.speakShort(`Apologies, ${title(ctx)}, I didn't quite catch that. Could you say it again?`);
+          const line = phrase("again", P(ctx));
+          ctx.caption(`I heard “${said}”, but I'm not confident (${heard.confidence.reasons.join(", ")}). ${line}`);
+          await voice.speakShort(line);
           continue;
         }
-        if (cmd === "end") { ctx.caption(`Standing by, ${title(ctx)}.`); await voice.speakShort(`Very good, ${title(ctx)}.`); break; }
-        if (cmd === "stay") { this.session.stayUntil = Date.now() + (ctx.settings?.voice?.stayWithMeSec || 120) * 1000; ctx.caption(`I'm here, ${title(ctx)}.`); await voice.speakShort(`I'm here, ${title(ctx)}.`); continue; }
+        const say = async (kind) => { const line = phrase(kind, P(ctx)); ctx.caption(line); await voice.speakShort(line); };
+        if (cmd === "end") { await say("end"); break; }
+        if (cmd === "stay") { this.session.stayUntil = Date.now() + (ctx.settings?.voice?.stayWithMeSec || 120) * 1000; await say("stay"); continue; }
         if (cmd === "listen") continue;
         if (cmd === "hush") { voice.stop(); continue; }
-        if (cmd === "repeat") { ctx.caption(this.lastReply || "Nothing to repeat yet."); if (this.lastReply) await speakAll(this.lastReply); continue; }
-        if (cmd === "mute") { ctx.caption(`Microphone muted, ${title(ctx)}.`); await voice.speakShort("Microphone muted."); ctx.desktop?.setMuted?.(true); break; }
+        if (cmd === "repeat") { if (this.lastReply) { ctx.caption(this.lastReply); await speakAll(this.lastReply); } else await say("nothingToRepeat"); continue; }
+        if (cmd === "mute") { await say("muted"); ctx.desktop?.setMuted?.(true); break; }
+        // Delivery for the rest of this conversation
+        if (cmd === "slower" || cmd === "faster" || cmd === "normalSpeed") {
+          voice.sessionSpeed = cmd === "normalSpeed" ? 1 : Math.max(0.75, Math.min(1.25, (voice.sessionSpeed || 1) * (cmd === "slower" ? 0.88 : 1.12)));
+          await say(cmd); continue;
+        }
+        if (cmd === "brief" || cmd === "unbrief") { this.session.brief = cmd === "brief"; await say(cmd); continue; }
         await this.ask(said, { viaVoice: true, speak: true });
         if (!(ctx.settings?.voice?.continuous ?? true)) break;
       }
@@ -148,17 +162,31 @@ export const conversation = {
       this.endSession({ quiet: true });
     }
   },
-  /** Barge-in: stop speaking/streaming and take the next words as the new request. */
-  interrupt() { this.abort?.(); voice.stop(); },
+  /**
+   * Barge-in: stop speaking/streaming at once and take the next words as the new request. JARVIS is told how much of
+   * its reply the user actually heard, so "explain that again" refers to the right thing.
+   */
+  interrupt() {
+    const speaking = voice.state === "speaking" || !!this.abort;
+    if (speaking && this.lastClientId) {
+      const cut = { clientId: this.lastClientId, heard: voice.heard() };
+      this.pendingCut = cut;
+      api("/api/chat/interrupted", { method: "POST", body: cut }).catch(() => {});
+      this.onInterrupted?.(cut);
+    }
+    this.abort?.(); voice.stop();
+  },
   inject(text) { this.injected = text; this.interrupt(); },
   takeInjected() { const t = this.injected; this.injected = null; return t ?? null; },
   endSession({ quiet = false } = {}) {
     const had = !!this.session;
     this.session = null;
+    voice.sessionSpeed = 1;                     // "speak more slowly" lasts for one conversation
     voice.stopListening(true);
     this.ctx.desktop?.cancelListen?.();
     this.ctx.desktop?.setSessionActive?.(false);
-    if (had && !quiet) { this.interrupt(); this.ctx.caption(`Standing by, ${title(this.ctx)}.`); }
+    if (had && !quiet) { this.interrupt(); this.ctx.caption(phrase("end", P(this.ctx))); }
+    if (had) this.onSessionEnd?.();
     if (voice.state === "listening" || voice.state === "thinking") voice.setState("idle");
   },
 
@@ -195,7 +223,7 @@ export const conversation = {
     voice.setState("thinking");
     core.set("thinking", true);
     try {
-      const r = await api("/api/transcribe", { method: "POST", raw: new Blob([wav], { type: "audio/wav" }), headers: { "content-type": "audio/wav", ...(partial ? { "x-partial": "1" } : {}) } });
+      const r = await api("/api/transcribe", { method: "POST", raw: new Blob([wav], { type: "audio/wav" }), headers: { "content-type": "audio/wav", ...(partial ? { "x-partial": "1" } : {}) } }).catch((e) => { if (!partial) core.fault(e.message); throw e; });
       const t = cleanCommand(r.text);
       if (isHallucination(t)) return "";
       this.lastHeard = { text: t, confidence: r.confidence, latencyMs: r.latencyMs, engine: r.engine };
@@ -211,6 +239,7 @@ const TOOL_CAPTION = {
   record_money: "Recording that…", smart_home: "Talking to the house…", routine: "Running the routine…",
 };
 const title = (ctx) => ctx?.settings?.profile?.title || "Sir";
+const P = (ctx) => ({ title: title(ctx), frequency: ctx?.settings?.personality?.sir || "occasionally" });
 async function speakAll(text) { const sp = voice.createSpeaker(); sp.push(text); sp.finish(); await sp.done; }
 voice.speakShort = (text) => speakAll(text);
 

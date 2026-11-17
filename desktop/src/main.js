@@ -52,6 +52,7 @@ function modelDir(name) {
   const packaged = path.join(process.resourcesPath || "", "models", name);
   if (app.isPackaged && fs.existsSync(packaged)) return packaged;
   if (name === "asr") return process.env.JARVIS_ASR_DIR || path.join(root, "bundle", "asr");
+  if (name === "tts") return process.env.JARVIS_TTS_DIR || path.join(root, "bundle", "tts");
   return path.join(root, "models", name);
 }
 function sherpaPath() {
@@ -61,6 +62,7 @@ function sherpaPath() {
 
 // ---------------------------------------------------------------- "JARVIS" keyword spotter (utility process)
 let kws = null, kwsRestarts = 0;
+const INTERRUPT_WORDS = new Set(["WAIT", "HOLD_ON"]);
 function startKws() {
   try {
     kws = utilityProcess.fork(path.join(here, "kws-worker.cjs"), [], {
@@ -71,7 +73,11 @@ function startKws() {
   kws.on("message", (m) => {
     if (m.type === "ready") { status.kws = "ready"; status.kwsError = null; kws.postMessage({ type: "config", jarvis: settings.wakeJarvisAlone }); pushStatus(); log("keyword spotter ready"); }
     if (m.type === "error") { status.kws = "error"; status.kwsError = m.error; pushStatus(); log("keyword spotter error", m.error); }
-    if (m.type === "wake") onWake(`keyword:${m.keyword}`, 1);
+    if (m.type === "wake") {
+      // "Wait" / "Hold on" only ever interrupt JARVIS while it is speaking in a conversation; they never wake it.
+      if (INTERRUPT_WORDS.has(m.keyword)) { if (voiceState === "speaking" && bargeInAllowed() && serverVoice.interruptWords !== false) onWake(`keyword:${m.keyword}`, 1, { interruptWord: m.keyword }); return; }
+      onWake(`keyword:${m.keyword}`, 1);
+    }
   });
   kws.on("exit", (code) => {
     kws = null; log("keyword spotter exited", code);
@@ -82,7 +88,7 @@ function startKws() {
 // ---------------------------------------------------------------- Local server (JARVIS on this laptop)
 let server = null, secretsStore = null;   // secretsStore is created once Electron is ready (needs safeStorage)
 function serverEnv() {
-  return { ...secretsStore.env(), ...(settings.phoneAccess && settings.phoneUrl ? { PUBLIC_URL: settings.phoneUrl } : {}), JARVIS_TZ: Intl.DateTimeFormat().resolvedOptions().timeZone, JARVIS_ASR_DIR: modelDir("asr"), JARVIS_VERSION: VERSION };
+  return { ...secretsStore.env(), ...(settings.phoneAccess && settings.phoneUrl ? { PUBLIC_URL: settings.phoneUrl } : {}), JARVIS_TZ: Intl.DateTimeFormat().resolvedOptions().timeZone, JARVIS_ASR_DIR: modelDir("asr"), JARVIS_TTS_DIR: modelDir("tts"), JARVIS_VERSION: VERSION };
 }
 async function startLocalServer() {
   const loc = locateServer({ appRoot: root, resourcesPath: process.resourcesPath, packaged: app.isPackaged });
@@ -375,7 +381,7 @@ ipcMain.on("audio:captured", (_e, wav, id) => {
   win?.webContents.send("jarvis:wakeAudio", wav || null);
   log("command captured", wav ? `${wav.length} bytes` : "(no speech)");
 });
-function onWake(source, score) {
+function onWake(source, score, { interruptWord = null } = {}) {
   if (status.muted || !settings.wakeEnabled || suspended || capturing) return;
   if (sessionActive && !bargeInAllowed()) return;    // in a conversation: only "JARVIS" to interrupt while it talks
   if (Date.now() - lastWakeAt < 2500) return;          // both detectors may fire for one phrase
@@ -387,7 +393,7 @@ function onWake(source, score) {
   if (source !== "hey_jarvis_model") audioWin?.webContents.send("audio:capture", { id: "wake", preRoll: true });   // the openWakeWord detector starts its own capture
   setTimeout(() => { if (capturing) { capturing = false; win?.webContents.send("jarvis:wakeAudio", null); } }, 20_000);
   showMain();
-  win?.webContents.send("jarvis:wake", { score, source, capture: true });
+  win?.webContents.send("jarvis:wake", { score, source, capture: true, interruptWord });
 
   kws?.postMessage({ type: "reset" });
   pushStatus();

@@ -18,6 +18,7 @@ import { deliverBriefing, briefingHistory, getBriefing } from "../services/brief
 import { tasks, reminders, projects } from "../services/work.js";
 import * as calendar from "../services/calendar.js";
 import { memory } from "../services/memory.js";
+import { conversations } from "../services/conversations.js";
 import { chat, client, friendlyAiError, startResearch, brainReady } from "../brain.js";
 import { getWeather, geocode } from "../integrations/weather.js";
 import { rateLimit } from "../security/ratelimit.js";
@@ -34,14 +35,26 @@ const dev = (req) => ({ deviceId: req.auth.deviceId });
 const notFound = (res) => res.status(404).json({ error: "Not found" });
 
 // ---------------------------------------------------------------- Streaming conversation (Server-Sent Events)
+// The user interrupted a spoken reply: record how much of it they heard (sent as soon as playback stops).
+router.post("/api/chat/interrupted", wrap(async (req, res) => {
+  const clientId = String(req.body?.clientId || "").slice(0, 80);
+  if (!clientId) return res.status(400).json({ error: "clientId required" });
+  res.json({ ok: await conversations.markInterrupted(clientId, String(req.body?.heard || "").slice(0, 4000)) });
+}));
 router.post("/api/chat/stream", rateLimit({ name: "chat", limit: 30, windowMs: 60_000 }), wrap(async (req, res) => {
   const text = String(req.body?.text || "").trim().slice(0, 4000);
   if (!text) return res.status(400).json({ error: `Say something, ${getSettings().profile?.title || "Sir"}.` });
   res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache, no-transform", connection: "keep-alive", "x-accel-buffering": "no" });
   const send = (ev) => { if (!res.writableEnded) res.write(`data: ${JSON.stringify(ev)}\n\n`); };
   const ping = setInterval(() => send({ type: "ping" }), 15_000);
+  // The client closing the stream means the user interrupted: stop generating straight away (no wasted tokens).
+  const ac = new AbortController();
+  res.on("close", () => { if (!res.writableFinished) ac.abort(); });
+  const body = req.body || {};
+  const session = body.session && typeof body.session === "object" ? { brief: !!body.session.brief } : null;
+  const interrupted = body.interrupted && typeof body.interrupted === "object" && body.interrupted.clientId ? { clientId: String(body.interrupted.clientId).slice(0, 80), heard: String(body.interrupted.heard || "").slice(0, 4000) } : null;
   try {
-    const out = await chat({ text, conversationId: req.body?.conversationId, clientId: req.body?.clientId || null, deviceId: req.auth.deviceId, deviceKind: req.auth.kind, loc: req.body?.loc, voice: !!req.body?.voice, screen: req.body?.screen && typeof req.body.screen === "object" ? req.body.screen : null, onEvent: send });
+    const out = await chat({ text, conversationId: body.conversationId, clientId: body.clientId || null, deviceId: req.auth.deviceId, deviceKind: req.auth.kind, loc: body.loc, voice: !!body.voice, screen: body.screen && typeof body.screen === "object" ? body.screen : null, onEvent: send, signal: ac.signal, session, interrupted });
     send({ type: "done", ...out });
   } catch (e) {
     const err = friendlyAiError(e);

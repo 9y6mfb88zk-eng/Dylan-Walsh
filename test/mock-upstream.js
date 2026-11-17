@@ -56,6 +56,18 @@ function writeSSE(res, m) {
   res.end();
 }
 
+async function writeSSESlow(res, m, delayMs) {
+  res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
+  const ev = (type, data) => { if (!res.destroyed) res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`); };
+  ev("message_start", { message: { ...m, content: [], stop_reason: null, usage: { input_tokens: 10, output_tokens: 1 } } });
+  ev("content_block_start", { index: 0, content_block: { type: "text", text: "" } });
+  for (const chunk of m.content[0].text.match(/\S+\s*/g) || []) { if (res.destroyed) return; ev("content_block_delta", { index: 0, delta: { type: "text_delta", text: chunk } }); await new Promise((r) => setTimeout(r, delayMs)); }
+  ev("content_block_stop", { index: 0 });
+  ev("message_delta", { delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 10 } });
+  ev("message_stop", {});
+  res.end();
+}
+
 export function startMock() {
   const log = { anthropic: [], tts: [], stt: 0, push: [], meteo: 0, monzo: [], google: [] };
   const state = { monzoApproved: false, monzoTokenVersion: 0, googleEvents: [], adsbRemaining: 500, adsbDown: false, openskyDown: false, openskyCount: 3000, gdelt429: false, gdeltCalls: 0 };
@@ -128,6 +140,7 @@ export function startMock() {
       if (/set an alarm for seven/i.test(t)) return toolUse("set_alarm", { time: "07:00", label: "Wake up", repeat: "weekdays" });
       if (/i just spent £12\.50 on food/i.test(t)) return toolUse("record_money", { amount_pounds: 12.5, description: "Lunch", category: "food" });
       if (/what time is it in tokyo/i.test(t)) return toolUse("world_time", { places: ["Tokyo"] });
+      if (/tell me a very long story/i.test(t)) return text("Once upon a time there was a laptop on a desk in Cyprus. Every morning it woke at seven and checked the weather. Then it read the news, tidied the calendar and made a list of the day's tasks. One day the wifi went down, and the laptop had to wait. It waited patiently for a very long time, humming quietly to itself. The end.");
       if (/tell me a long story/i.test(t)) return text("Once upon a time, Sir, there was a laptop. It woke at seven. It made the tea. The end.");
       if (/open chrome/i.test(t)) return toolUse("computer", { action: "open_app", app: "chrome" });
       if (/schedule a gym/i.test(t)) { const s0 = new Date(Date.now() + 86400_000); s0.setUTCMinutes(0, 0, 0); return toolUse("calendar_create", { title: "Gym", start: s0.toISOString() }); }
@@ -150,7 +163,10 @@ export function startMock() {
     if (p === "/v1/messages") {
       const body = JSON.parse(raw.toString()); log.anthropic.push(body);
       const reply = anthropicReply(body);
-      return body.stream ? writeSSE(res, reply) : json(200, reply);
+      // "very long story": streamed slowly, so a test can interrupt it part-way (as a person would)
+      const slow = body.stream && /very long story/i.test(typeof body.messages.at(-1)?.content === "string" ? body.messages.at(-1).content : "");
+      if (slow) res.on("close", () => { if (!res.writableFinished) log.anthropicAborted = (log.anthropicAborted || 0) + 1; });
+      return slow ? writeSSESlow(res, reply, 80) : body.stream ? writeSSE(res, reply) : json(200, reply);
     }
     if (p.startsWith("/v1/models/") && state.anthropicDown) return json(500, { type: "error", error: { type: "api_error", message: "Internal server error" } });
     if (p.startsWith("/v1/models/")) return json(200, { type: "model", id: decodeURIComponent(p.slice(11)), display_name: "Mock model", created_at: "2026-01-01T00:00:00Z" });

@@ -13,6 +13,7 @@ const STATES = {
   executing:   ["#f2faff", "#8fa5bb", 1.1, 1.3, 0.15, 0.9, 0, 0, 0.5],
   alarm:       ["#ffffff", "#00e5ff", 1.6, 1.8, 0.6, 1.8, 0, 0, 1.0],
   offline:     ["#60778f", "#3a4c60", 0.35, 0.08, 0.0, 0.1, 0, 0, 0.1],
+  error:       ["#e8a46a", "#9a5a3c", 0.8, 0.45, 0.05, 0.5, 0, 0, 0.3],   // a muted amber "fault", never an alarm red
 };
 
 // Mission Control palette: the same states and behaviour, in violet. Alarm and offline keep their warning colours.

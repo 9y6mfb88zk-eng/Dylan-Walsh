@@ -2,15 +2,58 @@ import { Readable } from "node:stream";
 import { recordApiCall } from "./services/diagnostics.js";
 import { config, ttsProvider } from "./config.js";
 import { localAsrAvailable, transcribeLocal } from "./local-asr.js";
+import { localTtsAvailable, synthesizeLocal } from "./local-tts.js";
+import { getSettings } from "./db.js";
+import { speakable } from "../public/js/speech-text.js";   // shared with the browser voice
+
+/**
+ * Which voice speaks (Settings → Voice): "auto" uses a premium voice you've added a key for (ElevenLabs, then OpenAI),
+ * otherwise the free local Piper voice, otherwise the browser's own voice (null). A provider is only ever used when
+ * it's actually available; nothing switches to a paid service on its own.
+ */
+export function speechProvider() {
+  const want = getSettings().voice?.provider || "auto";
+  const piper = localTtsAvailable();
+  if (want === "browser") return null;
+  if (want === "piper") return piper ? "piper" : null;
+  if (want === "elevenlabs") return config.elevenKey ? "elevenlabs" : null;
+  if (want === "openai") return config.openaiKey ? "openai" : null;
+  const env = ttsProvider();          // TTS_PROVIDER / keys, as before
+  if (config.ttsProvider === "browser") return null;          // TTS_PROVIDER=browser: the device's own voice
+  return env || (piper ? "piper" : null);
+}
+/** The speech providers that can actually be used here (for Settings: nothing is offered that wouldn't work). */
+export function speechProviders() {
+  return [["auto", true], ["elevenlabs", !!config.elevenKey], ["openai", !!config.openaiKey], ["piper", localTtsAvailable()], ["browser", true]].filter(([, ok]) => ok).map(([k]) => k);
+}
 
 /**
  * Streams synthesized speech (audio/mpeg) to an Express response.
  * The response begins as soon as the provider sends the first bytes, so the
  * browser can start playback while the rest is still being generated.
  */
-export async function streamTTS(text, res, signal) {
-  const provider = ttsProvider();
+export async function streamTTS(rawText, res, signal, { speedFactor = 1, provider: forced = null } = {}) {
+  const v = getSettings().voice || {};
+  const provider = forced || speechProvider();
   if (!provider) { res.status(501).json({ error: "No neural TTS configured" }); return; }
+  const text = speakable(rawText, { pronunciations: v.pronunciations });
+  if (!text) { res.status(204).end(); return; }
+  // Speaking speed: the setting times any "speak more slowly" request in this conversation, kept within what voices allow.
+  const speed = Math.max(0.7, Math.min(1.25, (Number(v.speed) || 1) * (Number(speedFactor) || 1)));
+  if (provider === "piper") {
+    const t0 = performance.now();
+    try {
+      const wav = await synthesizeLocal(text, { speed });
+      recordApiCall({ provider: "tts-local", model: "piper", purpose: "speak", latencyMs: performance.now() - t0, ok: true });
+      if (signal?.aborted) return;
+      res.setHeader("content-type", "audio/wav"); res.setHeader("cache-control", "no-store"); res.setHeader("x-tts-provider", "piper");
+      res.end(wav);
+    } catch (e) {
+      recordApiCall({ provider: "tts-local", model: "piper", purpose: "speak", latencyMs: performance.now() - t0, ok: false, error: e.message });
+      res.status(502).json({ error: `Local voice failed: ${e.message}` });
+    }
+    return;
+  }
 
   let upstream;
   if (provider === "elevenlabs") {
@@ -20,7 +63,7 @@ export async function streamTTS(text, res, signal) {
       headers: { "xi-api-key": config.elevenKey, "content-type": "application/json", accept: "audio/mpeg" },
       body: JSON.stringify({
         text, model_id: config.elevenModel,
-        voice_settings: { stability: 0.55, similarity_boost: 0.8, style: 0.25, use_speaker_boost: true },
+        voice_settings: { stability: 0.5, similarity_boost: 0.8, style: 0.2, use_speaker_boost: true, speed: Math.max(0.7, Math.min(1.2, speed)) },
       }),
     });
   } else {
@@ -30,8 +73,9 @@ export async function streamTTS(text, res, signal) {
       body: JSON.stringify({
         model: config.openaiTtsModel, voice: config.openaiTtsVoice, input: text, response_format: "mp3",
         ...(config.openaiTtsModel.includes("gpt-4o") ? {
-          instructions: "Speak as a composed, dry-witted English butler with a refined Received Pronunciation accent. Warm, unhurried, quietly confident.",
-        } : {}),
+          // gpt-4o-mini-tts takes delivery instructions rather than a speed number.
+          instructions: `Speak as a composed, dry-witted English butler with a refined Received Pronunciation accent. Conversational, natural pauses at commas and full stops, quietly confident.${speed < 0.95 ? " Speak a little more slowly than usual." : speed > 1.05 ? " Speak a little faster than usual." : ""}`,
+        } : { speed }),
       }),
     });
   }

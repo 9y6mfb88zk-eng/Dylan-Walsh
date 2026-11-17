@@ -18,7 +18,8 @@ import { logError } from "./services/diagnostics.js";
 import { startScheduler } from "./scheduler.js";
 import { brainReady } from "./brain.js";
 import { preloadLocalAsr, localAsrAvailable } from "./local-asr.js";
-import { ttsProvider } from "./config.js";
+import { speechProvider } from "./voice.js";
+import { warmLocalTts } from "./local-tts.js";
 import { demoAllowed } from "./finance/service.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -84,7 +85,7 @@ attachRealtime(server);
 if (isProd && demoAllowed()) console.warn("[config] Demo finance requested but refused in production.");
 server.listen(config.port, config.host, () => {
   console.log(`JARVIS backend listening on http://${config.host === "0.0.0.0" ? "localhost" : config.host}:${config.port} (${config.env}, ${config.hosting})`);
-  console.log(`  AI: ${brainReady() ? config.model : "OFF — set ANTHROPIC_API_KEY"} · voice: ${ttsProvider() || "browser"} · speech: ${localAsrAvailable() ? "local Whisper" : config.openaiKey ? "OpenAI Whisper" : "off"} · Monzo: ${config.monzoClientId ? "configured" : "not configured"} · Google: ${config.googleClientId ? "configured" : "not configured"}`);
+  console.log(`  AI: ${brainReady() ? config.model : "OFF — set ANTHROPIC_API_KEY"} · voice: ${speechProvider() || "browser"} · speech: ${localAsrAvailable() ? "local Whisper" : config.openaiKey ? "OpenAI Whisper" : "off"} · Monzo: ${config.monzoClientId ? "configured" : "not configured"} · Google: ${config.googleClientId ? "configured" : "not configured"}`);
   if (!isSetupComplete()) {
     console.log("\n  ┌──────────────────────────────────────────────────────────┐");
     console.log(`  │  FIRST-RUN SETUP CODE: ${setupCode().padEnd(34)}│`);
@@ -96,6 +97,8 @@ server.listen(config.port, config.host, () => {
 process.on("unhandledRejection", (e) => { console.error("[unhandledRejection]", e); logError("process", e?.message || String(e)); });
 const stop = startScheduler();
 preloadLocalAsr();
+// The local voice loads in the background when it is the voice in use, so the first reply isn't delayed.
+if (speechProvider() === "piper") warmLocalTts();
 let closing = false;
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => {
   if (closing) return; closing = true;

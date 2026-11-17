@@ -129,6 +129,7 @@ const SECTIONS = {
       <article class="panel"><div class="panel-head"><span class="label">Intelligence</span></div>
         ${row("Background idea engine", `A new business idea every ${s.ideas.everyMinutes} minutes`, sw("ideas", s.ideas.enabled))}
         ${row("Let JARVIS save memories automatically", "Sensitive ones still need your approval", sw("memAuto", s.memory.autoSave))}
+        ${row("Keep summaries of long conversations as memories", "Off: a long conversation's summary stays with that conversation only. Things you ask JARVIS to remember are always kept", sw("memSum", s.memory.saveSummaries === true))}
         ${row("Computer control", "Allow actions on your laptop", sw("comp", s.computer.enabled))}
       </article>
       <article class="panel"><div class="panel-head"><span class="label">Finance</span></div>
@@ -143,6 +144,7 @@ const SECTIONS = {
     for (const k of ["weather", "calendar", "tasks", "finance", "projects", "news"]) $(`#bs_${k}`).onchange = (e) => patch({ briefing: { sections: { [k]: e.target.checked } } });
     $("#ideas").onchange = (e) => patch({ ideas: { enabled: e.target.checked } });
     $("#memAuto").onchange = (e) => patch({ memory: { autoSave: e.target.checked } });
+    $("#memSum").onchange = (e) => patch({ memory: { saveSummaries: e.target.checked } });
     $("#comp").onchange = (e) => patch({ computer: { enabled: e.target.checked } });
     $("#fin").onchange = (e) => patch({ finance: { enabled: e.target.checked } });
     $("#buf").onchange = (e) => patch({ finance: { buffer: Math.round(Number(e.target.value) * 100) } });
@@ -289,12 +291,14 @@ Object.assign(SECTIONS, {
       <div class="row end"><button class="btn small primary" id="pSave">Save</button></div></div></article>
       <article class="panel"><div class="panel-head"><span class="label">Personality</span></div>
         ${row("Reply length", "Spoken replies are kept short either way", `<select class="inp" id="verb" style="width:auto"><option value="brief" ${pe.verbosity !== "detailed" ? "selected" : ""}>Brief</option><option value="detailed" ${pe.verbosity === "detailed" ? "selected" : ""}>More detail</option></select>`)}
+        ${row("Form of address", `How often JARVIS calls you “${esc(pr.title || "Sir")}”`, `<select class="inp" id="pSir" style="width:auto">${[["never", "Never"], ["rarely", "Rarely"], ["occasionally", "Occasionally"], ["often", "Often"]].map(([k, l]) => `<option value="${k}" ${(pe.sir || "occasionally") === k ? "selected" : ""}>${l}</option>`).join("")}</select>`)}
         ${row("Voice mode", "Or say “JARVIS, switch to concise mode”", `<select class="inp" id="pMode" style="width:auto">${[["standard", "Standard"], ["cinematic", "Cinematic"], ["concise", "Concise"], ["professional", "Professional"], ["focus", "Focus (fewer interruptions)"]].map(([k, l]) => `<option value="${k}" ${(pe.mode || "standard") === k ? "selected" : ""}>${l}</option>`).join("")}</select>`)}
         ${[["formality", "Formality", "Relaxed → very formal", 2], ["humour", "Humour", "None → plenty of dry wit", 1], ["cinematic", "Cinematic language", "Plain → film-style system phrasing", 1]].map(([k, l, sub, d]) => row(l, sub, `<div class="row" style="gap:8px"><input type="range" min="0" max="3" step="1" id="pl-${k}" value="${lvlOf(pe[k], d)}" aria-label="${l}"><b id="plv-${k}" style="min-width:64px">${LVL[lvlOf(pe[k], d)]}</b></div>`)).join("")}
         <p class="faint" style="font-size:12.5px">Whatever the setting, JARVIS only states facts from your data or cited sources, and only confirms an action once it has actually been done.</p></article></div>`;
     $("#pSave").onclick = () => P({ profile: { name: $("#pName").value, title: $("#pTitle").value, city: $("#pCity").value, country: $("#pCountry").value } });
     $("#verb").onchange = (e) => P({ personality: { verbosity: e.target.value } });
     $("#pMode").onchange = (e) => P({ personality: { mode: e.target.value } });
+    $("#pSir").onchange = (e) => P({ personality: { sir: e.target.value } });
     for (const k of ["formality", "humour", "cinematic"]) {
       $(`#pl-${k}`).oninput = (e) => { $(`#plv-${k}`).textContent = LVL[e.target.value]; };
       $(`#pl-${k}`).onchange = (e) => P({ personality: { [k]: Number(e.target.value) } });
@@ -304,28 +308,59 @@ Object.assign(SECTIONS, {
     const s = await api("/api/settings");
     const v = s.voice || {};
     const voices = "speechSynthesis" in window ? speechSynthesis.getVoices().filter((x) => x.lang?.startsWith("en")) : [];
+    // Only voices that can actually be used here are offered (a premium voice needs its key; the local one its model).
+    const PROV = { auto: "Automatic", elevenlabs: "ElevenLabs (your key, billed by ElevenLabs)", openai: "OpenAI (your key, billed by OpenAI)", piper: "Local voice (free, on this laptop)", browser: "Browser / Windows voice (free)" };
+    const provs = ctx.session?.ttsProviders || ["auto", "browser"];
+    const provLine = ctx.session?.tts ? `Speaking now: ${esc(PROV[ctx.session.tts] || ctx.session.tts)}` : "Speaking now: the browser / Windows voice";
     el.innerHTML = `<div class="grid cols-2"><article class="panel"><div class="panel-head"><span class="label">Continuous conversation</span></div>
       ${row("Keep listening after each answer", "After “Hey JARVIS”, ask follow-ups without the wake word. Ends on silence, “End conversation” or “Stop listening”.", sw("cont", v.continuous !== false))}
       ${row("Silence before standby", "How long JARVIS waits for a follow-up", `<input class="inp" type="number" id="tout" min="3" max="60" value="${v.timeoutSec || 8}" style="width:80px"> s`)}
       ${row("“Stay with me” keeps listening for", "", `<input class="inp" type="number" id="stay" min="30" max="900" value="${v.stayWithMeSec || 120}" style="width:90px"> s`)}
       ${row("Interrupt by saying “JARVIS”", "Stops JARVIS mid-sentence (barge-in)", sw("barge", v.bargeIn !== false))}
+      ${ctx.desktop ? row("Interrupt with “Wait” or “Hold on”", "While JARVIS is talking: “Wait, explain that again” stops it and is taken as your next request. Ignored when it's JARVIS's own voice saying a similar word", sw("iwords", v.interruptWords !== false)) : ""}
       ${row("Listening chime", "", sw("chime", v.chime !== false))}
       <p class="faint" style="font-size:12.5px">The microphone only records after the wake word, a key press or a tap — never while idle — and audio is only processed on this laptop unless you use a cloud speech service.</p></article>
       <article class="panel"><div class="panel-head"><span class="label">Speaking</span></div>
+      ${row("Voice", provLine, `<select class="inp" id="vprov" style="max-width:230px">${provs.map((k) => `<option value="${k}" ${(v.provider || "auto") === k ? "selected" : ""}>${esc(PROV[k])}</option>`).join("")}</select>`)}
+      ${row("Preview", "Hear each available voice", `<div class="row" style="gap:6px;flex-wrap:wrap">${provs.filter((k) => k !== "auto").map((k) => `<button class="btn small ghost" data-prev="${k}">${esc(PROV[k].split(" (")[0])}</button>`).join("")}</div>`)}
+      ${row("Speaking speed", "For every voice. Say “speak more slowly” to slow down for one conversation", `<input type="range" id="vspeed" min="0.8" max="1.2" step="0.05" value="${v.speed || 1}" style="width:140px"> <span id="vspeedV" class="mono">${(v.speed || 1).toFixed(2)}×</span>`)}
+      ${row("Voice volume", "", `<input type="range" id="vvol" min="0" max="1" step="0.05" value="${v.volume ?? 1}" style="width:140px"> <span id="vvolV" class="mono">${Math.round((v.volume ?? 1) * 100)}%</span>`)}
+      ${row("Browser voice", "Used when no other voice is available, or chosen above", `<select class="inp" id="vname" style="max-width:230px"><option value="">Automatic (British)</option>${voices.map((x) => `<option ${x.name === v.voiceName ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select>`)}
       ${row("Speak replies to typed messages", "", sw("spk", v.speakReplies !== false))}
       ${row("Read briefings aloud", "", sw("spkB", v.speakBriefings !== false))}
       ${row("Say reminders and alerts aloud", "On the laptop", sw("spkN", v.speakNotifications !== false))}
-      ${row("Speech rate", "Built-in Windows voice", `<input type="range" id="rate" min="0.6" max="1.6" step="0.05" value="${v.rate || 1}" style="width:140px"> <span id="rateV" class="mono">${(v.rate || 1).toFixed(2)}×</span>`)}
-      ${row("Voice", ctx.session?.tts ? `Premium voice in use (${esc(ctx.session.tts)}). This choice is the fallback.` : "Built-in voices on this device", `<select class="inp" id="vname" style="max-width:230px"><option value="">Automatic (British)</option>${voices.map((x) => `<option ${x.name === v.voiceName ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select>`)}
-      ${row("Test the voice", "", '<button class="btn small" id="vtest">Speak</button>')}</article></div>`;
+      <div class="field" style="margin-top:8px"><span>Pronunciations</span><textarea class="inp" id="vpron" rows="3" placeholder="Dhekelia = Deh-kay-lia" style="font-family:var(--mono);font-size:12.5px">${esc((v.pronunciations || []).map((x) => `${x.from} = ${x.to}`).join("\n"))}</textarea><span class="hint">One per line: <i>word = how to say it</i>. Applied to every voice.</span></div>
+      <div class="row" style="margin-top:8px"><button class="btn small" id="vpronSave">Save pronunciations</button><span class="faint" id="vstate" style="font-size:12.5px"></span></div></article></div>`;
     const b = (id, key) => $(`#${id}`).onchange = (e) => P({ voice: { [key]: e.target.checked } });
     b("cont", "continuous"); b("barge", "bargeIn"); b("chime", "chime"); b("spk", "speakReplies"); b("spkB", "speakBriefings"); b("spkN", "speakNotifications");
     $("#tout").onchange = (e) => P({ voice: { timeoutSec: Number(e.target.value) } });
     $("#stay").onchange = (e) => P({ voice: { stayWithMeSec: Number(e.target.value) } });
-    $("#rate").oninput = (e) => { $("#rateV").textContent = `${Number(e.target.value).toFixed(2)}×`; voice.cfg.rate = Number(e.target.value); };
-    $("#rate").onchange = (e) => P({ voice: { rate: Number(e.target.value) } });
-    $("#vname").onchange = (e) => { voice.cfg.voiceName = e.target.value; P({ voice: { voiceName: e.target.value } }); };
-    $("#vtest").onclick = () => { voice.ensureAudio(); const sp = voice.createSpeaker(); sp.push(`Good ${new Date().getHours() < 12 ? "morning" : "afternoon"}, ${s.profile?.title || "Sir"}. All systems are at your disposal.`); sp.finish(); };
+    $("#iwords")?.addEventListener("change", (e) => P({ voice: { interruptWords: e.target.checked } }));
+    $("#vname").onchange = (e) => { voice.configure({ voiceName: e.target.value }); P({ voice: { voiceName: e.target.value } }); };
+    $("#vprov").onchange = (e) => P({ voice: { provider: e.target.value } });
+    $("#vspeed").oninput = (e) => { $("#vspeedV").textContent = `${Number(e.target.value).toFixed(2)}×`; };
+    $("#vspeed").onchange = (e) => { voice.configure({ speed: Number(e.target.value) }); P({ voice: { speed: Number(e.target.value) } }); };
+    $("#vvol").oninput = (e) => { $("#vvolV").textContent = `${Math.round(e.target.value * 100)}%`; voice.configure({ volume: Number(e.target.value) }); };
+    $("#vvol").onchange = (e) => P({ voice: { volume: Number(e.target.value) } });
+    $("#vpronSave").onclick = () => {
+      const list = $("#vpron").value.split("\n").map((l) => l.split("=")).filter((p) => p.length >= 2).map(([f, ...t]) => ({ from: f.trim(), to: t.join("=").trim() })).filter((x) => x.from && x.to);
+      voice.configure({ pronunciations: list }); P({ voice: { pronunciations: list } });
+    };
+    // Preview: the same line in each available voice, at the current speed and volume.
+    const line = "Not bad at all. Everything's running normally, and nothing particularly dramatic on the horizon.";
+    el.querySelectorAll("[data-prev]").forEach((btn) => btn.onclick = async () => {
+      const k = btn.dataset.prev; voice.ensureAudio(); voice.stop();
+      if (k === "browser") { const t = voice.cfg.tts; voice.cfg.tts = null; try { await voice.speak(line); } finally { voice.cfg.tts = t; } $("#vstate").textContent = "Browser voice."; return; }
+      $("#vstate").textContent = "Preparing…";
+      const t0 = performance.now();
+      try {
+        const r = await fetch("/api/tts", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json", "x-jarvis": "1" }, body: JSON.stringify({ text: line, preview: k }) });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+        const buf = await voice.ctx.decodeAudioData(await r.arrayBuffer());
+        $("#vstate").textContent = `${PROV[k].split(" (")[0]} · ready in ${Math.round(performance.now() - t0)} ms`;
+        const src = voice.ctx.createBufferSource(); src.buffer = buf; src.connect(voice.out); src.start();
+      } catch (err) { $("#vstate").textContent = `That voice couldn't play: ${err.message}`; }
+    });
   },
   async appearance(el) {
     const s = await api("/api/settings");

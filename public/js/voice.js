@@ -3,12 +3,15 @@
 import { resampleTo16k } from "./resample.js";
 import { api } from "./api.js";
 import { core } from "./corestate.js";
+import { speakable } from "./speech-text.js";
 
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 export const voice = {
-  state: "idle", level: 0, cfg: { tts: null, stt: false, rate: 1, voiceName: "" }, micDeviceId: null, vadThreshold: 0.035,
+  state: "idle", level: 0, cfg: { tts: null, stt: false, rate: 1, voiceName: "", speed: 1, volume: 1, pronunciations: [] }, micDeviceId: null, vadThreshold: 0.035,
+  /** "Speak more slowly" / "speed up" for the rest of a conversation (multiplies the speed setting). */
+  sessionSpeed: 1,
   ctx: null, out: null, mic: null, freq: new Uint8Array(128), td: new Uint8Array(1024),
   listeners: new Set(),
   onState(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); },
@@ -23,7 +26,9 @@ export const voice = {
       const AC = window.AudioContext || window.webkitAudioContext;
       this.ctx = new AC();
       this.out = this.ctx.createAnalyser(); this.out.fftSize = 256; this.out.smoothingTimeConstant = 0.7;
-      this.out.connect(this.ctx.destination);
+      // Voice volume (Settings → Voice): after the analyser, so the core still reacts at low volume.
+      this.vol = this.ctx.createGain(); this.vol.gain.value = this.cfg.volume ?? 1;
+      this.out.connect(this.vol); this.vol.connect(this.ctx.destination);
     }
     if (this.ctx.state === "suspended") this.ctx.resume();
     const b = this.ctx.createBuffer(1, 1, 22050), s = this.ctx.createBufferSource();
@@ -69,13 +74,16 @@ export const voice = {
     const queue = [];
     const neural = !!this.cfg.tts;
     if (neural) { this.ensureAudio(); this.ctrl = new AbortController(); }
-    const clean = (t) => t.replace(/\[(\d+)\]/g, "").replace(/[*_#`>]/g, "").replace(/https?:\/\/\S+/g, "").trim();
+    this.heardDone = []; this.current = null;           // what has actually been said aloud (for interruptions)
+    const prons = this.cfg.pronunciations || [];
     const enqueue = (text) => {
-      const t = clean(text); if (!t) return;
+      const raw = text.trim(); if (!raw) return;
+      const spoken = speakable(raw, { pronunciations: prons });   // the server cleans again for its own voices
+      if (!spoken) return;
       queue.push(neural
-        ? fetch("/api/tts", { method: "POST", signal: this.ctrl.signal, credentials: "same-origin", headers: { "content-type": "application/json", "x-jarvis": "1" }, body: JSON.stringify({ text: t }) })
-            .then((r) => { if (!r.ok) throw new Error(`TTS ${r.status}`); return r.arrayBuffer(); }).then((b) => this.ctx.decodeAudioData(b)).then((buf) => ({ buf, t }), () => ({ t }))
-        : Promise.resolve({ t }));
+        ? fetch("/api/tts", { method: "POST", signal: this.ctrl.signal, credentials: "same-origin", headers: { "content-type": "application/json", "x-jarvis": "1" }, body: JSON.stringify({ text: raw, speed: this.sessionSpeed }) })
+            .then((r) => { if (!r.ok) throw new Error(`TTS ${r.status}`); return r.arrayBuffer(); }).then((b) => this.ctx.decodeAudioData(b)).then((buf) => ({ buf, t: raw, s: spoken }), () => ({ t: raw, s: spoken }))
+        : Promise.resolve({ t: raw, s: spoken }));
       wake?.();
     };
     const flush = (all) => {
@@ -94,8 +102,13 @@ export const voice = {
         if (!spoke) { spoke = true; this.setState("speaking"); }
         if (item.buf) {
           this.realAudio = true;
+          this.current = { t: item.t, start: performance.now(), dur: item.buf.duration * 1000 };
           await new Promise((resolve) => { const src = this.ctx.createBufferSource(); src.buffer = item.buf; src.connect(this.out); src.onended = resolve; this.src = src; src.start(); });
-        } else await this.browser(item.t, gen);
+        } else {
+          this.current = { t: item.t, start: performance.now(), dur: null, chars: 0 };
+          await this.browser(item.s, gen);
+        }
+        if (gen === this.gen) { this.heardDone.push(item.t); this.lastSpoken = item.t; this.current = null; }
       }
       if (gen === this.gen) { this.realAudio = false; if (spoke) this.setState("idle"); }
     })();
@@ -107,6 +120,23 @@ export const voice = {
       get active() { return gen === this.gen; },
     };
   },
+  /** The sentence being spoken right now ("" if none). */
+  get currentText() { return this.current?.t || ""; },
+  /**
+   * What the listener has actually heard of the latest reply: every finished sentence plus the part of the current one
+   * already spoken (from the browser's word boundaries, or the elapsed share of the audio).
+   */
+  heard() {
+    const parts = [...(this.heardDone || [])];
+    const c = this.current;
+    if (c) {
+      const words = c.t.split(/\s+/);
+      const frac = c.dur ? Math.min(1, (performance.now() - c.start) / c.dur) : c.chars ? Math.min(1, c.chars / c.t.length) : 0;
+      const n = Math.floor(words.length * frac);
+      if (n > 0) parts.push(words.slice(0, n).join(" "));
+    }
+    return parts.join(" ").trim();
+  },
   stop() {
     this.gen++; this.ctrl?.abort(); this.ctrl = null;
     try { this.src?.stop(); } catch {}
@@ -114,48 +144,15 @@ export const voice = {
     if ("speechSynthesis" in window) speechSynthesis.cancel();
     if (this.state === "speaking") this.setState("idle");
   },
+  /** Speak a whole text (same path, voice and settings as replies). */
   async speak(text) {
-    this.stop();
-    const gen = this.gen;
     if (!text) return;
-    this.setState("speaking");
-    const speakable = text.replace(/\[(\d+)\]/g, "").replace(/[*_#`>]/g, "").replace(/https?:\/\/\S+/g, "").trim();
-    try {
-      if (this.cfg.tts) await this.neural(speakable, gen);
-      else await this.browser(speakable, gen);
-    } catch (e) {
-      if (gen !== this.gen) return;
-      await this.browser(speakable, gen).catch(() => {});
-    }
-    if (gen === this.gen) { this.realAudio = false; this.setState("idle"); }
+    const sp = this.createSpeaker(); sp.push(text); sp.finish(); await sp.done;
   },
-  split(text) {
-    const parts = (text.match(/[^.!?]+[.!?]+["')\]]*\s*|[^.!?]+$/g) || [text]).map((s) => s.trim()).filter(Boolean);
-    if (parts.length <= 1) return parts;
-    const rest = [];
-    for (let i = 1; i < parts.length; i += 3) rest.push(parts.slice(i, i + 3).join(" "));
-    return [parts[0], ...rest];
-  },
-  async neural(text, gen) {
-    this.ensureAudio();
-    this.ctrl = new AbortController();
-    const signal = this.ctrl.signal;
-    const chunks = this.split(text).map((chunk) =>
-      fetch("/api/tts", { method: "POST", signal, credentials: "same-origin", headers: { "content-type": "application/json", "x-jarvis": "1" }, body: JSON.stringify({ text: chunk }) })
-        .then((r) => { if (!r.ok) throw new Error(`TTS ${r.status}`); return r.arrayBuffer(); })
-        .then((buf) => this.ctx.decodeAudioData(buf)));
-    chunks.forEach((p) => p.catch(() => {}));
-    for (const p of chunks) {
-      const buffer = await p;
-      if (gen !== this.gen) return;
-      this.realAudio = true;
-      await new Promise((resolve) => {
-        const src = this.ctx.createBufferSource();
-        src.buffer = buffer; src.connect(this.out); src.onended = resolve;
-        this.src = src; src.start();
-      });
-      if (gen !== this.gen) return;
-    }
+  /** Apply voice settings (volume takes effect immediately, even mid-sentence). */
+  configure(v = {}) {
+    Object.assign(this.cfg, Object.fromEntries(Object.entries(v).filter(([, x]) => x !== undefined)));
+    if (this.vol) this.vol.gain.value = this.cfg.volume ?? 1;
   },
   britishVoice() {
     if (!("speechSynthesis" in window)) return null;
@@ -169,8 +166,10 @@ export const voice = {
       if (!("speechSynthesis" in window)) return resolve();
       const u = new SpeechSynthesisUtterance(text);
       const v = this.britishVoice(); if (v) { u.voice = v; u.lang = v.lang; } else u.lang = "en-GB";
-      u.rate = this.cfg.rate || 1; u.pitch = 0.92;
-      u.onboundary = () => { this.boundary = performance.now(); };
+      // Speed: the Voice speed setting (the older "rate" setting if that's all there is) times any session request.
+      u.rate = Math.max(0.5, Math.min(2, (this.cfg.speed && this.cfg.speed !== 1 ? this.cfg.speed : this.cfg.rate || 1) * (this.sessionSpeed || 1)));
+      u.volume = Math.max(0, Math.min(1, this.cfg.volume ?? 1)); u.pitch = 0.92;
+      u.onboundary = (e) => { this.boundary = performance.now(); if (this.current) this.current.chars = e.charIndex || 0; };
       u.onend = u.onerror = () => resolve();
       speechSynthesis.speak(u);
       const iv = setInterval(() => { if (gen !== this.gen || !speechSynthesis.speaking) { clearInterval(iv); resolve(); } }, 250);

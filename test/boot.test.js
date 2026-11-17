@@ -25,7 +25,7 @@ test("each check returns a real result with an allowed status", async () => {
   const names = (await d.call("/api/boot")).data.checks.map((c) => c.name);
   const res = {};
   for (const n of names) { const r = (await d.call(`/api/boot/check/${n}`)).data; assert.ok(STATUSES.includes(r.status), `${n}: ${r.status}`); assert.ok(r.detail, `${n} explains itself`); assert.ok(r.ms >= 0); res[n] = r; }
-  assert.equal(res.database.status, "operational"); assert.match(res.database.detail, /schema 00\d/);
+  assert.equal(res.database.status, "operational"); assert.match(res.database.detail, /schema 0\d\d/);
   assert.equal(res.storage.status, "operational"); assert.match(res.storage.detail, /writable/);
   assert.equal(res.ai.status, "connected"); assert.match(res.ai.detail, /responded in \d+ ms/);
   assert.equal(res.weather.status, "connected", "the weather service really answered");

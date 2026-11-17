@@ -6,6 +6,7 @@ import { config, modelOptions } from "./config.js";
 import { db, getSettings } from "./db.js";
 import { tasks, reminders, projects } from "./services/work.js";
 import { conversations } from "./services/conversations.js";
+import { titleHint, recentOpenings, toolTrace, summariseArgs } from "./services/dialogue.js";
 import { memory, CATEGORIES as MEM_CATS } from "./services/memory.js";
 import * as calendar from "./services/calendar.js";
 import * as finance from "./finance/service.js";
@@ -52,10 +53,21 @@ const { fallback: FALLBACK, webSearch: WEB_SEARCH } = modelOptions(config.model)
 const research = modelOptions(config.researchModel);
 
 const title = () => getSettings().profile?.title || "Sir";
-const PERSONA_BASE = `You are JARVIS, the user's personal AI assistant, in the spirit of the assistant from Iron Man.
-Personality: calm, intelligent, professional, direct, quietly witty (dry, understated humour — never forced), British in phrasing, loyal and unflappable.
-Your replies are usually SPOKEN ALOUD by a British voice and shown as text. Keep them to 1–3 natural sentences unless the user asks for detail, a list or a report. No markdown headings or bullet lists in spoken replies; say numbers, money and times the way a person would ("half past seven", "twelve pounds fifty").
-In a continuing voice conversation do not re-greet or repeat the user's name every turn; answer follow-ups naturally using the earlier turns.
+const PERSONA_BASE = `You are JARVIS, the user's personal AI assistant — a sophisticated personal assistant in the spirit of the one from Iron Man, with one consistent personality.
+Personality: intelligent, calm, confident and articulate; natural rather than scripted; professional but never stiff; occasionally witty, with a dry, understated British humour that is never forced; helpful without fussing; serious and plain-spoken when the subject is serious (health, money worries, bad news, anything urgent). You are loyal and unflappable, and you sound like a person who knows the user well — not like customer service.
+How you speak (your replies are usually SPOKEN ALOUD by a British voice and also shown as text):
+- Answer directly. No preamble, no "Certainly", "Of course", "Great question", "Absolutely" or "I'd be happy to"; don't announce what you're about to do ("Let me check…") or narrate your tools — just give the answer.
+- Match the length to the question: a simple question gets a sentence or two; a casual remark gets a short, natural reply; go into detail only when the situation needs it or the user asks. Don't repeat things the user already knows or that you said a moment ago.
+- Use contractions and everyday phrasing; vary sentence length and structure; don't open replies the same way each time. Don't re-greet in a continuing conversation.
+- A natural follow-up question is welcome when it genuinely helps ("Shall I put it on Mission Control?"), not as a reflex at the end of every reply.
+- Spoken style: no markdown, headings, bullet lists or links; say numbers, money and times the way a person would ("half past seven", "twelve pounds fifty", "about twenty degrees").
+- Humour is seasoning: at most a light touch, never at the expense of an answer, never when the user is stressed, and never the same joke or expression twice.
+Tone illustrations (the feel, not lines to reuse):
+  User: "How are we looking today?" → "Not bad at all. Everything's running normally — you've a couple of things to take care of, but nothing dramatic."
+  User: "Brilliant." → "Always good to hear."
+  User: "You're getting pretty clever." → "I do try to keep up."
+  User: "What's happening around the world?" → "Quite a bit, actually. A few developments are worth a look — shall I bring them up on Mission Control?"
+Conversation: in a continuing voice conversation, treat follow-ups as continuing the current subject unless the user clearly moves on ("What about the weekend?" after the weather is still the weather, for the same place). Resolve "it", "that", "there" and "then" from the earlier turns. If the user interrupted you, they only heard the part of your reply shown; when they ask you to explain or repeat, rephrase it more simply rather than reciting it word for word.
 Truthfulness rules, which override everything else:
 - Only state facts that come from your tools or the context below. Never invent balances, transactions, weather, events, search results, device states or sources.
 - If a service is not connected or a tool fails, say so plainly and say what would fix it.
@@ -83,7 +95,7 @@ export const persona = () => {
   const p = getSettings().personality || {};
   const mode = MODES[p.mode] ? p.mode : "standard";
   return `${PERSONA_BASE}
-Address the user as "${title()}" naturally (not in every sentence).
+Address the user as "${title()}" ${{ never: "— actually, don't use any form of address", rarely: "only now and then (in roughly one reply in five at most)", often: "naturally (it's part of your manner, though never twice in one reply)" }[p.sir] || "occasionally (roughly one reply in three, never twice in one reply) — it's part of your manner, not a verbal tic"}.
 ${MODES[mode]} Formality: ${LEVEL[lvl(p.formality, 2)]}. Humour: ${LEVEL[mode === "professional" || mode === "concise" ? 0 : lvl(p.humour, 1)]}. Cinematic sci-fi flavour: ${LEVEL[mode === "cinematic" ? 3 : mode === "concise" ? 0 : lvl(p.cinematic, 1)]}.${p.verbosity === "detailed" ? " The user prefers fuller answers." : ""}
 Cinematic language is decoration only: it must never replace or contradict real results. If something is offline, untested or failed, say exactly that.
 Personal knowledge:
@@ -110,7 +122,8 @@ async function contextBlock({ userText, deviceKind, loc, voiceTurn = false }) {
   const events = calendar.list(new Date(Date.now() - 3600_000).toISOString(), new Date(Date.now() + 2 * 86400_000).toISOString()).slice(0, 10);
   const projs = projects.list({ includeDone: false }).slice(0, 8);
   const memOn = (s.memory?.mode || "ask") !== "off";
-  const relevant = memOn && userText ? await memory.search(userText, 6) : [];
+  // Saved memories are looked up only for messages with something to match (not "Brilliant." or "Thanks").
+  const relevant = memOn && userText && userText.trim().split(/\s+/).length >= 3 ? await memory.search(userText, 6) : [];
   const pend = pending.list();
   const fin = { connections: connections.all().filter((c) => ["monzo", "demo"].includes(c.provider)).map(connections.view) };
   fin.testData = fin.connections.some((c) => c.provider === "demo");
@@ -497,6 +510,21 @@ function screenLine(sc) {
 }
 
 // ---------------- Conversation turn
+/** Notes about the conversation itself: what was looked up recently, an interruption, delivery requests and the "Sir" rule. */
+function conversationNotes({ replies = [], metas = [], cut = null, session = null }) {
+  const p = getSettings().personality || {};
+  const lines = [];
+  const trace = toolTrace(metas);
+  if (trace.length) lines.push(`What you looked up recently in this conversation (for follow-ups): ${trace.join("; ")}.`);
+  if (cut) lines.push(`The user interrupted your last reply. They heard only: "${cut.heard.slice(-500) || "(nothing)"}". What you had been going to say: "${cut.full.slice(0, 700)}".`);
+  if (session?.brief) lines.push("The user asked you to keep answers brief for now: one or two sentences unless they ask for more.");
+  const hint = titleHint(replies.slice(-4), title(), p.sir || "occasionally");
+  if (hint) lines.push(hint);
+  const opens = recentOpenings(replies);
+  if (opens.length) lines.push(`Your recent replies began "${opens.join("\", \"")}" — start this one differently.`);
+  return lines.length ? `\nConversation notes:\n${lines.map((l) => `- ${l}`).join("\n")}` : "";
+}
+
 function textAndSources(content) {
   const sources = [];
   const parts = [];
@@ -513,14 +541,16 @@ function textAndSources(content) {
  * Idempotent per clientId: a retried message returns the original reply.
  * With onEvent the reply is streamed: {type:"delta", text} as words arrive, {type:"tool", name, phase} around tool use.
  */
-export async function chat({ text, conversationId, deviceId, deviceKind, clientId, loc, voice = false, screen = null, onEvent } = {}) {
+export async function chat({ text, conversationId, deviceId, deviceKind, clientId, loc, voice = false, screen = null, onEvent, signal = null, session = null, interrupted = null } = {}) {
   conversationId ||= conversations.currentId();
+  // The user cut the previous reply short: record what they actually heard before building the context.
+  if (interrupted?.clientId) await conversations.markInterrupted(String(interrupted.clientId), interrupted.heard).catch(() => false);
   const prior = clientId ? conversations.findByClientId(clientId) : null;
   if (prior) {
     const reply = db.prepare("SELECT * FROM messages WHERE conversation_id = ? AND id > ? AND role = 'assistant' ORDER BY id LIMIT 1").get(prior.conversation_id, prior.id);
     if (reply) { onEvent?.({ type: "delta", text: reply.content }); return { reply: reply.content, sources: reply.sources ? JSON.parse(reply.sources) : [], conversationId: prior.conversation_id, duplicate: true, changed: [] }; }
   }
-  const { summary, turns } = conversations.context(conversationId, 20);
+  const { summary, turns, replies, metas, interrupted: cut } = conversations.context(conversationId, 20);
   conversations.add({ conversationId, role: "user", content: text, deviceId, clientId });
   if (!client) {
     const reply = `My apologies, ${title()} — my reasoning systems are offline. An Anthropic API key needs to be added (tray icon → API keys & AI model).`;
@@ -532,23 +562,26 @@ export async function chat({ text, conversationId, deviceId, deviceKind, clientI
   const system = [
     { type: "text", text: persona(), cache_control: { type: "ephemeral" } },
     ...((getSettings().memory?.mode || "ask") !== "off" ? [{ type: "text", text: `Personal profile (from saved memory; ids for corrections):\n${memory.profileBlock() || "Nothing saved yet."}`, cache_control: { type: "ephemeral" } }] : []),
-    { type: "text", text: `${summary ? `Earlier in this conversation (summary): ${summary}\n` : ""}${await contextBlock({ userText: text, deviceKind, loc, voiceTurn: voice })}${screenLine(screen)}` },
+    { type: "text", text: `${summary ? `Earlier in this conversation (summary): ${summary}\n` : ""}${await contextBlock({ userText: text, deviceKind, loc, voiceTurn: voice })}${screenLine(screen)}${conversationNotes({ replies, metas, cut, session })}` },
   ];
   const messages = [...turns, { role: "user", content: text }];
   const tools = [...TOOLS, ...(config.webSearch ? [WEB_SEARCH(5)] : [])];
-  const said = [], sources = [];
-  let finished = false;
+  const said = [], sources = [], toolsUsed = [];
+  let finished = false, partial = "", aborted = false;
   for (let step = 0; step < 8; step++) {
+    if (signal?.aborted) { aborted = true; break; }
     const params = { model: config.model, max_tokens: 6000, system, tools, messages, output_config: { effort: process.env.JARVIS_EFFORT || "low" }, ...FALLBACK };
     let msg;
     if (onEvent) {
       msg = await timed("anthropic", { model: config.model, purpose: "chat" }, async () => {
-        const stream = client.beta.messages.stream(params);
+        const stream = client.beta.messages.stream(params, signal ? { signal } : undefined);
         let sep = said.length > 0;
-        stream.on("text", (delta) => { if (sep && delta.trim()) { onEvent({ type: "delta", text: " " }); sep = false; } onEvent({ type: "delta", text: delta }); });
+        partial = "";
+        stream.on("text", (delta) => { partial += delta; if (sep && delta.trim()) { onEvent({ type: "delta", text: " " }); sep = false; } onEvent({ type: "delta", text: delta }); });
         stream.on("streamEvent", (ev) => { if (ev.type === "content_block_start" && ev.content_block?.type === "server_tool_use") onEvent({ type: "tool", name: ev.content_block.name, phase: "start" }); });
         return stream.finalMessage();
-      });
+      }).catch((e) => { if (signal?.aborted) return null; throw e; });
+      if (!msg) { aborted = true; if (partial.trim()) said.push(partial.trim()); break; }
     } else msg = await ai("chat", params);
     if (msg.stop_reason === "refusal") { said.push(`I'm afraid that's one I must decline, ${title()}.`); onEvent?.({ type: "delta", text: said.at(-1) }); finished = true; break; }
     messages.push({ role: "assistant", content: msg.content });
@@ -556,7 +589,9 @@ export async function chat({ text, conversationId, deviceId, deviceKind, clientI
     if (part.text) said.push(part.text);
     for (const src of part.sources) if (!sources.some((x) => x.url === src.url)) sources.push(src);
     if (msg.stop_reason === "pause_turn") continue;  // server tool (web search) still working
+    for (const b of msg.content) if (b.type === "server_tool_use" && b.input?.query) toolsUsed.push({ name: b.name, args: `query=${String(b.input.query).slice(0, 60)}` });
     const uses = msg.content.filter((b) => b.type === "tool_use");
+    for (const u of uses) toolsUsed.push({ name: u.name, args: summariseArgs(u.input || {}) });
     if (msg.stop_reason !== "tool_use" || !uses.length) { finished = true; break; }
     const results = await Promise.all(uses.map(async (u) => {
       onEvent?.({ type: "tool", name: u.name, phase: "start" });
@@ -572,9 +607,14 @@ export async function chat({ text, conversationId, deviceId, deviceKind, clientI
     messages.push({ role: "user", content: results });
   }
   let reply = said.join(" ").replace(/\s+\n/g, "\n").trim();
-  if (!reply) { reply = finished ? `Done, ${title()}.` : `I've done what I can on that, ${title()}.`; onEvent?.({ type: "delta", text: reply }); }
   const targetConv = ctx.newConversationId || conversationId;
-  conversations.add({ conversationId: targetConv, role: "assistant", content: reply, sources });
+  if (aborted) {
+    // Interrupted: keep only what was actually produced (the client then records how much was heard).
+    conversations.add({ conversationId: targetConv, role: "assistant", content: reply || "…", sources, meta: { tools: toolsUsed, interrupted: true, heard: "" } });
+    return { reply, sources, conversationId: targetConv, interrupted: true };
+  }
+  if (!reply) { reply = finished ? "Done." : "I've done what I can on that."; onEvent?.({ type: "delta", text: reply }); }
+  conversations.add({ conversationId: targetConv, role: "assistant", content: reply, sources, meta: toolsUsed.length ? { tools: toolsUsed } : null });
   maybeSummarize(conversationId).catch(() => {});
   return { reply, sources, conversationId: targetConv };
 }
@@ -591,8 +631,10 @@ async function maybeSummarize(conversationId) {
   });
   const text = textAndSources(msg.content).text;
   if (text) {
+    // The running summary stays with this conversation (active context). It is only copied into long-term memory
+    // if the user turned that on (Settings → Memory); by default conversations are not saved as memories.
     conversations.setSummary(conversationId, text, fold.at(-1).id);
-    await memory.save({ fact: `Conversation summary (${new Date().toISOString().slice(0, 10)}): ${text.slice(0, 900)}`, category: "summary", source: "conversation" });
+    if (getSettings().memory?.saveSummaries === true) await memory.save({ fact: `Conversation summary (${new Date().toISOString().slice(0, 10)}): ${text.slice(0, 900)}`, category: "summary", source: "conversation" });
   }
 }
 

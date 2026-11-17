@@ -1,6 +1,7 @@
 import express from "express";
 import QRCode from "qrcode";
-import { config, publicBase, ttsProvider } from "../config.js";
+import { config, publicBase } from "../config.js";
+import { speechProvider, speechProviders } from "../voice.js";
 import * as auth from "../security/auth.js";
 import { auditFromReq, recentAudit } from "../security/audit.js";
 import { vapidPublicKey } from "../push.js";
@@ -19,7 +20,7 @@ router.get("/api/session", (req, res) => {
   res.json({
     ...base,
     device: { id: req.auth.deviceId, name: req.auth.deviceName, kind: req.auth.kind },
-    brain: brainReady(), model: config.model, tts: ttsProvider(), stt: !!config.openaiKey || localAsrAvailable(), sttLocal: localAsrAvailable(), webSearch: config.webSearch,
+    brain: brainReady(), model: config.model, tts: speechProvider(), ttsProviders: speechProviders(), stt: !!config.openaiKey || localAsrAvailable(), sttLocal: localAsrAvailable(), webSearch: config.webSearch,
     vapidPublicKey, userName: config.userName, settings: getSettings(),
     publicUrl: publicBase(req), env: config.env, hosting: config.hosting,
     version: process.env.JARVIS_VERSION || process.env.npm_package_version || "",

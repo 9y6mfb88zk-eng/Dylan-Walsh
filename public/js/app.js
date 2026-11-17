@@ -69,6 +69,16 @@ export const ctx = {
 };
 const listeners = { caption: new Set() };
 conversation.ctx = ctx;
+// Subtle interface sounds for the conversation (Settings → Interface: sounds on/off, volume, reduced, silent).
+async function uiSound(name) {
+  const it = ctx.settings?.interface || {};
+  if (it.sound === false || it.silent) return;
+  const { sounds } = await import("./sounds.js");
+  sounds.configureUi({ enabled: true, volume: it.soundVolume ?? 0.5, reduced: !!it.reducedSound });
+  if ((await sounds.unlockUi().catch(() => "blocked")) === "playing") sounds[name]?.();
+}
+conversation.onSessionEnd = () => { uiSound("standby"); renderMicChip(); };
+conversation.onInterrupted = () => uiSound("interrupted");
 const shouldSpeakTyped = () => (ctx.settings.voice?.speakReplies ?? true) && (!!desktop || !!voice.cfg.tts);
 
 // ---------------------------------------------------------------- Navigation
@@ -132,8 +142,30 @@ function renderSysbar() {
   const overall = !online ? "error" : d?.overall || "unknown";
   const issues = d ? (d.counts.error || 0) + (d.counts.warn || 0) : 0;
   $("#sysChip").innerHTML = `<span class="dot ${overall === "error" ? "bad" : overall}"></span>${!online ? `Offline${outboxSize() ? ` · ${outboxSize()} queued` : ""}` : !d ? "Checking…" : issues ? `${issues} to check` : "All systems"}`;
-  const mb = $("#muteBtn");
-  if (desktop && ctx.agent) { mb.hidden = false; mb.innerHTML = icon(ctx.agent.muted ? "micoff" : "mic"); mb.classList.toggle("on", !ctx.agent.muted && ctx.agent.wakeWord === "listening"); mb.title = ctx.agent.muted ? "Microphone muted — click to unmute" : `Mute microphone (${ctx.agent.wakeWord === "listening" ? "“Hey JARVIS” ready" : ctx.agent.wakeWord || "starting"})`; }
+  renderMicChip();
+}
+/**
+ * The microphone privacy control in the top bar: always says what the microphone is doing.
+ * Laptop: wake word / listening / in a conversation / off, and a click mutes or unmutes everything.
+ * Phone and browser: shown only while the microphone is in use, and a click ends the conversation.
+ */
+function renderMicChip() {
+  const mb = $("#muteBtn"); if (!mb) return;
+  const listening = voice.state === "listening", inConv = !!conversation.session;
+  if (desktop && ctx.agent) {
+    const muted = !!ctx.agent.muted;
+    const label = muted ? "Mic off" : listening ? "Listening" : inConv ? "In conversation" : ctx.agent.wakeWord === "listening" ? "Wake word on" : "Mic";
+    mb.hidden = false;
+    mb.innerHTML = `${icon(muted ? "micoff" : "mic")}<span class="hide-m">${label}</span>`;
+    mb.title = muted ? "Microphone off — click to turn it back on" : `Turn the microphone off (${label.toLowerCase()})`;
+  } else {
+    mb.hidden = !(listening || inConv);
+    mb.innerHTML = `${icon("mic")}<span class="hide-m">${listening ? "Listening" : "In conversation"} · end</span>`;
+    mb.title = "End the conversation and stop the microphone";
+  }
+  mb.classList.toggle("on", listening || inConv);
+  mb.classList.toggle("muted", !!(desktop && ctx.agent?.muted));
+  mb.setAttribute("aria-label", mb.title);
 }
 async function loadHomeCache() { try { homeCache = await api("/api/home"); renderSysbar(); return homeCache; } catch { return homeCache; } }
 async function loadDiag() { try { diagCache = await api("/api/diagnostics"); renderSysbar(); } catch {} return diagCache; }
@@ -237,7 +269,7 @@ $("#gearBtn").innerHTML = icon("settings");
 $("#gearBtn").addEventListener("click", () => go("settings"));
 $("#sysChip").addEventListener("click", () => go("diagnostics"));
 $("#aiChip").addEventListener("click", () => go("diagnostics"));
-$("#muteBtn").addEventListener("click", () => desktop?.setMuted(!ctx.agent?.muted));
+$("#muteBtn").addEventListener("click", () => { if (desktop) desktop.setMuted(!ctx.agent?.muted); else { conversation.interrupt(); conversation.endSession(); renderMicChip(); } });
 addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); if (!$("#app").hidden) openPalette(); }
   if (e.key === "Escape") { closeDrawer(); if (voice.state === "speaking") conversation.interrupt(); else if (mission.open && !document.querySelector("dialog[open]")) ctx.handleUi({ kind: "mission", on: false }, { speak: false }); }
@@ -245,7 +277,7 @@ addEventListener("keydown", (e) => {
 
 // ---------------------------------------------------------------- Voice: HUD + core state
 let hudCore = null;
-voice.onState((s) => { updateHud(); desktop?.voiceState?.(s); });
+voice.onState((s) => { updateHud(); desktop?.voiceState?.(s); renderMicChip(); });
 core.on((s) => { updateHud(); document.documentElement.dataset.core = s; });
 function updateHud() {
   const hud = $("#hud");
@@ -371,12 +403,16 @@ function wireDesktop() {
   desktop.onStatus((s) => { ctx.agent = s; sync.sendWs({ type: "agent.status", status: s }); renderSysbar(); });
   // Wake word heard. If the laptop is already recording the command (it always is in newer versions), just show it.
   desktop.onWake((w) => {
+    // "Wait"/"Hold on" heard while JARVIS talks: ignore it if JARVIS itself was just saying a similar word (its own
+    // voice coming back through the speakers), otherwise stop at once and listen.
+    if (w?.interruptWord && /\b(wait|weight|await|hold)/i.test(`${voice.lastSpoken || ""} ${voice.currentText}`)) { ignoreWakeAudio = true; return; }
     if (current !== "talk") go("home");
     if (!w?.capture) return startListening("wake");
     if (voice.state === "speaking" || conversation.session) conversation.interrupt();    // barge-in
     voice.chime(); voice.setState("listening"); ctx.caption("Listening…", true);
   });
   desktop.onWakeAudio?.(async (wav) => {
+    if (ignoreWakeAudio) { ignoreWakeAudio = false; return; }
     if (!wav) { if (!conversation.session) { voice.setState("idle"); ctx.caption(""); } return; }
     try {
       const command = await conversation.transcribe(wav);
@@ -398,7 +434,7 @@ function wireDesktop() {
   sync.on("reconnected", () => desktop.getStatus().then((s) => { ctx.agent = s; sync.sendWs({ type: "agent.status", status: s }); renderSysbar(); }));
   desktop.signedIn?.(true);
 }
-let partialBusy = false;
+let partialBusy = false, ignoreWakeAudio = false;
 
 // ---------------------------------------------------------------- Push (iPhone home-screen app, browsers)
 export async function ensurePushSubscription() {
@@ -458,7 +494,7 @@ async function reloadSession() {
     ctx.session = await api("/api/session");
     setDisplayTz(ctx.session.settings?.timezone);
     const v = ctx.session.settings?.voice || {};
-    voice.cfg = { tts: ctx.session.tts, stt: ctx.session.stt, rate: v.rate || 1, voiceName: v.voiceName || "" };
+    voice.configure({ tts: ctx.session.tts, stt: ctx.session.stt, rate: v.rate || 1, voiceName: v.voiceName || "", speed: v.speed || 1, volume: v.volume ?? 1, pronunciations: v.pronunciations || [] });
     applyAppearance();
   } catch {}
 }

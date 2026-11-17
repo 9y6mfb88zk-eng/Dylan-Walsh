@@ -80,6 +80,10 @@
         "to": "models/asr"
       },
       {
+        "from": "bundle/tts",
+        "to": "models/tts"
+      },
+      {
         "from": "models/kws",
         "to": "models/kws"
       }

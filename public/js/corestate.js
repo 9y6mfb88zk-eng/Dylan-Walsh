@@ -6,9 +6,11 @@
 //   researching — a web search / research tool is running
 //   executing   — any other tool (alarm, task, laptop action…) is running
 //   thinking    — waiting for the AI's reply
+//   error       — something just failed (the AI couldn't answer, speech couldn't be recognised); clears after a moment
 //   idle        — ready
-const PRIORITY = ["alarm", "offline", "listening", "speaking", "researching", "executing", "thinking", "idle"];
-const flags = { alarm: false, offline: false, listening: false, speaking: false, researching: 0, executing: 0, thinking: false };
+const PRIORITY = ["alarm", "offline", "listening", "speaking", "error", "researching", "executing", "thinking", "idle"];
+const flags = { alarm: false, offline: false, listening: false, speaking: false, error: false, researching: 0, executing: 0, thinking: false };
+let errorTimer = null;
 const listeners = new Set();
 let external = null;            // { level, freq } pushed by the Windows app (mic level from the always-on listener)
 let externalAt = 0;
@@ -33,6 +35,8 @@ export const core = {
     recompute();
   },
   clearTools() { flags.researching = 0; flags.executing = 0; recompute(); },
+  /** A failure the user should notice: the core shows "Fault" for a moment, then returns to normal. */
+  fault(detail = "", ms = 2600) { flags.error = true; core.detail = detail; recompute(); clearTimeout(errorTimer); errorTimer = setTimeout(() => { flags.error = false; recompute(); }, ms); },
   on(fn) { listeners.add(fn); fn(core.state, core.detail); return () => listeners.delete(fn); },
   /** Where the audio level comes from (voice.js registers itself). */
   setLevelSource(fn) { levelSource = fn; },
@@ -52,5 +56,5 @@ function recompute() {
 }
 export const STATE_LABEL = {
   idle: "Online", listening: "Listening", thinking: "Processing", speaking: "Speaking",
-  researching: "Researching", executing: "Executing", alarm: "Alarm", offline: "Offline",
+  researching: "Researching", executing: "Executing", alarm: "Alarm", offline: "Offline", error: "Fault",
 };

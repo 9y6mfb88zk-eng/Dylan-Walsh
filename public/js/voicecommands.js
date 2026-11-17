@@ -5,9 +5,15 @@ const COMMANDS = [
   ["end", /^(ok(ay)?[,.]?\s*)?(stop listening|end (the |this )?conversation|go back to (standby|sleep)|standby|stand by|that'?s all|that will be all|that'?ll be all|goodbye|bye( bye)?|good ?night|never ?mind|cancel|nothing|no thanks?|dismissed)( jarvis)?[.!]?$/i],
   ["stay", /^(stay with me|keep listening|stay (on|here)|don'?t go|hold on)[.!]?$/i],
   ["listen", /^(listen again|start again|try again)[.!]?$/i],
-  ["hush", /^(stop|stop (speaking|talking)|quiet|be quiet|silence|shush|shut up|enough)[.!]?$/i],
+  ["hush", /^(stop|stop (speaking|talking)|quiet|be quiet|silence|shush|shut up|enough|wait|wait a (moment|second|sec|minute)|one (moment|second|sec)|hang on)[.!]?$/i],
   ["repeat", /^(repeat( that)?|say (that|it) again|come again|what did you (just )?say|pardon( me)?|sorry\?|what\?)[.!?]?$/i],
   ["mute", /^(mute|mute (the )?(mic|microphone)|stop the mic(rophone)?)[.!]?$/i],
+  // Delivery, for the rest of the conversation (6.8)
+  ["slower", /^((can you |could you |please )?(speak|talk|go) (a (bit|little) )?(more )?slow(ly|er)( please)?|slow down( a (bit|little))?( please)?)[.!?]?$/i],
+  ["faster", /^((can you |could you |please )?(speak|talk|go) (a (bit|little) )?(more )?(quick(ly|er)|fast(er)?)( please)?|speed up( a (bit|little))?( please)?)[.!?]?$/i],
+  ["normalSpeed", /^((speak|talk) (at )?(your )?normal (speed|pace)|normal speed( please)?|back to normal speed)[.!]?$/i],
+  ["brief", /^((please )?(be|keep it) (brief|short)( please)?|keep (your )?answers short|shorter answers( please)?|be concise)[.!]?$/i],
+  ["unbrief", /^((you can )?(go into|give me) more detail( again)?|(you can )?stop being brief|longer answers( are fine)?)[.!]?$/i],
 ];
 export function localCommand(text) {
   const t = String(text || "").trim().replace(/[,]/g, "");

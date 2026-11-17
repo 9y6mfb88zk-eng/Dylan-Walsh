@@ -2,11 +2,12 @@
 // background-noise measurement, a calibration sentence transcribed by the real recogniser, and suggested settings.
 import { api } from "../api.js";
 import { voice, encodeWav16k } from "../voice.js";
+import { conversation } from "../conversation.js";
 import { $, $$, esc, toast } from "../util.js";
 
 const SENTENCE = "JARVIS, set an alarm for seven tomorrow and remind me to call the fire station at nine.";
 const LOCAL_KEY = "jarvis.mic";
-let live = null;
+let live = null, statusTimer = null, devWatch = null;
 
 const words = (s) => s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\b7\b/g, "seven").replace(/\b9\b/g, "nine").split(/\s+/).filter(Boolean);
 function accuracy(ref, hyp) {
@@ -46,6 +47,7 @@ export async function renderMicSetup(el, ctx) {
       <div class="set-row"><div><b>Speech sensitivity</b><div class="muted">Lower = picks up quieter speech; higher = ignores more noise</div></div><input type="range" id="vad" min="0.005" max="0.12" step="0.001" value="${cfg.vadThreshold ?? 0.03}" style="width:150px"><span class="mono" id="vadV" style="width:52px;text-align:right">${(cfg.vadThreshold ?? 0.03).toFixed(3)}</span></div>
       <div class="set-row"><div><b>Pause before JARVIS stops listening</b><div class="muted">Longer if it cuts you off; shorter if it waits too long</div></div><input type="range" id="ep" min="600" max="2500" step="100" value="${cfg.endpointMs ?? 1200}" style="width:150px"><span class="mono" id="epV" style="width:52px;text-align:right">${((cfg.endpointMs ?? 1200) / 1000).toFixed(1)}s</span></div>
       <div class="row wrap end" style="margin-top:10px"><button class="btn small ghost" id="resetBtn">Reset audio settings</button><button class="btn small primary" id="saveBtn">3 · Save</button></div>
+      <div class="mic-status" id="micStatus" aria-live="polite"></div>
       <p class="faint" style="font-size:12px;margin-bottom:0">Speech recognition: <b>${esc(engine)}</b> · English. Wake-word sensitivity is under “Wake word &amp; laptop”; continuous conversation under “Voice &amp; conversation”.</p>
     </article></div>`;
 
@@ -55,6 +57,23 @@ export async function renderMicSetup(el, ctx) {
     $("#dev", el).innerHTML = `<option value="">System default</option>${all.map((x, i) => `<option value="${esc(x.deviceId)}" ${x.deviceId === cfg.micDeviceId ? "selected" : ""}>${esc(x.label || `Microphone ${i + 1}`)}</option>`).join("")}`;
   }
   await listDevices().catch(() => {});
+  // A microphone plugged in or removed shows up straight away.
+  devWatch = () => listDevices().then(() => toast("Audio devices changed.")).catch(() => {});
+  navigator.mediaDevices?.addEventListener?.("devicechange", devWatch);
+  // Live status: what JARVIS is doing with the microphone right now, and how the last recognition went.
+  const sttErr = health?.integrations?.voice?.sttLocal?.error;
+  const renderStatus = () => {
+    const box = $("#micStatus", el); if (!box) return;
+    const h = conversation.lastHeard;
+    const state = voice.state === "listening" ? "listening" : conversation.session ? "in a conversation" : voice.state === "speaking" ? "speaking" : "standby — not recording";
+    box.innerHTML = `<dl class="kv">
+      <div><dt>Microphone</dt><dd>${esc(d ? "laptop audio service" : $("#dev", el)?.selectedOptions?.[0]?.textContent || "system default")}</dd></div>
+      <div><dt>State</dt><dd>${esc(state)}</dd></div>
+      <div><dt>Recognition</dt><dd>${esc(engine)}</dd></div>
+      <div><dt>Last heard</dt><dd>${h ? `“${esc(h.text.slice(0, 60))}” · ${esc(h.confidence?.level || "—")} confidence${h.latencyMs ? ` · ${h.latencyMs} ms` : ""}` : "nothing yet in this session"}</dd></div>
+      ${sttErr ? `<div><dt>Error</dt><dd class="bad">${esc(sttErr)}</dd></div>` : ""}</dl>`;
+  };
+  renderStatus(); clearInterval(statusTimer); statusTimer = setInterval(() => { if (!el.isConnected) { clearInterval(statusTimer); return; } renderStatus(); }, 1000);
   const constraints = () => ({ audio: { deviceId: $("#dev", el).value ? { exact: $("#dev", el).value } : undefined, channelCount: 1, noiseSuppression: $("#ns", el).checked, echoCancellation: $("#ec", el).checked, autoGainControl: $("#agc", el).checked } });
   let noiseRms = null, speechRms = null;
 
@@ -144,7 +163,7 @@ export async function renderMicSetup(el, ctx) {
     toast("Audio settings reset to defaults."); renderMicSetup(el, ctx);
   };
 }
-export function stopLive() { live?.stop(); live = null; }
+export function stopLive() { live?.stop(); live = null; clearInterval(statusTimer); statusTimer = null; if (devWatch) navigator.mediaDevices?.removeEventListener?.("devicechange", devWatch); devWatch = null; }
 // Apply saved browser/phone microphone settings at start-up.
 export function applyLocalMicSettings() { const v = loadLocal(); if (v.micDeviceId) voice.micDeviceId = v.micDeviceId; if (v.vadThreshold) voice.vadThreshold = v.vadThreshold; }
 void $$;

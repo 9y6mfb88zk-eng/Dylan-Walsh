@@ -2,8 +2,8 @@
 // Same states and the same real audio levels as the 3D core.
 import { core } from "./corestate.js";
 
-const HUES = { idle: [188, 214], listening: [186, 192], thinking: [196, 214], speaking: [186, 190], researching: [190, 206], executing: [200, 206], alarm: [186, 190], offline: [210, 212] };
-const SAT = { offline: 12, executing: 30 };
+const HUES = { idle: [188, 214], listening: [186, 192], thinking: [196, 214], speaking: [186, 190], researching: [190, 206], executing: [200, 206], alarm: [186, 190], offline: [210, 212], error: [26, 18] };
+const SAT = { offline: 12, executing: 30, error: 60 };
 
 export function mountCore(canvas, { animation = "full" } = {}) {
   const g = canvas.getContext("2d");
