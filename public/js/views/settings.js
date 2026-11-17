@@ -471,3 +471,43 @@ Object.assign(SECTIONS, {
     $$("[data-gclear]", el).forEach((b) => b.onclick = () => save(b.dataset.gclear, ""));
   },
 });
+
+// ---------------------------------------------------------------- Interface: transitions, their sounds and the map (6.7)
+TABS.splice(TABS.findIndex((t) => t[0] === "startup"), 0, ["interface", "Interface"]);
+const IFACE_DEFAULTS = { transitions: true, transitionSpeed: "normal", sound: true, soundVolume: 0.5, silent: false, reducedSound: false, reducedEffects: false, mapAutoResize: true, mapAnimate: true };
+Object.assign(SECTIONS, {
+  async interface(el, ctx) {
+    const s = await api("/api/settings");
+    const it = { ...IFACE_DEFAULTS, ...(s.interface || {}) }, ap = s.appearance || {};
+    el.innerHTML = `<article class="panel" style="max-width:820px"><div class="panel-head"><span class="label">Interface</span></div>
+      <p class="muted" style="margin-top:0;font-size:13.5px">How the Command Centre changes into Mission Control and back, the sounds it makes, and how the map behaves. Changes apply straight away.</p>
+      ${row("Transition animation", "The coordinated change between the Command Centre and Mission Control. Off: an instant switch (the same checks still run)", toggle("ifTrans", it.transitions, "Transition animation"))}
+      ${row("Transition speed", "Normal is about 1.5 seconds", `<div class="seg" id="ifSpeed">${[["fast", "Fast"], ["normal", "Normal"], ["slow", "Slow"]].map(([k, l]) => `<button data-v="${k}" class="${it.transitionSpeed === k ? "active" : ""}">${l}</button>`).join("")}</div>`)}
+      ${row("Transition sounds", "Original sounds made on this device — no files, no downloads", toggle("ifSound", it.sound, "Transition sounds"))}
+      ${row("Transition sound volume", "", `<div class="row" style="gap:8px"><input type="range" id="ifVol" min="0" max="1" step="0.05" value="${it.soundVolume}" aria-label="Transition sound volume"><b id="ifVolV" style="min-width:42px">${Math.round(it.soundVolume * 100)}%</b><button class="btn small ghost" id="ifTestIn">Test enter</button><button class="btn small ghost" id="ifTestOut">Test exit</button></div>`)}
+      ${row("Reduced sound effects", "Just the main tone, no beeps or sweeps", toggle("ifRedSnd", it.reducedSound, "Reduced sound effects"))}
+      ${row("Silent mode", "No interface sounds at all (alarms and JARVIS's voice are unaffected)", toggle("ifSilent", it.silent, "Silent mode"))}
+      ${row("Reduced motion", "Instant changes instead of movement (your Windows setting is also respected)", toggle("ifRedMo", !!ap.reduceMotion, "Reduced motion"))}
+      ${row("Reduced visual effects", "No energy pulse, a gentler core brightening", toggle("ifRedFx", it.reducedEffects, "Reduced visual effects"))}
+      ${row("Automatic map resize", "The map refits itself whenever its panel changes size", toggle("ifMapRs", it.mapAutoResize, "Automatic map resize"))}
+      ${row("Map animations", "Animated zooming and flying to places; off for instant jumps", toggle("ifMapAn", it.mapAnimate, "Map animations"))}
+      <p class="faint" style="font-size:12.5px;margin:10px 0 0" id="ifSoundState"></p>
+    </article>`;
+    const P = (patch) => api("/api/settings", { method: "PATCH", body: { interface: patch } }).then((r) => { if (ctx.settings) ctx.settings.interface = { ...(ctx.settings.interface || {}), ...patch }; toast("Saved."); return r; }).catch((e) => toast(e.message));
+    const tg = (id, key) => { $(`#${id}`, el).onchange = (e) => P({ [key]: e.target.checked }); };
+    tg("ifTrans", "transitions"); tg("ifSound", "sound"); tg("ifRedSnd", "reducedSound"); tg("ifSilent", "silent"); tg("ifRedFx", "reducedEffects"); tg("ifMapRs", "mapAutoResize"); tg("ifMapAn", "mapAnimate");
+    $("#ifRedMo", el).onchange = (e) => api("/api/settings", { method: "PATCH", body: { appearance: { reduceMotion: e.target.checked } } }).then(() => { document.documentElement.classList.toggle("reduce-motion", e.target.checked || ap.animation === "off" || ap.animation === "reduced"); toast("Saved."); });
+    $$("#ifSpeed [data-v]", el).forEach((b) => b.onclick = async () => { await P({ transitionSpeed: b.dataset.v }); $$("#ifSpeed [data-v]", el).forEach((x) => x.classList.toggle("active", x === b)); });
+    $("#ifVol", el).oninput = (e) => { $("#ifVolV", el).textContent = `${Math.round(e.target.value * 100)}%`; };
+    $("#ifVol", el).onchange = (e) => P({ soundVolume: Number(e.target.value) });
+    const test = async (kind) => {
+      const { sounds } = await import("../sounds.js");
+      sounds.configureUi({ enabled: true, volume: Number($("#ifVol", el).value), reduced: $("#ifRedSnd", el).checked });
+      const r = await sounds.unlockUi();
+      if (r === "playing") { sounds[kind](); const peak = await sounds.measure(900); $("#ifSoundState", el).textContent = peak > 0.002 ? `Sound is playing (peak level ${peak}).` : "Sound was sent but no signal was measured — check the output device."; }
+      else $("#ifSoundState", el).textContent = r === "off" ? "Volume is at 0%." : `Sound couldn't play here (${r}).`;
+    };
+    $("#ifTestIn", el).onclick = () => test("mcEnter");
+    $("#ifTestOut", el).onclick = () => test("mcExit");
+  },
+});

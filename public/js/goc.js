@@ -11,6 +11,7 @@ import { $, $$, esc, ago, toast } from "./util.js";
 import { spark, SERIES_MAX } from "./mc-panels.js";
 
 const SVG = {
+  expand: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>',
   plane: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15.5v-2l-8-5V3.6a1.5 1.5 0 0 0-3 0v4.9l-8 5v2l8-2.5v5l-2 1.5V21l3.5-1 3.5 1v-1.5l-2-1.5v-5z" fill="currentColor"/></svg>',
   layers: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 8l10 5 10-5-10-5zm-8.2 9.4L2 13.3l10 5 10-5-1.8-.9L12 16.4zm0 4L2 17.3l10 5 10-5-1.8-.9L12 20.4z" fill="currentColor"/></svg>',
   target: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4" stroke="currentColor" stroke-width="1.6"/></svg>',
@@ -41,6 +42,7 @@ const MODE_DEFAULTS = {
 };
 const altColor = (a) => (a.ground ? "#6b7785" : a.alt == null ? "#8893a0" : a.alt < 10000 ? "#5fb3b3" : a.alt < 25000 ? "#7aa2d6" : "#dfe8f2");
 const EMERGENCY = new Set(["7500", "7600", "7700"]);
+const animOK = () => !reducedMotion() && (window.__jarvisIface?.mapAnimate !== false);
 const reducedMotion = () => document.documentElement.classList.contains("reduce-motion") || matchMedia("(prefers-reduced-motion: reduce)").matches;
 const fmtN = (n) => (n == null ? "—" : Number(n).toLocaleString("en-GB"));
 const nowIn = (tz, o) => { try { return new Date().toLocaleString("en-GB", { timeZone: tz, ...o }); } catch { return "—"; } };
@@ -62,6 +64,7 @@ async function leaflet() {
  */
 export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
   const tz = ctx.settings.timezone;
+  window.__jarvisIface = ctx.settings.interface || {};
   const st = {
     mode, layers: { boundaries: true, labels: false, radar: false, trails: true, dossiers: false, trips: false, webcams: false, satellites: false, ...MODE_DEFAULTS[mode] }, base: "dark",
     opLayers: {}, opMod: null, opName: null, opContext: null,
@@ -89,6 +92,7 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
         <select class="goc-sel" id="gocRegion" aria-label="Go to region">${Object.entries(REGIONS).map(([k, [n]]) => `<option value="${k}">${esc(n)}</option>`).join("")}</select>
         <button class="goc-tb" id="gocWorld" title="Return to global view">${SVG.world}<span>Global view</span></button>
         <button class="goc-tb" id="goc3d" aria-pressed="false">3D</button>
+        <button class="goc-tb" id="gocExpand" aria-pressed="false" title="Give the map the whole workspace (the core keeps running)">${SVG.expand}<span>Expand map</span></button>
         <span class="goc-maphint" id="gocMapHint"></span>
       </div>
       <div class="goc-layers" id="gocLayers" hidden>
@@ -150,10 +154,12 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
     if (labelData) return;
     try { labelData = (await api("/api/globalops/countries")).sort((a, b) => b.area - a.area); draw(); } catch (e) { $("#gocLayerNote", root).textContent = `Place labels couldn't load: ${e.message}`; }
   }
+  let boundaryP = null;
+  const boundaryData = () => (boundaryP ||= fetch("/vendor/countries-110m.geojson").then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }).catch((e) => { boundaryP = null; throw e; }));
   async function loadBoundaries() {
     if (bounds) return;
     try {
-      const gj = await fetch("/vendor/countries-110m.geojson").then((r) => r.json());
+      const gj = await boundaryData();
       if (!st.layers.boundaries || st.destroyed) return;
       bounds = Lf.geoJSON(gj, { style: { color: "#4b6278", weight: 0.7, opacity: 0.8, fill: false }, interactive: false, attribution: "Boundaries: Natural Earth" }).addTo(map);
     } catch (e) { $("#gocLayerNote", root).textContent = `Country boundaries couldn't load: ${e.message}`; }
@@ -288,8 +294,14 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
   map.on("move resize zoom", draw);
   map.on("resize", () => { sizeCanvas(); draw(); });
   map.on("moveend", () => { scheduleFlights(700); hint(); });
-  const ro = new ResizeObserver(() => { map.invalidateSize({ pan: false }); sizeCanvas(); draw(); });
+  // The display fills the window below the header; its height is measured, not guessed, so nothing scrolls twice.
+  const fitHeight = () => { const r = root.getBoundingClientRect(); if (!r.height) return; const top = Math.round(r.top + scrollY); if (top !== st.gocTop) { st.gocTop = top; root.style.setProperty("--goc-top", `${top}px`); } };
+  const refit = () => { map.invalidateSize({ pan: false }); sizeCanvas(); draw(); };
+  const ro = new ResizeObserver(() => { fitHeight(); if ((ctx.settings.interface?.mapAutoResize ?? true) !== false) refit(); });
   ro.observe($("#gocMap", root));
+  const onWinResize = () => { fitHeight(); refit(); };
+  addEventListener("resize", onWinResize);
+  requestAnimationFrame(fitHeight);
   sizeCanvas();
 
   function hitAt(x, y) { let best = null, bd = 1e9; for (const h of hits) { const d = Math.hypot(h.x - x, h.y - y); if (d <= h.r + 2 && d < bd) { best = h; bd = d; } } return best; }
@@ -306,11 +318,15 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
   mapEl.addEventListener("mouseleave", () => { tip.hidden = true; });
   map.on("click", (ev) => {
     const h = hitAt(ev.containerPoint.x, ev.containerPoint.y);
-    if (!h) return;
+    if (!h) { if (st.mode === "world") wxMapClick(ev.latlng.lat, ev.latlng.lng); return; }
     if (h.kind === "op") { h.pt.onClick?.(h.pt); return; }
     if (h.kind === "aircraft") selectAircraft(h.a.hex);
     else if (h.kind === "cluster") map.setView(ev.latlng, Math.min(map.getZoom() + 2, 8));
-    else if (h.kind === "event") { st.selectedEvent = h.e.id; renderRight(); draw(); const it = $(`[data-ev="${CSS.escape(h.e.id)}"]`, root); it?.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "auto" : "smooth" }); it?.classList.add("open"); }
+    else if (h.kind === "event") {
+      st.selectedEvent = h.e.id; renderRight(); draw();
+      st.evReveal?.(h.e.id);
+      const it = $(`[data-ev="${CSS.escape(h.e.id)}"]`, root); it?.scrollIntoView({ block: "nearest", behavior: animOK() ? "smooth" : "auto" }); it?.classList.add("open");
+    }
   });
 
   // ------------------------------------------------------------ Flights
@@ -340,7 +356,7 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
         // Client-side trails from the positions actually received (kept for the session, 40 points per aircraft).
         for (const a of list) { const h = st.history.get(a.hex) || []; const l = h[h.length - 1]; if (!l || l[0] !== a.lat || l[1] !== a.lon) { h.push([a.lat, a.lon]); if (h.length > 40) h.shift(); st.history.set(a.hex, h); } }
         if (st.history.size > 30000) for (const k of [...st.history.keys()].slice(0, 6000)) st.history.delete(k);
-        if (st.selected) { const a = list.find((x) => x.hex === st.selected.hex); if (a) { Object.assign(st.selected, { live: a }); if (st.follow) map.panTo([a.lat, a.lon], { animate: !reducedMotion() }); renderCard(); } }
+        if (st.selected) { const a = list.find((x) => x.hex === st.selected.hex); if (a) { Object.assign(st.selected, { live: a }); if (st.follow) map.panTo([a.lat, a.lon], { animate: animOK() }); renderCard(); } }
         st.firstFlights ||= { ok: true, n: list.length, source: r.attribution?.name };
       } else st.firstFlights ||= { ok: false, error: r.error };
     } catch (e) { st.flightErr = e.message; st.firstFlights ||= { ok: false, error: e.message }; }
@@ -407,33 +423,59 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
     if (OPERATIONS[st.mode]) return mountOperation(OPERATIONS[st.mode]);
     if (st.opMod) { st.opMod.unmount?.(); st.opMod = null; st.opName = null; st.opContext = null; }
     if (st.mode === "flights") return renderFlightPanel();
-    if (st.mode === "world") return renderPlaces();
+    if (st.mode === "world") return renderWorld();
     const E = st.events, f = st.evFilter;
     if (!E) { right.innerHTML = `<section class="goc-box goc-feed"><h3>Global events</h3><p class="goc-muted">${st.eventsErr ? `Global events unavailable — ${esc(st.eventsErr)}` : "Retrieving published reports…"}</p></section>`; return; }
     const items = filteredEvents();
     const regions = [...new Set(E.items.map((e) => e.region).filter(Boolean))].sort();
-    const provs = Object.entries(E.providers);
+    const provs = Object.entries(E.providers), live = provs.filter(([, p]) => p.configured && p.state === "operational").length, conf = provs.filter(([, p]) => p.configured).length;
+    const nFilters = f.cats.size + !!f.region + !!f.country + !!f.provider + !!f.status + (f.days !== "3");
+    st.evFiltersOpen ??= innerHeight > 900;
+    // Header and filters stay put; only the list scrolls, through every result (rendered in batches as you scroll).
     right.innerHTML = `<section class="goc-box goc-feed">
-      <h3>Global events <span class="goc-count">${items.length}</span></h3>
-      <div class="goc-chips" role="group" aria-label="Event categories">${Object.entries(E.categories).map(([k, n]) => `<button class="goc-chip ${f.cats.has(k) ? "on" : ""}" data-cat="${k}" style="--c:${CAT_COLOR[k]}" aria-pressed="${f.cats.has(k)}">${esc(n)}</button>`).join("")}</div>
-      <div class="goc-filters">
-        <select class="goc-sel" id="gocEvRegion" aria-label="Region"><option value="">All regions</option>${regions.map((r) => `<option ${f.region === r ? "selected" : ""}>${esc(r)}</option>`).join("")}</select>
-        <input class="goc-in" id="gocEvCountry" placeholder="Country" value="${esc(f.country)}" aria-label="Country">
-        <select class="goc-sel" id="gocEvDays" aria-label="Date range">${[["1", "24 h"], ["3", "3 days"], ["7", "7 days"], ["14", "14 days"], ["120", "All held"]].map(([v, n]) => `<option value="${v}" ${f.days === v ? "selected" : ""}>${n}</option>`).join("")}</select>
-        <select class="goc-sel" id="gocEvProv" aria-label="Source"><option value="">All sources</option>${provs.filter(([, p]) => p.configured).map(([k, p]) => `<option value="${k}" ${f.provider === k ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>
-        <select class="goc-sel" id="gocEvStatus" aria-label="Verification"><option value="">Any verification</option>${Object.entries(E.statusLabels).map(([k, n]) => `<option value="${k}" ${f.status === k ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>
+      <div class="goc-feed-head">
+        <h3>Global events <span class="goc-count">${items.length}</span></h3>
+        <div class="goc-feed-tools"><button class="goc-tb" id="gocEvFilt" aria-expanded="${st.evFiltersOpen}">Filters${nFilters ? ` · ${nFilters}` : ""}</button><button class="goc-tb" id="gocEvSrc" aria-expanded="${!!st.evSrcOpen}">${live}/${conf} sources</button></div>
+        <div class="goc-feed-filters" ${st.evFiltersOpen ? "" : "hidden"}>
+          <div class="goc-chips" role="group" aria-label="Event categories">${Object.entries(E.categories).map(([k, n]) => `<button class="goc-chip ${f.cats.has(k) ? "on" : ""}" data-cat="${k}" style="--c:${CAT_COLOR[k]}" aria-pressed="${f.cats.has(k)}">${esc(n)}</button>`).join("")}</div>
+          <div class="goc-filters">
+            <select class="goc-sel" id="gocEvRegion" aria-label="Region"><option value="">All regions</option>${regions.map((r) => `<option ${f.region === r ? "selected" : ""}>${esc(r)}</option>`).join("")}</select>
+            <input class="goc-in" id="gocEvCountry" placeholder="Country" value="${esc(f.country)}" aria-label="Country">
+            <select class="goc-sel" id="gocEvDays" aria-label="Date range">${[["1", "24 h"], ["3", "3 days"], ["7", "7 days"], ["14", "14 days"], ["120", "All held"]].map(([v, n]) => `<option value="${v}" ${f.days === v ? "selected" : ""}>${n}</option>`).join("")}</select>
+            <select class="goc-sel" id="gocEvProv" aria-label="Source"><option value="">All sources</option>${provs.filter(([, p]) => p.configured).map(([k, p]) => `<option value="${k}" ${f.provider === k ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>
+            <select class="goc-sel" id="gocEvStatus" aria-label="Verification"><option value="">Any verification</option>${Object.entries(E.statusLabels).map(([k, n]) => `<option value="${k}" ${f.status === k ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>
+          </div>
+        </div>
+        <div class="goc-provs" ${st.evSrcOpen ? "" : "hidden"}>${provs.map(([k, p]) => `<span title="${esc(p.lastError || p.attribution)}">${stDot(p.state)}${esc(p.name.split(" (")[0])} · ${esc(STATE_WORD[p.state] || p.state)}${p.lastOkAt ? ` · ${esc(ago(p.lastOkAt))}` : ""}</span>`).join("")}</div>
       </div>
-      <div class="goc-provs">${provs.map(([k, p]) => `<span title="${esc(p.lastError || p.attribution)}">${stDot(p.state)}${esc(p.name.split(" (")[0])} · ${esc(STATE_WORD[p.state] || p.state)}${p.lastOkAt ? ` · ${esc(ago(p.lastOkAt))}` : ""}</span>`).join("")}</div>
-      <ol class="goc-evlist">${items.slice(0, 150).map((e) => evItem(e)).join("") || `<li class="goc-muted">No reports match these filters.</li>`}</ol>
-      ${items.length > 150 ? `<p class="goc-muted goc-small">Showing the newest 150 of ${items.length}. Narrow the filters to see others.</p>` : ""}
+      <ol class="goc-evlist" tabindex="0" aria-label="Global events">${items.length ? "" : `<li class="goc-muted">No reports match these filters.</li>`}</ol>
     </section>`;
+    // Batches of 60 as the end of the list comes into view: every result is reachable without building hundreds of rows up front.
+    const listEl = $(".goc-evlist", right);
+    let shown = 0;
+    const more = () => {
+      const next = items.slice(shown, shown + 60); if (!next.length) return;
+      listEl.querySelector(".goc-ev-sentinel")?.remove();
+      listEl.insertAdjacentHTML("beforeend", next.map((e) => evItem(e)).join(""));
+      shown += next.length;
+      if (shown < items.length) { listEl.insertAdjacentHTML("beforeend", `<li class="goc-ev-sentinel goc-muted goc-small">Showing ${shown} of ${items.length} — scroll for more</li>`); evIO.observe(listEl.lastElementChild); }
+      else if (items.length > 60) listEl.insertAdjacentHTML("beforeend", `<li class="goc-muted goc-small goc-ev-end">All ${items.length} reports shown.</li>`);
+    };
+    st.evIO?.disconnect();
+    st.evReveal = (id) => { while (shown < items.length && !listEl.querySelector(`[data-ev="${CSS.escape(id)}"]`)) more(); };
+    const evIO = st.evIO = new IntersectionObserver((en) => { if (en.some((x) => x.isIntersecting)) more(); }, { root: listEl, rootMargin: "300px" });
+    more();
+    $("#gocEvFilt", right).onclick = () => { st.evFiltersOpen = !st.evFiltersOpen; renderRight(); };
+    $("#gocEvSrc", right).onclick = () => { st.evSrcOpen = !st.evSrcOpen; renderRight(); };
     $$("[data-cat]", right).forEach((b) => b.onclick = () => { const k = b.dataset.cat; f.cats.has(k) ? f.cats.delete(k) : f.cats.add(k); renderRight(); draw(); renderBottom("events"); });
     const bind = (id, key, ev = "change") => { const x = $(id, right); x[`on${ev}`] = () => { f[key] = x.value; if (ev === "input") { clearTimeout(x.__t); x.__t = setTimeout(() => { renderRight(); draw(); const n = $(id, right); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 350); } else { renderRight(); draw(); } }; };
     bind("#gocEvRegion", "region"); bind("#gocEvCountry", "country", "input"); bind("#gocEvDays", "days"); bind("#gocEvProv", "provider"); bind("#gocEvStatus", "status");
-    $$("[data-ev]", right).forEach((li) => li.querySelector(".goc-ev-head").onclick = () => {
-      const e = E.items.find((x) => x.id === li.dataset.ev); li.classList.toggle("open");
+    // One delegated handler for every row, including rows added later.
+    listEl.addEventListener("click", (ev) => {
+      const head = ev.target.closest(".goc-ev-head"); if (!head || ev.target.closest("a")) return;
+      const li = head.closest("[data-ev]"); const e = E.items.find((x) => x.id === li.dataset.ev); li.classList.toggle("open");
       st.selectedEvent = e?.id; draw();
-      if (e?.lat != null) map.setView([e.lat, e.lon], Math.max(map.getZoom(), /country/.test(e.locAccuracy) ? 4 : 6), { animate: !reducedMotion() });
+      if (e?.lat != null) map.setView([e.lat, e.lon], Math.max(map.getZoom(), /country/.test(e.locAccuracy) ? 4 : 6), { animate: animOK() });
     });
   }
   function evItem(e) {
@@ -469,8 +511,8 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
       </div>
       <div class="goc-toggles"><label><input type="checkbox" id="gocFShow" ${st.layers.flights ? "checked" : ""}> Show aircraft</label><label><input type="checkbox" id="gocFTrails" ${st.layers.trails ? "checked" : ""}> Show trails</label></div>
       <p class="goc-muted goc-small">${F ? `${fmtN(list.length)} aircraft in this view${list.length !== F.list.length ? ` (of ${fmtN(F.list.length)} before filters)` : ""} · ${esc(F.attribution?.name || "")}` : st.flightErr ? `Flight data unavailable — ${esc(st.flightErr)}` : st.layers.flights ? "Retrieving aircraft…" : "Aircraft hidden."}</p>
-      <ol class="goc-flist">${top.map((a) => `<li><button data-hex="${a.hex}" class="${st.selected?.hex === a.hex ? "sel" : ""}"><b>${esc(a.callsign || a.hex.toUpperCase())}</b><span>${esc(a.type || "type n/a")}</span><span>${a.alt != null ? `${fmtN(a.alt)} ft` : "—"}</span><span>${a.gs != null ? `${Math.round(a.gs)} kt` : "—"}</span></button></li>`).join("")}</ol>
-      <p class="goc-muted goc-small goc-honest">Coverage depends on volunteer receivers and aircraft equipment: many aircraft are not visible, and positions can be delayed or wrong. Aircraft flagged as military, LADD or privacy (PIA) are not shown.</p>
+      <ol class="goc-flist">${top.map((a) => `<li><button data-hex="${a.hex}" class="${st.selected?.hex === a.hex ? "sel" : ""}"><b>${esc(a.callsign || a.hex.toUpperCase())}</b><span>${esc(a.type || "type n/a")}</span><span>${a.alt != null ? `${fmtN(a.alt)} ft` : "—"}</span><span>${a.gs != null ? `${Math.round(a.gs)} kt` : "—"}</span></button></li>`).join("")}
+        <li class="goc-muted goc-small goc-honest">Coverage depends on volunteer receivers and aircraft equipment: many aircraft are not visible, and positions can be delayed or wrong. Aircraft flagged as military, LADD or privacy (PIA) are not shown.</li></ol>
     </section>`;
     $("#gocFSearch", right).onsubmit = async (ev) => { ev.preventDefault(); await findFlight($("#gocFQ", right).value); };
     $("#gocFType", right).oninput = (ev) => { st.filter.type = ev.target.value; clearTimeout(ev.target.__t); ev.target.__t = setTimeout(() => { draw(); renderBottom("flights"); }, 250); };
@@ -495,16 +537,112 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
       return r;
     } catch (e) { if (out) out.textContent = e.message; return { ok: false, error: e.message }; }
   }
-  async function renderPlaces() {
-    if (!st.world) try { st.world = await api("/api/world"); } catch (e) { right.innerHTML = `<section class="goc-box"><h3>World Explorer</h3><p class="goc-muted">Places unavailable — ${esc(e.message)}</p></section>`; return; }
-    right.innerHTML = `<section class="goc-box goc-feed"><h3>World Explorer</h3>
-      <p class="goc-muted goc-small">Your places with live local time and weather. Use Layers for satellite, terrain, relief, radar and the 3D globe.</p>
-      <ol class="goc-places">${st.world.map((p) => `<li><button data-fly="${p.lat},${p.lon}"><b>${esc(p.name.split(",")[0])}${p.home ? ' <span class="goc-tag">home</span>' : ""}</b><span>${esc(nowIn(p.timezone, { hour: "2-digit", minute: "2-digit" }))} · ${esc(p.offset || "")}</span><span>${p.weather ? `${esc(p.weather.temp)}${esc(p.weather.unit)} · ${esc(p.weather.summary)}` : esc(p.error || "weather n/a")}</span></button></li>`).join("")}</ol>
-      <div class="goc-regions">${Object.entries(REGIONS).map(([k, [n]]) => `<button class="goc-chip" data-reg="${k}">${esc(n)}</button>`).join("")}</div></section>`;
-    $$("[data-fly]", right).forEach((b) => b.onclick = () => { const [la, lo] = b.dataset.fly.split(",").map(Number); if (st.view3d) st.globe?.flyTo(la, lo); else map.setView([la, lo], 7); });
-    $$("[data-reg]", right).forEach((b) => b.onclick = () => goRegion(b.dataset.reg));
+  // ------------------------------------------------------------ World Explorer workspace (same map, larger, with search)
+  // Search: Open-Meteo geocoding through /api/locations/lookup. Selected place: /api/wayfinder/destination (weather,
+  // country facts, FCDO advice, nearest airports — all free sources). Clicking open map identifies the country offline
+  // from the Natural Earth boundaries already used for the boundary layer. Saved places are the same list as World.
+  const wx = { q: "", results: null, busy: false, sel: null, info: null, infoErr: null };
+  let wxLayer = null;
+  function wxDraw() {
+    if (!wxLayer) wxLayer = Lf.layerGroup().addTo(map);
+    wxLayer.clearLayers();
+    if (st.mode !== "world") return;
+    for (const p of st.world || []) Lf.circleMarker([p.lat, p.lon], { radius: p.home ? 6 : 5, color: "#a394e8", weight: 1.5, fillColor: "#a394e8", fillOpacity: p.home ? 0.7 : 0.35 }).bindTooltip(esc(p.name.split(",")[0]), { direction: "top", className: "goc-wx-tip" }).on("click", () => wxSelect({ name: p.name, lat: p.lat, lon: p.lon, timezone: p.timezone, savedId: p.id, home: p.home })).addTo(wxLayer);
+    if (wx.sel) Lf.circleMarker([wx.sel.lat, wx.sel.lon], { radius: 9, color: "#e7eef5", weight: 2, fill: false }).addTo(wxLayer);
   }
-  function goRegion(k) { const R = REGIONS[k]; if (!R) return; if (st.view3d) toggle3d(false); map.fitBounds([[R[1][0], R[1][1]], [R[1][2], R[1][3]]], { animate: !reducedMotion() }); $("#gocRegion", root).value = k; }
+  function inRing(x, y, ring) { let c = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const [xi, yi] = ring[i], [xj, yj] = ring[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; }
+  async function countryAt(lat, lon) {
+    const gj = await boundaryData(); lon = ((((lon + 180) % 360) + 360) % 360) - 180;
+    for (const f of gj.features) {
+      const polys = f.geometry.type === "Polygon" ? [f.geometry.coordinates] : f.geometry.type === "MultiPolygon" ? f.geometry.coordinates : [];
+      if (polys.some((p) => inRing(lon, lat, p[0]) && !p.slice(1).some((h) => inRing(lon, lat, h)))) return f.properties.name;
+    }
+    return null;
+  }
+  async function wxSelect(sel, { fly = true } = {}) {
+    wx.sel = sel; wx.info = null; wx.infoErr = null;
+    if (fly) { if (st.view3d) st.globe?.flyTo(sel.lat, sel.lon); else map.setView([sel.lat, sel.lon], Math.max(map.getZoom(), sel.zoom || 7), { animate: animOK() }); }
+    wxDraw(); renderRight();
+    if (!sel.query) return;
+    const id = sel;
+    try { const d = await api(`/api/wayfinder/destination?q=${encodeURIComponent(sel.query)}`); if (wx.sel !== id) return; if (d.ok) wx.info = d; else wx.infoErr = d.error; }
+    catch (e) { if (wx.sel !== id) return; wx.infoErr = e.message; }
+    if (st.mode === "world") renderRight();
+  }
+  async function wxMapClick(lat, lon) {
+    const country = await countryAt(lat, lon).catch(() => null);
+    wxSelect({ name: country || "Open water", lat, lon, point: true, query: country || null }, { fly: false });
+  }
+  const list = (v) => (Array.isArray(v) ? v.join(", ") : v && typeof v === "object" ? Object.values(v).join(", ") : v || "—");
+  function wxSelHtml() {
+    const s = wx.sel; if (!s) return `<p class="goc-muted goc-small">Search for a country, city or place, or click anywhere on the map to identify it.</p>`;
+    const d = wx.info, w = d?.weather, c = d?.country;
+    const saved = (st.world || []).some((p) => !p.home && Math.abs(p.lat - s.lat) < 0.01 && Math.abs(p.lon - s.lon) < 0.01);
+    const canSave = !s.point && !s.home && s.timezone && !saved;
+    return `<div class="goc-wx-sel">
+      <div class="goc-card-head"><b>${esc(s.name.split(",")[0])}</b>${s.home ? '<span class="goc-tag">home</span>' : saved || s.savedId ? '<span class="goc-tag">saved</span>' : ""}</div>
+      <p class="goc-muted goc-small" style="margin:0 0 6px">${esc(s.name.split(", ").slice(1).join(", ") || (s.point ? "Point on the map" : ""))}${s.name.includes(",") ? " · " : ""}${s.lat.toFixed(3)}°, ${s.lon.toFixed(3)}°</p>
+      ${s.query && !d && !wx.infoErr ? `<p class="goc-muted goc-small">Looking up weather, country facts and travel advice…</p>` : ""}
+      ${wx.infoErr ? `<p class="goc-warnline">${esc(wx.infoErr)}</p>` : ""}
+      ${d ? `<dl class="goc-kv tight">
+        ${d.localTime ? `<div><dt>Local time</dt><dd>${esc(d.localTime)}</dd></div>` : ""}
+        ${w?.current ? `<div><dt>Weather</dt><dd>${esc(w.current.temp)}${esc(w.unit)} · ${esc(w.current.summary)}</dd></div>` : w?.error ? `<div><dt>Weather</dt><dd>unavailable — ${esc(w.error)}</dd></div>` : ""}
+        ${c ? `<div><dt>Country</dt><dd>${esc(c.name)}${c.region ? ` · ${esc(c.region)}` : ""}</dd></div><div><dt>Capital</dt><dd>${esc(list(c.capital))}</dd></div><div><dt>Currency</dt><dd>${esc(list(c.currencies))}</dd></div><div><dt>Languages</dt><dd>${esc(list(c.languages))}</dd></div><div><dt>Dialling</dt><dd>${esc(c.calling || "—")}</dd></div>` : ""}
+        ${d.airports?.length ? `<div><dt>Airports</dt><dd>${d.airports.slice(0, 3).map((a) => `${esc(a.iata || a.icao)} ${esc(a.km)} km`).join(" · ")}</dd></div>` : ""}
+      </dl>
+      ${d.advice?.summary ? `<p class="goc-small" style="margin:6px 0 0"><span class="goc-muted">UK travel advice:</span> ${esc(d.advice.summary.length > 320 ? `${d.advice.summary.slice(0, 320)}…` : d.advice.summary)}${d.advice.url ? ` <a href="${esc(d.advice.url)}" target="_blank" rel="noopener">FCDO</a>` : ""}</p>` : ""}
+      <p class="goc-muted goc-small" style="margin:6px 0 0">Weather: Open-Meteo · facts: world-countries · advice: GOV.UK (FCDO) · airports: OurAirports</p>` : ""}
+      <div class="goc-card-actions">
+        <button class="goc-btn" id="wxZoom">Zoom to</button>
+        ${canSave ? `<button class="goc-btn" id="wxSave">Save place</button>` : ""}
+        ${s.savedId && !s.home ? `<button class="goc-btn" id="wxDel">Remove</button>` : ""}
+        <button class="goc-btn" id="wxEvents" aria-pressed="${!!st.layers.events}">Events overlay</button>
+      </div>
+    </div>`;
+  }
+  async function renderWorld() {
+    if (!st.world) try { st.world = await api("/api/world"); } catch (e) { st.worldErr = e.message; }
+    const res = wx.results;
+    right.innerHTML = `<section class="goc-box goc-feed goc-wx">
+      <div class="goc-feed-head"><h3>World Explorer</h3>
+        <form class="goc-search" id="wxForm" role="search"><input class="goc-in" id="wxQ" placeholder="Country, city or place" value="${esc(wx.q)}" aria-label="Search for a place" autocomplete="off"><button class="goc-btn" ${wx.busy ? "disabled" : ""}>${wx.busy ? "Searching…" : "Search"}</button></form>
+      </div>
+      <div class="goc-wx-side">
+        ${res ? `<h4>Results</h4>${res.error ? `<p class="goc-warnline">${esc(res.error)}</p>` : res.length ? `<ol class="goc-places">${res.map((p, i) => `<li><button data-res="${i}"><b>${esc(p.name.split(",")[0])}</b><span>${esc(p.name.split(", ").slice(1).join(", "))}</span></button></li>`).join("")}</ol>` : `<p class="goc-muted goc-small">No place called “${esc(wx.q)}” was found.</p>`}` : ""}
+        <h4>Selected location</h4>${wxSelHtml()}
+        <h4>Saved places</h4>
+        ${st.worldErr && !st.world ? `<p class="goc-muted">Places unavailable — ${esc(st.worldErr)}</p>` : `<ol class="goc-places">${(st.world || []).map((p) => `<li><button data-fly="${p.id}"><b>${esc(p.name.split(",")[0])}${p.home ? ' <span class="goc-tag">home</span>' : ""}</b><span>${esc(nowIn(p.timezone, { hour: "2-digit", minute: "2-digit" }))} · ${esc(p.offset || "")}</span><span>${p.weather ? `${esc(p.weather.temp)}${esc(p.weather.unit)} · ${esc(p.weather.summary)}` : esc(p.error || "weather n/a")}</span></button></li>`).join("")}</ol>`}
+        <h4>Regions</h4>
+        <div class="goc-regions" style="margin-top:0">${Object.entries(REGIONS).map(([k, [n]]) => `<button class="goc-chip" data-reg="${k}">${esc(n)}</button>`).join("")}</div>
+        <p class="goc-muted goc-small" style="margin-top:10px">Layers: standard, satellite, latest-day satellite, terrain, relief and OpenStreetMap base maps; boundaries, country names, events, flights and radar overlays; and the 3D globe.</p>
+      </div></section>`;
+    $("#wxForm", right).onsubmit = async (ev) => {
+      ev.preventDefault();
+      const q = $("#wxQ", right).value.trim(); if (!q || wx.busy) return;
+      wx.q = q; wx.busy = true; renderWorld();
+      try { wx.results = await api("/api/locations/lookup", { method: "POST", body: { q } }); } catch (e) { wx.results = { error: `Search failed — ${e.message}` }; }
+      wx.busy = false;
+      if (Array.isArray(wx.results) && wx.results.length === 1) { const p = wx.results[0]; wxSelect({ ...p, query: p.name, zoom: 8 }); } else renderWorld();
+      $("#wxQ", right)?.focus();
+    };
+    $$("[data-res]", right).forEach((b) => b.onclick = () => { const p = wx.results[+b.dataset.res]; wxSelect({ ...p, query: p.name, zoom: 8 }); });
+    $$("[data-fly]", right).forEach((b) => b.onclick = () => { const p = st.world.find((x) => String(x.id) === b.dataset.fly); if (p) wxSelect({ name: p.name, lat: p.lat, lon: p.lon, timezone: p.timezone, savedId: p.id, home: p.home, query: p.name, zoom: 8 }); });
+    $$("[data-reg]", right).forEach((b) => b.onclick = () => goRegion(b.dataset.reg));
+    const z = $("#wxZoom", right); if (z) z.onclick = () => { if (st.view3d) st.globe?.flyTo(wx.sel.lat, wx.sel.lon); else map.setView([wx.sel.lat, wx.sel.lon], Math.max(map.getZoom(), 8), { animate: animOK() }); };
+    const sv = $("#wxSave", right); if (sv) sv.onclick = async () => {
+      sv.disabled = true;
+      try {
+        const s = wx.sel, saved = await api("/api/locations", { method: "POST", body: { name: s.name, lat: s.lat, lon: s.lon, timezone: s.timezone, country: wx.info?.country?.name || s.name.split(", ").at(-1) } });
+        s.savedId = saved?.id; toast("Place saved."); st.world = null; await renderWorld(); wxDraw();
+      } catch (e) { toast(`Couldn't save: ${e.message}`); sv.disabled = false; }
+    };
+    const dl = $("#wxDel", right); if (dl) dl.onclick = async () => {
+      try { await api(`/api/locations/${wx.sel.savedId}`, { method: "DELETE" }); toast("Place removed."); wx.sel.savedId = null; st.world = null; await renderWorld(); wxDraw(); } catch (e) { toast(e.message); }
+    };
+    const evb = $("#wxEvents", right); if (evb) evb.onclick = () => { setOverlay("events", !st.layers.events); const cb = $('[data-ov="events"]', root); if (cb) cb.checked = st.layers.events; evb.setAttribute("aria-pressed", String(st.layers.events)); };
+    wxDraw();
+  }
+  function goRegion(k) { const R = REGIONS[k]; if (!R) return; if (st.view3d) toggle3d(false); map.fitBounds([[R[1][0], R[1][1]], [R[1][2], R[1][3]]], { animate: animOK() }); $("#gocRegion", root).value = k; }
 
   // ------------------------------------------------------------ Left column: system readings
   function renderSys() {
@@ -532,9 +670,9 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
     const online = sync.status.online;
     const issues = d ? (d.counts.error || 0) + (d.counts.warn || 0) : null;
     $("#gocPills", root).innerHTML = [
-      `<span>${stDot(ai?.status || "unknown")}AI ${ai?.status === "ok" ? "connected" : esc(STATE_WORD[ai?.status] || "…")}</span>`,
+      `<span>${stDot(ai?.status || "unknown")}AI ${ai?.status === "ok" ? "connected" : esc(STATE_WORD[ai?.status] || "checking")}</span>`,
       `<span>${stDot(online ? "ok" : "error")}Network ${online ? "online" : "offline"}</span>`,
-      `<span>${stDot(issues == null ? "unknown" : issues ? "warn" : "ok")}Systems ${issues == null ? "…" : issues ? `${issues} to check` : "nominal"}</span>`,
+      `<span>${stDot(issues == null ? "unknown" : issues ? "warn" : "ok")}Systems ${issues == null ? "checking" : issues ? `${issues} to check` : "nominal"}</span>`,
     ].join("");
   }
   function renderClocks() {
@@ -567,11 +705,12 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
       const max = Math.max(1, ...Object.values(by));
       el2.innerHTML = st.events ? `<div class="goc-bars">${Object.entries(st.events.categories).map(([c, n]) => `<div><span>${esc(n)}</span><i style="--w:${((by[c] || 0) / max) * 100}%;--c:${CAT_COLOR[c]}"></i><b>${by[c] || 0}</b></div>`).join("")}</div>` : `<p class="goc-muted">${esc(st.eventsErr || "Retrieving…")}</p>`;
     } else if (k === "timeline") {
-      el2.innerHTML = `<div class="goc-spark"><span>CPU</span>${spark(st.series.cpu, 100)}</div><div class="goc-spark"><span>RAM</span>${spark(st.series.ram, 100)}</div><div class="goc-spark"><span>Server lag</span>${spark(st.series.lag)}</div>`;
+      const last = (k, u) => { const v = st.series[k].at(-1); return v == null ? "" : `<b>${Math.round(v)}${u}</b>`; };
+      el2.innerHTML = `<div class="goc-spark"><span>CPU${last("cpu", "%")}</span>${spark(st.series.cpu, 100)}</div><div class="goc-spark"><span>RAM${last("ram", "%")}</span>${spark(st.series.ram, 100)}</div><div class="goc-spark"><span>Server lag${last("lag", " ms")}</span>${spark(st.series.lag)}</div>`;
     } else if (k === "network") {
       const n = st.diag?.checks?.find((c) => c.name === "network"), cl = st.diag?.checks?.find((c) => c.name === "clients");
       el2.innerHTML = `<dl class="goc-kv tight"><div><dt>Live link</dt><dd>${stDot(sync.status.online ? "ok" : "error")}${sync.status.online ? `up${sync.status.since ? ` · ${esc(ago(new Date(sync.status.since).toISOString()))}` : ""}` : "down"}</dd></div>
-        <div><dt>Internet</dt><dd>${n ? `${stDot(n.status)}${esc(n.detail)}` : "—"}</dd></div><div><dt>Devices</dt><dd>${cl ? esc(cl.detail) : "—"}</dd></div></dl>`;
+        <div><dt>Internet</dt><dd>${n ? `${stDot(n.status)}${esc(n.detail)}` : st.diag ? "—" : "checking…"}</dd></div><div><dt>Devices</dt><dd>${cl ? esc(cl.detail) : st.diag ? "—" : "checking…"}</dd></div></dl>`;
     } else if (k === "ops") {
       el2.innerHTML = st.activity?.length ? `<ol class="goc-ops">${st.activity.slice(0, 6).map((a) => `<li><span>${esc(ago(a.at || a.created_at))}</span>${esc(a.summary || a.text || a.kind || "")}</li>`).join("")}</ol>` : '<p class="goc-muted">No recent operations.</p>';
     }
@@ -593,8 +732,8 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
     setLayer(name, layer) { st.opLayers[name] = layer; draw(); },
     clearLayer(name) { delete st.opLayers[name]; draw(); },
     showLayer(name, on = true) { if (st.layers[name] !== on) setOverlay(name, on); },
-    fly(lat, lon, zoom = 6) { if (st.view3d) toggle3d(false); map.setView([lat, lon], zoom, { animate: !reducedMotion() }); },
-    fit(points, maxZoom = 8) { const p = points.filter((x) => x && Number.isFinite(x[0]) && Number.isFinite(x[1])); if (!p.length) return; if (st.view3d) toggle3d(false); if (p.length === 1) map.setView(p[0], Math.min(maxZoom, 7)); else map.fitBounds(p, { padding: [30, 30], maxZoom, animate: !reducedMotion() }); },
+    fly(lat, lon, zoom = 6) { if (st.view3d) toggle3d(false); map.setView([lat, lon], zoom, { animate: animOK() }); },
+    fit(points, maxZoom = 8) { const p = points.filter((x) => x && Number.isFinite(x[0]) && Number.isFinite(x[1])); if (!p.length) return; if (st.view3d) toggle3d(false); if (p.length === 1) map.setView(p[0], Math.min(maxZoom, 7)); else map.fitBounds(p, { padding: [30, 30], maxZoom, animate: animOK() }); },
     selectedAircraft: () => (st.selected ? { hex: st.selected.hex, ...(st.selected.detail || {}), ...(st.selected.live ? { callsign: st.selected.live.callsign, type: st.selected.live.type, reg: st.selected.live.reg } : {}) } : null),
     setContext(c) { st.opContext = c; },
     print: printHtml,
@@ -662,6 +801,7 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
   $("#gocRegion", root).onchange = (ev) => goRegion(ev.target.value);
   $("#gocWorld", root).onclick = () => goRegion("world");
   $("#goc3d", root).onclick = () => toggle3d();
+  $("#gocExpand", root).onclick = () => { const on = !root.classList.contains("goc-expanded"); root.classList.toggle("goc-expanded", on); $("#gocExpand", root).setAttribute("aria-pressed", String(on)); };
 
   // ------------------------------------------------------------ Data loops
   async function loadStatus() { try { st.status = await api("/api/globalops/status"); layerInfo = st.status.layers || layerInfo; $("#gocLayerNote", root).textContent = layerInfo[st.base]?.terms ? `${layerInfo[st.base].name}: ${layerInfo[st.base].terms}.` : ""; } catch {} renderSys(); renderBottom("imagery"); renderBottom("flights"); }
@@ -684,9 +824,10 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
     st.mode = m; root.dataset.mode = m;
     for (const [k, v] of Object.entries(MODE_DEFAULTS[m])) if (st.layers[k] !== v) setOverlay(k, v);
     if (m === "world") { $("#gocLayers", root).hidden = false; $("#gocLayersBtn", root).setAttribute("aria-expanded", "true"); }
-    renderRight(); draw(); renderLegend();
+    renderRight(); draw(); renderLegend(); wxDraw();
     requestAnimationFrame(() => { map.invalidateSize({ pan: false }); sizeCanvas(); draw(); });
   }
+  renderBottom("network"); renderBottom("ops"); renderBottom("timeline");
   await loadStatus();
   setBase("dark");
   for (const [k] of OVERLAYS) { const cb = $(`[data-ov="${k}"]`, root); if (cb) cb.checked = !!st.layers[k]; }
@@ -712,7 +853,7 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
       if (c.action === "flights_world") { if (!st.layers.flights) setOverlay("flights", true); goRegion("world"); await pollFlights(true); return { ok: true, aircraft: st.flights?.list?.length ?? 0, source: st.flights?.attribution?.name, error: st.flightErr }; }
       if (c.action === "flights_area" || c.action === "region") {
         if (c.region && REGIONS[c.region]) goRegion(c.region);
-        else if (c.lat != null) { const nm = c.nm || 120, dLat = nm / 60, dLon = nm / (60 * Math.max(0.2, Math.cos(c.lat * Math.PI / 180))); if (st.view3d) toggle3d(false); map.fitBounds([[c.lat - dLat, c.lon - dLon], [c.lat + dLat, c.lon + dLon]], { animate: !reducedMotion() }); }
+        else if (c.lat != null) { const nm = c.nm || 120, dLat = nm / 60, dLon = nm / (60 * Math.max(0.2, Math.cos(c.lat * Math.PI / 180))); if (st.view3d) toggle3d(false); map.fitBounds([[c.lat - dLat, c.lon - dLon], [c.lat + dLat, c.lon + dLon]], { animate: animOK() }); }
         if (c.action === "flights_area") { if (!st.layers.flights) setOverlay("flights", true); await pollFlights(true); return { ok: !st.flightErr, aircraft: filteredAircraft().length, source: st.flights?.attribution?.name, error: st.flightErr }; }
         return { ok: true };
       }
@@ -736,7 +877,7 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
       st.destroyed = true;
       timers.forEach(clearInterval); clearTimeout(flightT); offs.forEach((f) => f?.());
       st.opMod?.unmount?.(); st.opMod = null;
-      ro.disconnect(); st.globe?.destroy(); map.remove(); el.innerHTML = "";
+      ro.disconnect(); removeEventListener("resize", onWinResize); st.globe?.destroy(); map.remove(); el.innerHTML = "";
       delete window.__jarvisGoc; delete window.__jarvisGocRedraw;
     },
   };

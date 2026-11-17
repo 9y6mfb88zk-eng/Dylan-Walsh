@@ -4,6 +4,9 @@
 // Honest about autoplay: `state()` says whether sound is actually playing or was blocked until a tap.
 let ctx = null, master = null, verb = null, meter = null, blocked = false, failed = null;
 const opts = { volume: 0.6, reduced: false, enabled: true };
+// Interface transition sounds (Command Centre ⇄ Mission Control) have their own on/off, volume and reduced setting.
+const ui = { enabled: true, volume: 0.5, reduced: false };
+let uiMaster = null;
 
 function ensure() {
   if (ctx || failed) return ctx;
@@ -26,6 +29,19 @@ function ensure() {
   return ctx;
 }
 const out = (g, wet = true) => { g.connect(master); if (wet) g.connect(verb); return g; };
+function uiOut(g) {
+  if (!uiMaster) { uiMaster = ctx.createGain(); uiMaster.gain.value = ui.volume * 0.7; uiMaster.connect(ctx.destination); if (meter) uiMaster.connect(meter); }
+  g.connect(uiMaster); return g;
+}
+/** A UI tone: envelope-shaped oscillator routed to the interface sound bus. */
+function utone(type, f, t, dur, peak, { a = 0.01, to = null, filter = null } = {}) {
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, t); if (to) o.frequency.exponentialRampToValueAtTime(to, t + a + dur);
+  let node = o;
+  if (filter) { const fl = ctx.createBiquadFilter(); fl.type = "lowpass"; fl.frequency.setValueAtTime(filter[0], t); fl.frequency.exponentialRampToValueAtTime(filter[1], t + a + dur); fl.Q.value = 3; o.connect(fl); node = fl; }
+  node.connect(g); uiOut(g); env(g, t, a, peak, dur); o.start(t); o.stop(t + a + dur + 0.05);
+}
+function uiLive() { if (liveOverride) return true; return ui.enabled && ui.volume > 0 && ctx && ctx.state === "running"; }
 function env(g, t, a, peak, d) { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + a + d); }
 function osc(type, f, t, dur, peak, a = 0.01, wet = true) {
   const o = ctx.createOscillator(), g = ctx.createGain();
@@ -56,6 +72,44 @@ export const sounds = {
     return +peak.toFixed(4);
   },
   state() { return !opts.enabled || opts.volume === 0 ? "off" : failed ? "unavailable" : !ctx ? "idle" : ctx.state === "running" ? "playing" : "blocked"; },
+  /** Interface sound settings: { enabled, volume (0–1), reduced }. */
+  configureUi({ enabled, volume, reduced } = {}) {
+    if (enabled != null) ui.enabled = !!enabled;
+    if (volume != null) ui.volume = Math.max(0, Math.min(1, +volume || 0));
+    if (reduced != null) ui.reduced = !!reduced;
+    if (uiMaster) uiMaster.gain.value = ui.volume * 0.7;
+  },
+  /** Called from a click/keypress (a user gesture), so the browser lets audio start. */
+  async unlockUi() {
+    if (!ui.enabled || !ui.volume) return "off";
+    if (!ensure()) return "unavailable";
+    if (ctx.state !== "running") { try { await Promise.race([ctx.resume(), new Promise((r) => setTimeout(r, 250))]); } catch {} }
+    return ctx.state === "running" ? "playing" : "blocked";
+  },
+  /** Entering Mission Control: low activation tone, digital confirmation beeps, a rising sweep, a final system tone. */
+  mcEnter() {
+    if (!uiLive()) return;
+    const t = ctx.currentTime + 0.02;
+    utone("sine", 55, t, 0.55, 0.16, { a: 0.08, to: 82 });
+    utone("triangle", 110, t, 0.5, 0.05, { a: 0.06, to: 164 });
+    if (!ui.reduced) {
+      [1318.5, 1568, 1760].forEach((f, i) => utone("square", f, t + 0.34 + i * 0.11, 0.045, 0.018, { a: 0.003 }));
+      utone("sawtooth", 220, t + 0.42, 0.62, 0.035, { a: 0.18, to: 880, filter: [400, 3600] });
+    }
+    utone("sine", 880, t + 1.08, 0.5, 0.05, { a: 0.02 });
+    utone("sine", 1318.5, t + 1.12, 0.45, 0.025, { a: 0.02 });
+  },
+  /** Leaving Mission Control: a descending tone, two quiet beeps and a soft settling note. */
+  mcExit() {
+    if (!uiLive()) return;
+    const t = ctx.currentTime + 0.02;
+    utone("sine", 660, t, 0.55, 0.06, { a: 0.03, to: 165 });
+    if (!ui.reduced) {
+      utone("square", 1046.5, t + 0.36, 0.04, 0.015, { a: 0.003 });
+      utone("square", 784, t + 0.48, 0.04, 0.013, { a: 0.003 });
+    }
+    utone("sine", 110, t + 0.6, 0.6, 0.08, { a: 0.05, to: 98 });
+  },
   /** Low electronic power-on: a sub sweep with a filtered noise swell. */
   powerOn() {
     if (!live()) return;
@@ -103,15 +157,16 @@ export const sounds = {
 };
 /** Render one sound into memory (no speakers needed) and measure it — used by the automated tests. */
 export async function renderSound(name, seconds = 2) {
-  const saved = { ctx, master, verb, meter, opts: { ...opts } };
+  const saved = { ctx, master, verb, meter, uiMaster, opts: { ...opts }, ui: { ...ui } };
   const off = new OfflineAudioContext(1, Math.round(44100 * seconds), 44100);
   ctx = off; meter = null; opts.enabled = true; opts.reduced = false; opts.volume = saved.opts.volume || 0.6;
   master = off.createGain(); master.gain.value = opts.volume * 0.8; master.connect(off.destination);
   verb = off.createGain(); verb.gain.value = 0; verb.connect(master);
+  uiMaster = master; ui.enabled = true; ui.reduced = false;
   liveOverride = true; sounds._last = -1;
   try { sounds[name](name === "check" ? "ok" : undefined); } finally { liveOverride = false; }
   const buf = await off.startRendering();
-  ({ ctx, master, verb, meter } = saved); Object.assign(opts, saved.opts);
+  ({ ctx, master, verb, meter, uiMaster } = saved); Object.assign(opts, saved.opts); Object.assign(ui, saved.ui);
   const d = buf.getChannelData(0); let peak = 0, sum = 0;
   for (const v of d) { peak = Math.max(peak, Math.abs(v)); sum += v * v; }
   return { peak: +peak.toFixed(4), rms: +Math.sqrt(sum / d.length).toFixed(5), seconds };

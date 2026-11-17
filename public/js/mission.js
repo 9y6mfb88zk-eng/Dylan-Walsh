@@ -10,7 +10,8 @@
 import { api } from "./api.js";
 import * as sync from "./sync.js";
 import { core, STATE_LABEL } from "./corestate.js";
-import { mountBestCore, coreOptions } from "./core.js";
+import { ensureCore, attachCore, parkCore, coreCanvas as hostCanvas, coreCtl as hostCtl } from "./corehost.js";
+import { sounds } from "./sounds.js";
 import { $, $$, esc, icon } from "./util.js";
 import { PANELS, RENDER, SERIES_MAX } from "./mc-panels.js";
 import { mountGoc } from "./goc.js";
@@ -87,7 +88,7 @@ const html = document.documentElement;
 const mark = (label) => (window.__mcTimeline ||= []).push({ label, t: Math.round(performance.now()) });
 const D = { series: { cpu: [], ram: [], ai: [], lag: [] } };
 let phase = "off", CTX = null, root = null, navEl = null, bannerEl = null, section = "overview", prevTitle = "";
-let borrowed = null, ownCore = null, coreCanvas = null, timers = [], offs = [], readyP = null, hideP = null, goc = null, gocP = null;
+let coreCanvas = null, timers = [], offs = [], readyP = null, hideP = null, goc = null, gocP = null;
 // Resolves with the Global Operations display once it has been created during activation (checks start before that).
 let gocMounted = null, gocMountedResolve = null;
 const resetGocMounted = () => { gocMounted = new Promise((r) => { gocMountedResolve = r; }); };
@@ -96,12 +97,16 @@ resetGocMounted();
 const reduced = () => html.classList.contains("reduce-motion") || matchMedia("(prefers-reduced-motion: reduce)").matches;
 const EASE = "cubic-bezier(.2,.75,.15,1)";
 const anim = (el, frames, opts = {}) => (reduced() || !el?.animate ? null : el.animate(frames, { duration: 500, easing: EASE, fill: "both", ...opts }));
-const settle = (list) => Promise.all(list.filter(Boolean).map((a) => a.finished.catch(() => {})));
+const settle = (list, budget) => {
+  const all = Promise.all(list.filter(Boolean).map((a) => a.finished.catch(() => {})));
+  // A step never runs past its time budget, even on a slow machine; the animations are then finished early.
+  return budget == null ? all : Promise.race([all, new Promise((r) => setTimeout(r, budget))]).then(() => list.forEach((a) => { try { if (a && a.playState === "running") a.finish(); } catch {} }));
+};
 const clearAnims = (els) => els.forEach((e) => e?.getAnimations?.().forEach((a) => a.cancel()));
 const wait = (ms) => new Promise((r) => setTimeout(r, reduced() ? Math.min(ms, 60) : ms));
 // Input keeps the core (and decorative animation) out of idle mode, so the transformation runs at full frame rate.
 const wakeUi = () => dispatchEvent(new Event("wheel"));
-const coreCtl = () => coreCanvas?.__core || ownCore;
+const coreCtl = () => hostCtl() || coreCanvas?.__core || null;
 const panelEl = (id) => root?.querySelector(`[data-panel="${id}"]`);
 const visibleIds = () => (root ? $$("[data-panel]", root).filter((p) => !p.hidden).map((p) => p.dataset.panel) : []);
 const sectionLabel = (id) => MC_SECTIONS.find((s) => s[0] === id)?.[1] || "";
@@ -167,133 +172,146 @@ export const mission = {
   },
 };
 
-// ---------------------------------------------------------------- Activation
+// ---------------------------------------------------------------- Activation (about 1.5 s at normal speed)
+// One persistent core (corehost.js) travels between the Command Centre and Mission Control, so it is never missing,
+// duplicated or rebuilt. The real initialisation checks run alongside the animation and finish in the core panel
+// after Mission Control is already interactive.
 async function activate() {
   const view = $("#view");
-  const ctx = CTX;
+  const ctx = CTX, I = iface(ctx);
+  const T = (ms) => (I.instant ? 0 : Math.round(ms * I.speed));
   wakeUi();
   prevTitle = $("#pageTitle")?.textContent || "";
-  const checks = startChecks(ctx);                                   // real checks run during the animation
+  mark("start");
+  playTransitionSound("enter", ctx);
+  const checks = startChecks(ctx);                                    // real checks, in parallel with the animation
 
-  // Stage 1 — ACTIVATING
+  // 1 · the Command Centre darkens slightly; the core brightens, its particles speed up; a soft pulse goes out
   html.classList.add("mc-mode", "mc-activating");
   banner("ACTIVATING MISSION CONTROL", 1);
-  coreCanvas = view.querySelector("canvas#core");
-  coreCtl()?.setPalette("mission"); coreCtl()?.setBoost(1.8); coreCtl()?.pulse(1.6);
-  energyPulse(coreCanvas || $(".main"));
+  coreCanvas = await ensureCore(ctx.settings).then(() => hostCanvas());
+  const cc = coreCtl();
+  cc?.setPalette?.("mission"); cc?.setBoost?.(I.reducedEffects ? 1.3 : 1.8); cc?.pulse?.(I.reducedEffects ? 0.8 : 1.4);
+  const inView = view.contains(coreCanvas) && !view.hidden;
+  if (!I.instant && !I.reducedEffects) energyPulse(inView ? coreCanvas : $(".main"), T);
   const blocks = viewBlocks(view);
-  blocks.forEach((b) => anim(b, [{ opacity: 1 }, { opacity: 0.38 }], { duration: 420 }));
-  await wait(650);
-
-  // Stage 2 — INTERFACE TRANSFORMATION
-  banner("RECONFIGURING INTERFACE", 2);
+  if (!I.instant) blocks.forEach((b) => anim(b, [{ opacity: 1, transform: "none" }, { opacity: 0.55, transform: "scale(.985)" }], { duration: T(240) }));
+  // Mission Control is assembled (hidden) while the Command Centre dims, so nothing waits on it later.
   build();
   applyLayout("globalops");
-  const outs = animateOut(blocks);
-  const navDone = navSwap(true);
   root.hidden = true;
-  await settle(outs);
+  const gocReady = ensureGoc(ctx, "globalops").catch((e) => { console.error("[mission] goc", e); return null; });
+  await wait(T(200));
+
+  // 2 · Command Centre panels slide away; the navigation becomes Mission Control's
+  banner("RECONFIGURING INTERFACE", 2);
+  const outs = I.instant ? [] : animateOut(blocks, T);
+  const navDone = navSwap(true, I.instant, T);
+  await Promise.all([settle(outs, T(560) + 80), gocReady]);
   mark("outs done");
-  const first = coreCanvas?.getBoundingClientRect();
+  const first = inView ? coreCanvas.getBoundingClientRect() : null;
   view.hidden = true;
   scrollTo(0, 0);
   root.hidden = false;
   root.classList.add("mc-building");
-  await ensureGoc(ctx, "globalops").catch((e) => console.error("[mission] goc", e));
-  placeCore();
-  const slot = $(".mc-core-slot", root);
-  if (coreCanvas) {
-    borrowed = { canvas: coreCanvas, parent: coreCanvas.parentNode, next: coreCanvas.nextSibling };
-    slot.append(coreCanvas);                                         // the same living core moves; no second 3D scene
-  } else {
-    coreCanvas = Object.assign(document.createElement("canvas"), { id: "mcCore" });
-    coreCanvas.setAttribute("aria-label", "JARVIS core"); slot.append(coreCanvas);
-    ownCore = await mountBestCore(coreCanvas, coreOptions(ctx.settings));
-    ownCore.setPalette("mission"); ownCore.setBoost(1.8);
-  }
+  placeCore();                                                         // the same living core moves into its panel
   mark("core moved");
   renderAll();
-  mark("rendered");
+  // 3 · the map expands into place, the core panel locks in, the events column and status panels follow
   const enters = [];
   const last = coreCanvas.getBoundingClientRect();
-  enters.push(borrowed && first?.width
-    ? anim(coreCanvas, [{ transform: `translate(${first.left - last.left}px, ${first.top - last.top}px) scale(${first.width / last.width}, ${first.height / last.height})`, transformOrigin: "0 0" }, { transform: "none", transformOrigin: "0 0" }], { duration: 950 })
-    : anim(coreCanvas, [{ opacity: 0, transform: "scale(.4)" }, { opacity: 1, transform: "none" }], { duration: 800 }));
-  root.classList.remove("mc-building");
-  if (isGoc(section) && goc) {
-    // Global Operations: the map expands, the core column locks into place, the events column and status panels follow.
-    const g = goc.root;
-    enters.push(anim($(".goc-strip", g), [{ opacity: 0 }, { opacity: 1 }], { duration: 500, delay: 80 }));
-    enters.push(anim($(".goc-centre", g), [{ opacity: 0, transform: "scale(.92)" }, { opacity: 1, transform: "none" }], { duration: 750, delay: 160 }));
-    enters.push(anim($(".goc-left", g), ENTER.slideL, { duration: 600, delay: 260 }));
-    enters.push(anim($(".goc-right", g), ENTER.slideR, { duration: 600, delay: 420 }));
-    $$(".goc-bottom > *", g).forEach((b, i) => enters.push(anim(b, ENTER.rise, { duration: 500, delay: 560 + i * 60 })));
-  } else for (const id of visibleIds()) {
-    const p = panelEl(id);
-    enters.push(anim(p, ENTER[PANELS[id].enter] || ENTER.rise, { duration: id === "map" ? 750 : 600, delay: ENTER_DELAY[id] || 0 }));
+  if (!I.instant) {
+    enters.push(first?.width && last.width
+      ? anim(coreCanvas, [{ transform: `translate(${first.left - last.left}px, ${first.top - last.top}px) scale(${first.width / last.width}, ${first.height / last.height})`, transformOrigin: "0 0" }, { transform: "none", transformOrigin: "0 0" }], { duration: T(720) })
+      : anim(coreCanvas, [{ opacity: 0, transform: "scale(.7)" }, { opacity: 1, transform: "none" }], { duration: T(560) }));
+    if (isGoc(section) && goc) {
+      const g = goc.root;
+      enters.push(anim($(".goc-centre", g), [{ opacity: 0, transform: "scale(.9)", filter: "brightness(1.6)" }, { opacity: 1, transform: "none", filter: "none" }], { duration: T(680), delay: T(40) }));
+      enters.push(anim($(".goc-left .goc-box", g), ENTER.slideL, { duration: T(480), delay: T(120) }));
+      enters.push(anim($(".goc-right", g), ENTER.slideR, { duration: T(520), delay: T(190) }));
+      $$(".goc-bottom > *", g).forEach((b, i) => enters.push(anim(b, ENTER.rise, { duration: T(420), delay: T(260 + i * 45) })));
+      enters.push(anim($(".goc-strip", g), [{ opacity: 0, transform: "translateY(-10px)" }, { opacity: 1, transform: "none" }], { duration: T(380), delay: T(300) }));
+    } else for (const id of visibleIds()) enters.push(anim(panelEl(id), ENTER[PANELS[id].enter] || ENTER.rise, { duration: T(520), delay: T(ENTER_DELAY[id] || 0) * 0.6 }));
   }
-  if (!reduced()) $(".mc-arch", root)?.classList.add("mc-draw");
-  await settle(enters);
-  mark("enters done");
-  clearAnims([coreCanvas, ...$$("[data-panel]", root), ...(goc ? $$(".goc-strip, .goc-centre, .goc-left, .goc-right, .goc-bottom > *", goc.root) : [])]);
+  root.classList.remove("mc-building");
+  await settle(enters, T(900) + 120);
+  clearAnims([coreCanvas, ...$$("[data-panel]", root), ...(goc ? $$(".goc-strip, .goc-centre, .goc-left .goc-box, .goc-right, .goc-bottom > *", goc.root) : [])]);
   await navDone;
-  mark("nav done");
+  mark("enters done");
 
-  // Stage 3 — INITIALISATION (real checks; a line is only green if the check passed)
-  html.classList.replace("mc-activating", "mc-initialising");
+  // 4 · status indicators light up; Mission Control is interactive. The checks finish in the core panel.
+  html.classList.replace("mc-activating", "mc-active");
+  goc?.root?.classList.add("goc-lit");
   banner("INITIALISING", 3);
-  const result = await showChecks(checks);
-  D.init = result;
-
-  // Stage 4 — ACTIVE
-  html.classList.replace("mc-initialising", "mc-active");
-  coreCtl()?.setBoost(1);
-  banner(result.issues ? `MISSION CONTROL ACTIVE · ${result.issues} ${result.issues === 1 ? "ITEM NEEDS" : "ITEMS NEED"} ATTENTION` : "MISSION CONTROL ACTIVE", 4);
-  hideBanner(2200);
   phase = "active";
+  cc?.setBoost?.(1.25);
   startLive();
   load(neededKeys()).then(renderAll);
-  setTimeout(() => { const l = root && $(".mc-init", root); if (l && phase === "active") { const a = anim(l, [{ opacity: 1 }, { opacity: 0, transform: "translateY(8px)" }], { duration: 500 }); settle([a]).then(() => { l.hidden = true; clearAnims([l]); }); } }, 3200);
+  mark("interactive");
+  const result = await showChecks(checks);
+  D.init = result;
+  if (phase !== "active") return result;
+  cc?.setBoost?.(1);
+  banner(result.issues ? `MISSION CONTROL ACTIVE · ${result.issues} ${result.issues === 1 ? "ITEM NEEDS" : "ITEMS NEED"} ATTENTION` : "MISSION CONTROL ACTIVE", 4);
+  hideBanner(1800);
+  setTimeout(() => { const l = root && $(".mc-init", root); if (l && phase === "active") { const a = anim(l, [{ opacity: 1 }, { opacity: 0, transform: "translateY(8px)" }], { duration: 400 }); settle([a]).then(() => { l.hidden = true; clearAnims([l]); }); } }, 3200);
   return result;
 }
 
-// ---------------------------------------------------------------- Deactivation (the transformation in reverse)
+// ---------------------------------------------------------------- Deactivation (about 1.2 s): the same, in reverse
 async function deactivate({ instant }) {
-  const fast = instant || reduced();
+  const I = iface(CTX);
+  const fast = instant || I.instant;
+  const T = (ms) => (fast ? 0 : Math.round(ms * I.speed));
   const view = $("#view");
+  mark("exit start");
   stopLive();
-  if (!fast) banner("DEACTIVATING MISSION CONTROL", 2);
+  if (!fast) { banner("DEACTIVATING MISSION CONTROL", 2); playTransitionSound("exit", CTX); }
   html.classList.add("mc-deactivating");
   wakeUi();
-  const panels = root ? (isGoc(section) && goc ? [...$$(".goc-strip, .goc-right, .goc-bottom > *, .goc-centre", goc.root)] : visibleIds().filter((id) => id !== "core").map(panelEl)) : [];
-  const outs = fast ? [] : panels.map((p, i) => anim(p, [...(ENTER[PANELS[p.dataset.panel]?.enter] || ENTER.rise)].reverse(), { duration: 380, delay: i * 35, easing: "cubic-bezier(.5,0,.75,0)" }));
-  const navDone = navSwap(false, fast);
-  await settle(outs);
+  // 1 · Mission Control panels retract; the map recedes (it never just vanishes). The core stays visible.
+  const outs = [];
+  if (!fast && root) {
+    if (isGoc(section) && goc) {
+      const g = goc.root;
+      outs.push(anim($(".goc-strip", g), [{ opacity: 1 }, { opacity: 0, transform: "translateY(-10px)" }], { duration: T(260) }));
+      outs.push(anim($(".goc-right", g), [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateX(70px)" }], { duration: T(340), easing: "cubic-bezier(.5,0,.75,0)" }));
+      $$(".goc-bottom > *", g).forEach((b, i) => outs.push(anim(b, [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateY(24px)" }], { duration: T(300), delay: T(i * 30), easing: "cubic-bezier(.5,0,.75,0)" })));
+      outs.push(anim($(".goc-left .goc-box", g), [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateX(-60px)" }], { duration: T(320), delay: T(40) }));
+      outs.push(anim($(".goc-centre", g), [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "scale(.94)" }], { duration: T(420), delay: T(80), easing: "cubic-bezier(.4,0,.6,1)" }));
+    } else visibleIds().filter((id) => id !== "core").forEach((id, i) => outs.push(anim(panelEl(id), [...(ENTER[PANELS[id]?.enter] || ENTER.rise)].reverse(), { duration: T(340), delay: T(i * 30), easing: "cubic-bezier(.5,0,.75,0)" })));
+  }
+  const navDone = navSwap(false, fast, T);
+  await settle(outs, fast ? 0 : T(560) + 80);
+  mark("exit outs done");
+  // 2 · the core travels back to the Command Centre's stage (or is parked if another page is open)
   const first = coreCanvas?.getBoundingClientRect();
-  if (root) root.hidden = true;
   view.hidden = false;
   scrollTo(0, 0);
+  const stage = view.querySelector(".core-stage");
+  if (stage) attachCore(stage, CTX.settings); else parkCore();
+  if (root) root.hidden = true;
+  const cc = coreCtl();
+  cc?.setPalette?.(null); cc?.setBoost?.(1);
   const flips = [];
-  if (borrowed) {
-    const { canvas, parent, next } = borrowed;
-    if (parent.isConnected) {
-      parent.insertBefore(canvas, next && next.parentNode === parent ? next : null);
-      canvas.__core?.setPalette(null); canvas.__core?.setBoost(1);
-      const last = canvas.getBoundingClientRect();
-      if (!fast && first?.width && last.width) flips.push(anim(canvas, [{ transform: `translate(${first.left - last.left}px, ${first.top - last.top}px) scale(${first.width / last.width}, ${first.height / last.height})`, transformOrigin: "0 0" }, { transform: "none", transformOrigin: "0 0" }], { duration: 850 }));
-    } else { canvas.__core?.destroy?.(); canvas.remove(); }      // the page it came from was replaced meanwhile
+  const canvas = hostCanvas();
+  if (!fast && stage && first?.width) {
+    const last = canvas.getBoundingClientRect();
+    if (last.width) flips.push(anim(canvas, [{ transform: `translate(${first.left - last.left}px, ${first.top - last.top}px) scale(${first.width / last.width}, ${first.height / last.height})`, transformOrigin: "0 0" }, { transform: "none", transformOrigin: "0 0" }], { duration: T(650) }));
   }
-  ownCore?.destroy?.(); ownCore = null;
+  // 3 · the Command Centre panels return; the interface becomes interactive
   const blocks = viewBlocks(view);
   if (fast) clearAnims(blocks);
-  else blocks.forEach((b, i) => flips.push(anim(b, [{ opacity: 0, transform: "translateY(16px) scale(.97)" }, { opacity: 1, transform: "none" }], { duration: 480, delay: 160 + i * 28 })));
-  html.classList.remove("mc-mode");                                 // colours return while the panels come back
-  await settle(flips);
-  clearAnims([...blocks, borrowed?.canvas]);
+  else blocks.forEach((b, i) => flips.push(anim(b, [{ opacity: 0, transform: "translateY(14px) scale(.98)" }, { opacity: 1, transform: "none" }], { duration: T(420), delay: T(120 + i * 22) })));
+  html.classList.remove("mc-mode");
+  mark("exit core home");
+  await settle(flips, fast ? 0 : T(820) + 80);
+  clearAnims([...blocks, canvas]);
   await navDone;
   teardown();
   html.classList.remove("mc-activating", "mc-initialising", "mc-active", "mc-deactivating", "mc-goc");
   hideBanner(0);
+  mark("exit done");
   const t = $("#pageTitle"); if (t && prevTitle) t.textContent = prevTitle;
 }
 function teardown() {
@@ -301,8 +319,20 @@ function teardown() {
   goc?.destroy(); goc = null; gocP = null; resetGocMounted();
   root?.remove(); root = null;
   navEl?.remove(); navEl = null;
-  borrowed = null; coreCanvas = null;
-  section = "overview";
+  coreCanvas = null;
+  section = "globalops";
+}
+/** Interface settings (Settings → Interface): transitions on/off and speed, sounds, reduced effects. */
+function iface(ctx) {
+  const s = ctx?.settings?.interface || {};
+  const speed = { fast: 0.7, normal: 1, slow: 1.4 }[s.transitionSpeed] || 1;
+  return { instant: s.transitions === false || reduced(), speed, reducedEffects: !!s.reducedEffects };
+}
+function playTransitionSound(kind, ctx) {
+  const s = ctx?.settings?.interface || {};
+  if (s.sound === false || s.silent) return;
+  sounds.configureUi({ enabled: true, volume: s.soundVolume ?? 0.5, reduced: !!s.reducedSound });
+  sounds.unlockUi().then((st) => { if (st === "playing") (kind === "enter" ? sounds.mcEnter : sounds.mcExit)(); }).catch(() => {});
 }
 
 // ---------------------------------------------------------------- Building blocks of the transformation
@@ -310,33 +340,33 @@ function viewBlocks(view) {
   if (view.querySelector(".cc")) return [...view.querySelectorAll(".cc-left > *, .cc-right > *, .cc-centre > :not(.core-stage), .core-stage > :not(canvas)")];
   return [...view.children];
 }
-function animateOut(blocks) {
+function animateOut(blocks, T = (ms) => ms) {
   const cx = innerWidth / 2;
   return blocks.map((b, i) => {
     const r = b.getBoundingClientRect(), mid = r.left + r.width / 2;
     const dir = mid < cx - 60 ? -1 : mid > cx + 60 ? 1 : 0;
-    return anim(b, [{ opacity: 0.38, transform: "none" }, { opacity: 0, transform: `translate(${dir * 80}px, ${dir ? 0 : 36}px) scale(.9)` }], { duration: 460, delay: i * 22, easing: "cubic-bezier(.5,0,.75,0)" });
+    return anim(b, [{ opacity: 0.55, transform: "scale(.985)" }, { opacity: 0, transform: `translate(${dir * 60}px, ${dir ? 0 : 24}px) scale(.94)` }], { duration: T(320), delay: T(Math.min(i * 14, 140)), easing: "cubic-bezier(.5,0,.75,0)" });
   });
 }
-async function navSwap(toMission, instant = false) {
+async function navSwap(toMission, instant = false, T = (ms) => ms) {
   const nav = $("#nav");
   if (!navEl) return;
   const from = toMission ? nav : navEl, to = toMission ? navEl : nav;
-  if (!instant) await settle([...from.children].map((e, i) => anim(e, [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateX(-26px)" }], { duration: 240, delay: i * 12, easing: "ease-in" })));
+  if (!instant) await settle([...from.children].map((e, i) => anim(e, [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateX(-26px)" }], { duration: T(200), delay: T(Math.min(i * 8, 120)), easing: "ease-in" })));
   from.hidden = true; to.hidden = false;
   clearAnims([...from.children]);
-  if (!instant) await settle([...to.children].map((e, i) => anim(e, [{ opacity: 0, transform: "translateX(-26px)" }, { opacity: 1, transform: "none" }], { duration: 320, delay: i * 30 })));
+  if (!instant) await settle([...to.children].map((e, i) => anim(e, [{ opacity: 0, transform: "translateX(-26px)" }, { opacity: 1, transform: "none" }], { duration: T(280), delay: T(Math.min(i * 18, 260)) })));
   clearAnims([...to.children]);
 }
-function energyPulse(at) {
+function energyPulse(at, T = (ms) => ms) {
   const r = at?.getBoundingClientRect?.() || { left: innerWidth / 2, top: innerHeight / 2, width: 0, height: 0 };
   const size = Math.max(220, Math.min(r.width, r.height) * 0.8);
   const ring = Object.assign(document.createElement("div"), { className: "mc-pulse" });
   ring.style.cssText = `left:${r.left + r.width / 2 - size / 2}px;top:${r.top + r.height / 2 - size / 2}px;width:${size}px;height:${size}px`;
   const flash = Object.assign(document.createElement("div"), { className: "mc-flash" });
   document.body.append(flash, ring);
-  const a = anim(ring, [{ transform: "scale(.25)", opacity: 0.95 }, { transform: "scale(3.4)", opacity: 0 }], { duration: 1150, easing: "cubic-bezier(.1,.6,.2,1)" });
-  const b = anim(flash, [{ opacity: 0 }, { opacity: 1, offset: 0.25 }, { opacity: 0 }], { duration: 1150, easing: "ease-out" });
+  const a = anim(ring, [{ transform: "scale(.3)", opacity: 0.7 }, { transform: "scale(2.6)", opacity: 0 }], { duration: T(900), easing: "cubic-bezier(.1,.6,.2,1)" });
+  const b = anim(flash, [{ opacity: 0 }, { opacity: 0.6, offset: 0.25 }, { opacity: 0 }], { duration: T(800), easing: "ease-out" });
   settle([a, b]).then(() => { ring.remove(); flash.remove(); });
 }
 function banner(text, stage) {
@@ -406,6 +436,8 @@ function startChecks(ctx) {
   ];
 }
 async function showChecks(checks) {
+  const out0 = { ok: 0, total: checks.length, issues: 0, failed: 0, lines: [] };
+  if (!root) return out0;
   const list = $(".mc-init", root);
   list.hidden = false; list.innerHTML = "";
   const out = { ok: 0, total: checks.length, issues: 0, failed: 0, lines: [] };
@@ -415,13 +447,15 @@ async function showChecks(checks) {
     li.innerHTML = `<span class="mc-init-dot"></span><b>${esc(c.label)}</b><span class="faint">…</span>`;
     list.append(li);
     const r = await c.p;
+    if (!root || !li.isConnected) { out.lines.push({ label: c.label, ...r }); if (r.state === "ok") out.ok++; else { out.issues++; if (r.state === "bad") out.failed++; } continue; }
     li.className = r.state; li.dataset.state = r.state;
     li.querySelector(".faint").textContent = r.detail;
     out.lines.push({ label: c.label, ...r });
     if (r.state === "ok") out.ok++; else { out.issues++; if (r.state === "bad") out.failed++; }
     renderAll();
-    await wait(220);
+    await wait(90);
   }
+  if (!root) { out.at = new Date().toISOString(); return out; }
   const fin = document.createElement("li");
   fin.className = `final ${out.issues ? "warn" : "ok"}`; fin.dataset.state = out.issues ? "warn" : "ok";
   fin.innerHTML = `<span class="mc-init-dot"></span><b>${out.issues ? "Mission Control active" : "Mission Control ready"}</b><span class="faint">${out.issues ? `${out.issues} of ${out.total} checks need attention` : `${out.ok} of ${out.total} checks passed`}</span>`;
@@ -524,6 +558,8 @@ function ensureGoc(ctx, mode) {
 /** The core panel lives in the Global Operations left column, or first in the panel grid for the other sections. */
 function placeCore() {
   const cp = panelEl("core"); if (!cp) return;
+  const slot = $(".mc-core-slot", cp), cv = hostCanvas();
+  if (slot && cv && cv.parentNode !== slot) slot.append(cv);
   if (isGoc(section) && goc) { if (cp.parentNode !== goc.coreHost) goc.coreHost.append(cp); cp.style.gridArea = ""; }
   else { const grid = $(".mc-grid", root); if (cp.parentNode !== grid) grid.prepend(cp); cp.style.gridArea = FOCUS[section] ? `side${FOCUS[section].side.indexOf("core") + 1}` : "core"; }
   cp.hidden = false;
@@ -570,7 +606,7 @@ function startLive() {
     setInterval(() => { if (!isGoc(section)) load(["diag"]).then(() => ["overview", "arch", "diag", "procs"].forEach(renderPanel)); }, 20_000),
     setInterval(() => { if (CTX?.desktop && visibleIds().includes("procs")) load(["awareness"]).then(() => renderPanel("procs")); }, 15_000),
     setInterval(() => { if (!isGoc(section)) load(neededKeys().filter((k) => !["perf", "diag", "awareness"].includes(k))).then(renderAll); }, 60_000),
-    setInterval(() => { renderPanel("overview"); renderPanel("ops"); renderPanel("personal"); if (coreCanvas?.__core && !ownCore) coreCanvas.__core.setPalette("mission"); }, 30_000),
+    setInterval(() => { renderPanel("overview"); renderPanel("ops"); renderPanel("personal"); coreCtl()?.setPalette?.("mission"); }, 30_000),
   );
   let opsT = 0;
   offs.push(core.on((s) => { const st = $("#mcState"); if (st) st.textContent = STATE_LABEL[s] || s; clearTimeout(opsT); opsT = setTimeout(() => renderPanel("ops"), 300); }));

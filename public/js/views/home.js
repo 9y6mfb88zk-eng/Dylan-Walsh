@@ -2,7 +2,7 @@
 import { api, send } from "../api.js";
 import { voice } from "../voice.js";
 import { core, STATE_LABEL } from "../corestate.js";
-import { mountBestCore, coreOptions } from "../core.js";
+import { ensureCore, attachCore, parkCore } from "../corehost.js";
 import { $, $$, esc, gbp, fmtTime, wxIcon, icon, toast, formDialog, confirmDialog, fmtRel, debounce, statusDot } from "../util.js";
 
 let H = null, CTX = null, coreCtl = null, briefingPending = null;
@@ -23,7 +23,7 @@ export async function render(root, ctx, params = {}) {
       <article class="panel tilt" id="pActivity"><div class="panel-head"><span class="label">Recent activity</span></div><div class="body"><p class="empty">…</p></div></article>
     </div>
     <section class="cc-centre">
-      <div class="core-stage"><canvas id="core" role="button" tabindex="0" aria-label="Talk to JARVIS"></canvas><div class="core-state" id="coreState">${STATE_LABEL[core.state]}</div></div>
+      <div class="core-stage"><div class="core-state" id="coreState">${STATE_LABEL[core.state]}</div></div>
       <h1 class="greeting" id="greet">${esc(greet(ctx))}</h1>
       <p class="subline" id="subline">JARVIS is online. Checking systems…</p>
       <p class="caption" id="caption" aria-live="polite">${d ? "Say “Hey JARVIS”, press Ctrl+Shift+Space, or tap the core." : "Tap the core or the microphone to speak."}</p>
@@ -48,10 +48,12 @@ export async function render(root, ctx, params = {}) {
     </div>
   </div>`;
 
-  // Core: 3D where possible. Clicking it talks (or interrupts).
+  // Core: the app's single persistent core (corehost.js), placed in this stage. Clicking it talks (or interrupts).
   const anim = ctx.settings.appearance?.animation || "full";
-  const coreCanvas = $("#core", root);
-  mountBestCore(coreCanvas, { ...coreOptions(ctx.settings), animation: anim }).then((c) => { if (coreCanvas.isConnected) { coreCtl = c; coreCanvas.dataset.core = c.kind; coreCanvas.dataset.tier = c.tier || ""; if (document.documentElement.classList.contains("mc-mode")) c.setPalette?.("mission"); } else c.destroy(); });
+  const stage = $(".core-stage", root);
+  const ls = new AbortController();
+  const coreCanvas = document.documentElement.classList.contains("mc-mode") ? null : attachCore(stage, ctx.settings);
+  ensureCore({ ...ctx.settings, appearance: { ...(ctx.settings.appearance || {}), animation: anim } }).then((c) => { coreCtl = c; if (!document.documentElement.classList.contains("mc-mode")) { attachCore(stage, ctx.settings); c.setPalette?.(null); c.setBoost?.(1); } });
   const offCore = core.on((s) => { const l = $("#coreState", root); if (l) { l.textContent = STATE_LABEL[s] || s; l.className = `core-state ${s}`; } $("#mic", root)?.classList.toggle("live", s === "listening"); });
   const offCap = ctx.onCaption((t, user) => { const c = $("#caption", root); if (!c) return; c.textContent = t || ""; c.classList.toggle("user", !!user); });
 
@@ -59,8 +61,11 @@ export async function render(root, ctx, params = {}) {
     if (briefingPending) { const b = briefingPending; briefingPending = null; return speakBriefing(b); }
     ctx.listen();
   };
-  $("#core", root).addEventListener("click", talk);
-  $("#core", root).addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); talk(); } });
+  // Listeners live as long as this view; the canvas outlives it.
+  const onCore = (e) => { if (e.target.closest?.(".core-stage") && e.target.id === "core") talk(); };
+  const onCoreKey = (e) => { if (e.target.id === "core" && e.target.closest(".core-stage") && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); talk(); } };
+  root.addEventListener("click", onCore, { signal: ls.signal });
+  root.addEventListener("keydown", onCoreKey, { signal: ls.signal });
   $("#mic", root).addEventListener("click", talk);
   $("#composer", root).addEventListener("submit", (e) => {
     e.preventDefault(); voice.ensureAudio();
@@ -79,7 +84,7 @@ export async function render(root, ctx, params = {}) {
   const tick = setInterval(() => { const g = $("#greet", root); if (g) g.textContent = greet(ctx); drawCountdowns(root); }, 30_000);
   const diagT = setInterval(() => drawDiag(root), 15_000);
   if (params.briefing) { try { briefingPending = await api(`/api/briefings/${Number(params.briefing)}`); ctx.caption(`Your ${briefingPending.kind} briefing is ready, ${ctx.settings.profile?.title || "Sir"}. Tap the core to hear it.`); } catch {} }
-  return () => { offCore(); offCap(); clearInterval(tick); clearInterval(diagT); coreCtl?.destroy(); coreCtl = null; };
+  return () => { offCore(); offCap(); clearInterval(tick); clearInterval(diagT); ls.abort(); if (stage.contains(document.getElementById("core"))) parkCore(); coreCtl = null; };
 }
 
 const reload = debounce(() => load(document), 400);

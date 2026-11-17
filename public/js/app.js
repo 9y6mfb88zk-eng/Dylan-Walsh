@@ -9,7 +9,6 @@ import { mountCore } from "./core.js";
 import { mission } from "./mission.js";
 import { handleUi, tryMacro } from "./commands.js";
 import { runStartup } from "./startup.js";
-import { mountBestCore, coreOptions } from "./core.js";
 import { showInstallGuide, offerNotifications, isIOS } from "./iphone.js";
 import { $, $$, esc, toast, icon, fmtWhen, debounce, setDisplayTz } from "./util.js";
 
@@ -504,17 +503,9 @@ async function start() {
 }
 /** The neural core is "ready" only once it has drawn a frame: the Command Centre's own core, or a test mount. */
 async function coreReady() {
-  for (let i = 0; i < 100; i++) {
-    const c = document.querySelector("#view canvas#core")?.__core;
-    if (c) return { kind: c.kind, tier: c.tier || "2d", ...(await c.firstFrame) };
-    if (current && current !== "home" && i > 10) break;            // another page opened first: test the core off-screen
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  const cv = Object.assign(document.createElement("canvas"), { width: 64, height: 64 });
-  cv.style.cssText = "position:fixed;left:-200px;top:0;width:64px;height:64px;pointer-events:none";
-  document.body.append(cv);
-  try { const c = await mountBestCore(cv, coreOptions(ctx.settings)); const f = await c.firstFrame; c.destroy(); return { kind: c.kind, tier: c.tier || "2d", ...f }; }
-  finally { cv.remove(); }
+  const { warmCore } = await import("./corehost.js");
+  const c = await warmCore(ctx.settings);
+  return { kind: c.kind, tier: c.tier || "2d", ...(await c.firstFrame) };
 }
 /** Entering JARVIS: wake the core, say hello, and surface problems the start-up found. */
 function afterStartup(r) {

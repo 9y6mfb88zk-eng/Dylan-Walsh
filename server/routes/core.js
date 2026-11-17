@@ -69,7 +69,7 @@ router.get("/api/geocode", wrap(async (req, res) => res.json(await geocode(req.q
 router.get("/api/settings", (req, res) => res.json(getSettings()));
 const clamp = (v, lo, hi, d) => (Number.isFinite(Number(v)) ? Math.max(lo, Math.min(hi, Number(v))) : d);
 router.patch("/api/settings", (req, res) => {
-  const allowed = ["home", "units", "briefing", "ideas", "finance", "memory", "computer", "timezone", "profile", "voice", "personality", "appearance", "alarms", "notifications", "focus", "awareness", "startup"];
+  const allowed = ["home", "units", "briefing", "ideas", "finance", "memory", "computer", "timezone", "profile", "voice", "personality", "appearance", "alarms", "notifications", "focus", "awareness", "startup", "interface"];
   const patch = Object.fromEntries(Object.entries(req.body || {}).filter(([k]) => allowed.includes(k)));
   if (patch.timezone) { try { new Intl.DateTimeFormat("en", { timeZone: patch.timezone }); } catch { return res.status(400).json({ error: "Unknown time zone" }); } }
   if (patch.home && !(Number.isFinite(+patch.home.lat) && Number.isFinite(+patch.home.lon))) return res.status(400).json({ error: "Home needs lat and lon" });
@@ -96,6 +96,15 @@ router.patch("/api/settings", (req, res) => {
   if (patch.appearance?.bloom != null) patch.appearance.bloom = clamp(patch.appearance.bloom, 0, 1.5, 1);
   if (patch.appearance?.updates && !["normal", "reduced"].includes(patch.appearance.updates)) return res.status(400).json({ error: "Background updates must be normal or reduced" });
   if (patch.appearance?.mapQuality && !["auto", "high", "low"].includes(patch.appearance.mapQuality)) return res.status(400).json({ error: "Map quality must be auto, high or low" });
+  // Interface (Settings → Interface): Command Centre ⇄ Mission Control transitions, their sounds and the map.
+  if (patch.interface) {
+    const it = patch.interface, b = (v) => v === true || v === "true" || v === 1;
+    const out = {};
+    for (const k of ["transitions", "sound", "silent", "reducedSound", "reducedEffects", "mapAutoResize", "mapAnimate"]) if (k in it) out[k] = b(it[k]);
+    if ("transitionSpeed" in it) { if (!["fast", "normal", "slow"].includes(it.transitionSpeed)) return res.status(400).json({ error: "Transition speed must be fast, normal or slow" }); out.transitionSpeed = it.transitionSpeed; }
+    if ("soundVolume" in it) out.soundVolume = Math.max(0, Math.min(1, Number(it.soundVolume) || 0));
+    patch.interface = out;
+  }
   if (patch.startup) {
     const st = patch.startup;
     if (st.screen && !["cinematic", "minimal", "off"].includes(st.screen)) return res.status(400).json({ error: "Startup screen must be cinematic, minimal or off" });

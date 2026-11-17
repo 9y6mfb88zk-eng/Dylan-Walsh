@@ -325,7 +325,7 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
     if (minGap && now - lastFrame < minGap - 2) return;
     const ft = now - lastFrame;
     draw(now);
-    drawn++;
+    drawn++; stats.frames = (stats.frames || 0) + 1;   // total frames drawn (used by tests to see a core is live)
     if (now - fpsAt >= 1000) { stats.fps = Math.round((drawn * 1000) / (now - fpsAt)); drawn = 0; fpsAt = now; stats.tier = tier; }
     // Adaptive quality: sustained slow frames on "auto" drop to the light tier (no bloom, fewer particles).
     if (!drawnOnce) { drawnOnce = true; timings.firstDrawMs = Math.round(performance.now() - now); timings.totalMs = Math.round(performance.now() - T0); stats.timings = timings; firstFrameResolve({ ms: Math.round(performance.now() - mountAt), tier, timings }); }
