@@ -1,6 +1,6 @@
 # JARVIS — Project status
 
-_Last updated: 2026-11-17 — JARVIS 6.5 (Global Operations: flight tracking, Global Events, map layers; includes every earlier upgrade)_
+_Last updated: 2026-11-17 — JARVIS 6.6 (Mission Control operations: Blackbox, Wayfinder, Sentinel, Orbit and the Global Situation Report; includes every earlier upgrade)_
 
 This file is the hand-over document for the "JARVIS — Ultimate Upgrade & Redesign" specification. It lists what is done,
 what remains, known problems, technical decisions and exactly how to continue.
@@ -182,6 +182,51 @@ See `docs/performance.md` → "JARVIS 6.4" for every number.
 
 - **Real hardware:** the startup sound on real speakers; real-GPU frame rates and the async-compile benefit; Windows-only checks (wake-word agent status, the Windows 11 name and build, the GPU name on your laptop).
 - **Map-tile World Explorer:** not part of the parts received.
+
+## JARVIS 6.6: Mission Control operations (Blackbox, Wayfinder, Sentinel, Orbit)
+
+Full description, every data source and key, and limitations: `docs/operations.md`.
+
+### Before coding
+
+- **Inspected:** Mission Control, Global Operations, the shared Leaflet map, Global Events, flight tracking, the
+  SQLite migrations, the voice and AI tool architecture.
+- **Backups:** a full git bundle of the repository was made before any change. The database migration runner copies
+  your database before applying migration 009.
+
+### Architecture: one Mission Control
+
+- **The operations are Mission Control sections** (`op-blackbox`, `op-wayfinder`, `op-sentinel`, `op-orbit`) inside
+  the existing Global Operations display.
+  - They share the core panel, the one Leaflet map, the status panels and the voice line.
+  - Each workspace is lazy-loaded into the right-hand column (`public/js/ops/*.js`).
+  - There is no second map, dashboard or database.
+- **Shared data:** one `op_records` table, used by every operation and the situation reports, behind `/api/ops/*`.
+- **Shared map layers:** dossier places, trip routes and places, webcams and watch areas, satellites. Each has its own
+  toggle in Layers and is switched off when you leave its operation.
+
+### Stages
+
+| Stage | Result |
+|---|---|
+| 1. Operations navigation | Mission Control sidebar gains an "Operations" group; the phone gets the same in its tab bar. Returning to Global Operations needs no restart |
+| 2. Blackbox | Reference lookups plus AI web research produce a structured dossier. Citations are checked against the source list; uncited claims are labelled interpretation; places are geocoded; private individuals are refused. Notes, tags, extra sources, compare, re-run, delete, PDF |
+| 3. Wayfinder | Destination research (forecast, FCDO, airports, country facts), AI-drafted plan (labelled), OSRM routes, manual flights with live ADS-B status, budget, checklist, emergency contacts, check-in reminders, PDF |
+| 4. Sentinel | NASA EONET and FAA sources, finer verification labels, watchlists with alerts and quiet hours |
+| 5. Webcam registry | 7 operator-published YouTube cameras, verified with the YouTube Data API (free key); Windy timelapse players (free key); conflict countries excluded |
+| 6. Orbit | CelesTrak OMM (cached ≥ 2 h), SGP4 positions labelled calculated, ISS, ground tracks, 3D orbits, SWPC and DONKI space weather, Launch Library launches |
+| 7. Global Situation Report | Compiled from every operation; each line labelled with its data kind, source and time; saved; PDF |
+| 8. Voice | Instant commands for the fixed phrases; the `mission_operations` AI tool for the rest; the chat receives what's on screen |
+| 9. Testing | See below |
+| 10. Performance | See `docs/performance.md` → "JARVIS 6.6" |
+
+### Not verified
+
+- **Live YouTube camera status:** needs your free key; YouTube refuses this cloud machine.
+- **Windy cameras:** need your free key.
+- **NASA EONET live:** its server returned HTTP 500 throughout testing.
+- **Dossiers with your real Anthropic account:** tested with the stand-in AI here, which has no Anthropic key.
+- **Printing to PDF:** checked as the print view only.
 
 ## JARVIS 6.5: Global Operations (Mission Control redesign)
 

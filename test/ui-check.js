@@ -189,7 +189,7 @@ try {
   check("the flight and events checks report what was actually retrieved", /^ok: Connecting public flight data — [\d,]+ aircraft visible · (ADSB\.lol|OpenSky Network)$/.test(init[4]) && /^(ok|warn): Retrieving global events — \d+ reports · \d of \d sources live$/.test(init[5]), `${init[4]} | ${init[5]}`);
   check("no check is shown as passed without a result", init.every((l) => /^(ok|warn|bad): /.test(l)));
   check("the same living core moved into Mission Control (no second 3D scene)", await L.evaluate(() => !!document.querySelector("#mcView canvas#core") && !document.querySelector("#view canvas#core") && (window.__jarvisCore?.alive ?? 1) === 1));
-  check("sidebar became Mission Control navigation", await L.evaluate(() => document.querySelector("#nav").hidden && !document.querySelector("#mcNav").hidden && document.querySelectorAll("#mcNav [data-mc]").length === 12));
+  check("sidebar became Mission Control navigation", await L.evaluate(() => document.querySelector("#nav").hidden && !document.querySelector("#mcNav").hidden && document.querySelectorAll("#mcNav [data-mc]").length === 16 && [...document.querySelectorAll("#mcNav .nav-group")].some((g) => g.textContent === "Operations")));
   // Global Operations: the default Mission Control layout
   check("Global Operations opens first: core on the left, map in the centre, events on the right, six status panels below", await L.evaluate(() => {
     const g = document.querySelector("#mcView .goc"); if (!g || document.querySelector("#mcView").dataset.section !== "globalops") return false;
@@ -239,6 +239,34 @@ try {
   await L.fill("#mcSay", "Show me aircraft around Cyprus"); await L.press("#mcSay", "Enter");
   check("“Show me aircraft around Cyprus” answers with the real count", await L.waitForFunction(() => /^\d+ aircraft visible over Cyprus, Sir, from (ADSB\.lol|OpenSky Network)\.$/.test(document.querySelector("#mcCaption")?.textContent || ""), null, { timeout: 20000 }).then(() => true, () => false), await L.textContent("#mcCaption"));
   await L.screenshot({ path: path.join(out, "laptop-flight-tracking.png") });
+  // ---- Operations inside Mission Control (same core and map; workspaces load on first use)
+  const sameShell = () => L.evaluate(() => document.querySelectorAll(".leaflet-container").length === 1 && !!document.querySelector(".goc-core-host canvas#core") && document.querySelectorAll("#mcView").length === 1);
+  await L.click('#mcNav [data-mc="op-orbit"]');
+  check("Operation Orbit opens inside Mission Control with the same core and map", await L.waitForSelector(".goc-op [data-id]", { timeout: 20000 }).then(() => true, () => false) && await sameShell());
+  check("Orbit shows a calculated ISS position with the element epoch", await L.waitForFunction(() => /ISS \(ZARYA\)/.test(document.querySelector("#orbLive")?.textContent || "") && /calculated/i.test(document.querySelector("#orbLive").textContent) && /h old/.test(document.querySelector("#orbLive").textContent), null, { timeout: 15000 }).then(() => true, () => false));
+  await L.click('.goc-op [data-tab="weather"]');
+  check("Orbit space weather shows the Kp index with its source", await L.waitForFunction(() => /Planetary K index/.test(document.querySelector(".goc-op")?.textContent || "") && /SWPC/.test(document.querySelector(".goc-op").textContent), null, { timeout: 15000 }).then(() => true, () => false));
+  await L.click('#mcNav [data-mc="op-blackbox"]');
+  await L.waitForSelector("#bbSubject", { timeout: 15000 });
+  check("leaving Orbit removes its satellite layer from the shared map", await L.evaluate(() => (window.__jarvisGoc?.hits ?? 0) < 50));
+  await L.fill("#bbSubject", "Airbus A350"); await L.click("#bbNew .goc-btn");
+  check("Blackbox builds a dossier with numbered sources and labelled interpretation", await L.waitForFunction(() => { const t = document.querySelector(".goc-op")?.textContent || ""; return /Key findings/i.test(t) && /Source fact/i.test(t) && /AI interpretation/i.test(t) && document.querySelectorAll(".bb-sources li").length >= 2; }, null, { timeout: 40000 }).then(() => true, () => false));
+  await L.click('#mcNav [data-mc="op-wayfinder"]');
+  await L.waitForSelector("#wfDest", { timeout: 15000 });
+  await L.fill("#wfDest", "Larnaca"); await L.click("#wfNew .goc-btn");
+  check("Wayfinder plans a trip with FCDO advice and nearby airports", await L.waitForFunction(() => /FCDO/.test(document.querySelector(".goc-op")?.textContent || "") && /LCA/.test(document.querySelector(".goc-op").textContent), null, { timeout: 30000 }).then(() => true, () => false));
+  await L.click('.goc-op [data-tab="itinerary"]');
+  check("the AI-drafted itinerary is labelled as an AI draft", await L.evaluate(() => /AI draft/.test(document.querySelector(".goc-op").textContent)));
+  await L.fill("#mcSay", "Open Operation Sentinel"); await L.press("#mcSay", "Enter");
+  check("“Open Operation Sentinel” works by voice/text", await L.waitForFunction(() => document.querySelector("#mcView")?.dataset.section === "op-sentinel" && /Operation Sentinel is open/.test(document.querySelector("#mcCaption")?.textContent || ""), null, { timeout: 15000 }).then(() => true, () => false));
+  await L.fill("#mcSay", "Show available public city webcams"); await L.press("#mcSay", "Enter");
+  check("webcams are listed but not embedded until their live status is verified", await L.waitForFunction(() => document.querySelectorAll(".goc-op [data-cam]").length >= 5 && /not verified/i.test(document.querySelector(".goc-op").textContent) && !document.querySelector(".goc-op iframe"), null, { timeout: 15000 }).then(() => true, () => false));
+  await L.fill("#mcSay", "Track the International Space Station"); await L.press("#mcSay", "Enter");
+  check("“Track the International Space Station” answers with a calculated position", await L.waitForFunction(() => /International Space Station is over .* calculated from orbital elements/.test(document.querySelector("#mcCaption")?.textContent || ""), null, { timeout: 20000 }).then(() => true, () => false), await L.textContent("#mcCaption"));
+  await L.click("#gocSitrep");
+  check("the Global Situation Report shows every line with its kind and source", await L.waitForFunction(() => { const b = document.querySelector(".goc-sitrep-box"); return b && b.getBoundingClientRect().height > 200 && document.querySelectorAll(".sitrep-items li").length >= 5 && [...document.querySelectorAll(".sitrep-nat")].every((x) => x.textContent.trim()); }, null, { timeout: 60000 }).then(() => true, () => false));
+  await L.screenshot({ path: path.join(out, "laptop-situation-report.png") });
+  await L.click("#gocSitrepX");
   await L.fill("#mcSay", "Show system architecture"); await L.press("#mcSay", "Enter");
   check("“Show system architecture” switches section by voice/text", await L.waitForFunction(() => document.querySelector("#mcView")?.dataset.section === "architecture", null, { timeout: 8000 }).then(() => true, () => false));
   await L.fill("#mcSay", "Tell me a long story"); await L.press("#mcSay", "Enter");

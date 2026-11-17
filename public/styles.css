@@ -987,9 +987,9 @@ html.mc-goc .mc-tab { border-radius: 4px; box-shadow: none; }
 .goc-sitrep-head { display: flex; gap: 8px; align-items: center; }
 .goc-sitrep-head h3 { flex: 1; margin: 0; }
 .goc { position: relative; }
-.sr-items { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
-.sr-nat { display: inline-block; min-width: 86px; font: 600 9.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--goc-dim); border: 1px solid var(--goc-line2); border-radius: 2px; padding: 0 4px; margin-right: 4px; text-align: center; }
-.sr-nat.n-live { color: var(--goc-ok); } .sr-nat.n-calculated { color: #a394e8; } .sr-nat.n-scheduled { color: #d39b6a; } .sr-nat.n-forecast { color: #6fc3d6; }
+.sitrep-items { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.sitrep-nat { display: inline-block; min-width: 86px; font: 600 9.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--goc-dim); border: 1px solid var(--goc-line2); border-radius: 2px; padding: 0 4px; margin-right: 4px; text-align: center; }
+.sitrep-nat.n-live { color: var(--goc-ok); } .sitrep-nat.n-calculated { color: #a394e8; } .sitrep-nat.n-scheduled { color: #d39b6a; } .sitrep-nat.n-forecast { color: #6fc3d6; }
 @media (max-width: 1360px) { .goc[data-mode^="op-"] { grid-template-columns: 230px minmax(0, 1fr) 400px; } .goc-sitrep { inset: 60px 12px 12px 12px; } }
 @media (max-width: 1024px) { .goc[data-mode^="op-"] { grid-template-columns: minmax(0, 1fr); } .goc-op { max-height: none; } .goc-right:has(.goc-op) { max-height: none; } }
 /* Printing a dossier, trip or situation report: only the print area */
@@ -1001,7 +1001,7 @@ html.mc-goc .mc-tab { border-radius: 4px; box-shadow: none; }
   .print-doc header { display: flex; justify-content: space-between; border-bottom: 1px solid #999; padding-bottom: 6px; margin-bottom: 12px; font: 9pt Arial, sans-serif; }
   .print-doc h4 { font: 700 11pt Arial, sans-serif; margin: 14px 0 4px; }
   .print-doc a { color: #124; word-break: break-all; }
-  .print-doc .goc-muted, .print-doc .bb-kind, .print-doc .sr-nat { color: #555 !important; border-color: #999 !important; }
+  .print-doc .goc-muted, .print-doc .bb-kind, .print-doc .sitrep-nat { color: #555 !important; border-color: #999 !important; }
   .print-doc .bb-findings li { border-left: 2px solid #999; background: none; }
   .print-doc img { max-height: 180px; }
 }

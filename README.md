@@ -1,4 +1,4 @@
-# JARVIS 6.5
+# JARVIS 6.6
 
 JARVIS is your personal AI system. It runs **entirely on your Windows laptop**, with no cloud server and no hosting bill.
 - **On the laptop** it listens for **"Hey JARVIS"** (or just **"JARVIS"**), keeps the conversation going without the wake word, rings alarms even with the window closed, and sits in the system tray.
@@ -40,8 +40,8 @@ JARVIS is your personal AI system. It runs **entirely on your Windows laptop**, 
 
 ## The 15 things to know
 
-### 1. Install or update to 6.5
-Download **`JARVIS-Setup-6.5.exe`** from **[Releases → "JARVIS for Windows (latest)"](https://github.com/9y6mfb88zk-eng/Dylan-Walsh/releases/tag/desktop-latest)** and run it.
+### 1. Install or update to 6.6
+Download **`JARVIS-Setup-6.6.exe`** from **[Releases → "JARVIS for Windows (latest)"](https://github.com/9y6mfb88zk-eng/Dylan-Walsh/releases/tag/desktop-latest)** and run it.
 - **Updating from 3.x:** your data, keys and settings are kept.
   - Before the database is upgraded, JARVIS saves a full copy to `%APPDATA%\JARVIS\data\backups\pre-migration-007-….db`.
 - **SmartScreen or Smart App Control** may block the unsigned installer:
@@ -109,6 +109,14 @@ Mission Control is a second operating mode of JARVIS, not a separate app. Say **
 - **Flight tracking:** search by callsign, ICAO24 or registration; filter by type, altitude and region; select an aircraft for its card (freshness, source, trail); follow it. Coverage is incomplete (volunteer receivers), and aircraft flagged military, LADD or privacy are never shown.
 - **Global Events:** conflicts, attacks, unrest, disasters, humanitarian emergencies, diplomacy and ceasefires — each with its source link, dates, location accuracy and a verification label. Filter by category, country, region, date, source and verification.
 - **Voice:** "Show me aircraft around Cyprus", "Zoom out to the worldwide air traffic map", "Select the nearest visible aircraft", "Find flight BA123", "Hide flight tracking", "Show me conflicts".
+
+**Operations (6.6)** are modules inside Mission Control: they share the core, the map, the data and the voice. Full details: [`docs/operations.md`](docs/operations.md).
+- **Blackbox:** sourced research dossiers. Every finding cites its numbered source; AI interpretation is labelled; PDF export.
+- **Wayfinder:** trip and expedition planning with the real forecast, FCDO advice, airports, routes, a labelled AI-drafted itinerary, checklists and check-in reminders.
+- **Sentinel:** watchlists that alert on new matching reports, extra official sources (NASA EONET, FAA), and verified public webcams.
+- **Orbit:** satellites and the ISS (calculated positions, ground tracks, 3D orbits), space weather and launches.
+- **Global Situation Report:** one briefing from all of the above; every line says whether it's live, reported, forecast, calculated or scheduled, with its source.
+- **Voice examples:** "Initiate Operation Wayfinder", "Plan a five-day trip to Iceland", "Track the International Space Station", "Show current space weather", "Show available public city webcams", "Generate a situation report".
 
 **Sections:**
 - **Global Operations, World Explorer, Global Events, Flight Tracking:** the operations display in its four modes.

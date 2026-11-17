@@ -37,7 +37,9 @@ export async function mount(el, A) {
     const period = 1440 / o.MEAN_MOTION, now = Date.now();
     for (let m = -period * 0.25; m <= period * 1.0; m += Math.max(0.5, period / 180)) { const p = posAt(o, new Date(now + m * 60_000)); if (p) S.track.push({ ...p, future: m > 0 }); }
   }
+  let dead = false;
   function tick() {
+    if (dead) return;
     const now = new Date(), pts = [];
     const max = S.elements.length > 1500 ? 1500 : S.elements.length;    // keep the canvas light for very large groups
     for (let i = 0; i < max; i++) {
@@ -115,6 +117,7 @@ export async function mount(el, A) {
     body.innerHTML = `<p class="goc-muted">Retrieving launch schedule…</p>`;
     try { S.launches = await api("/api/orbit/launches?limit=12"); } catch (e) { body.innerHTML = `<p class="goc-warnline">Launch schedule unavailable: ${esc(e.message)}</p>`; return; }
     const L = S.launches;
+    if (dead) return;
     A.setLayer("satellites", { points: L.items.filter((l) => l.lat != null).map((l) => ({ lat: l.lat, lon: l.lon, color: "#d39b6a", shape: "square", r: 4, label: l.name, sub: `${l.site} · ${fmt(l.net)}`, onClick: () => A.fly(l.lat, l.lon, 8) })), lines: [] });
     body.innerHTML = `<ol class="goc-evlist">${L.items.map((l) => `<li class="goc-ev"><div class="goc-ev-head"><span class="goc-ev-cat" style="--c:${l.confirmed ? "#5fb88a" : "#b9a66b"}"></span><span class="goc-ev-title">${esc(l.name)}</span></div>
       <div class="goc-ev-meta"><span>${esc(l.provider || "")}</span><span>${esc(l.site || "")}</span><span>${esc(fmt(l.net))}${l.netPrecision && !/Second|Minute/.test(l.netPrecision) ? ` · ${esc(l.netPrecision)} precision (estimate)` : ""}</span></div>
@@ -139,5 +142,5 @@ export async function mount(el, A) {
   await loadGroup("stations");
   A.setContext({ operation: "orbit" });
   S.timer = setInterval(() => { if (document.visibilityState !== "hidden" && S.tab === "track") tick(); }, 2000);
-  return { command, refresh: () => tick(), unmount() { clearInterval(S.timer); A.clearLayer("satellites"); A.on3d = null; A.globe()?.setPaths([]); } };
+  return { command, refresh: () => tick(), unmount() { dead = true; clearInterval(S.timer); A.clearLayer("satellites"); A.on3d = null; A.globe()?.setPaths([]); } };
 }

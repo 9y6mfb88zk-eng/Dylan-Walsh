@@ -446,6 +446,9 @@ const GOC_KEYS = [
   { k: "openskyClientId", name: "OpenSky client ID", what: "Continental and worldwide flight views. Anonymous: 400 credits a day (a worldwide view costs 4). A free account's API client gives 4,000. Non-commercial use only.", url: "https://opensky-network.org/my-opensky/account", secret: false },
   { k: "openskyClientSecret", name: "OpenSky client secret", what: "Goes with the client ID above.", url: null, secret: true },
   { k: "reliefwebAppname", name: "ReliefWeb appname", what: "UN OCHA disasters and humanitarian situations. ReliefWeb only answers requests carrying an appname they've approved; request one with their short form (free, reply by email).", url: "https://apidoc.reliefweb.int/parameters#appname", secret: false },
+  { k: "windyKey", name: "Windy Webcams API key", what: "Sentinel: public webcams near any map area. Free tier: embeddable timelapse player and preview images (links valid 15 minutes) — not live video. Free account, no payment.", url: "https://api.windy.com/webcams", secret: true },
+  { k: "youtubeKey", name: "YouTube Data API key", what: "Sentinel: confirms which operator-published webcam streams are live and embeddable before JARVIS shows them. Free Google Cloud key (daily quota; JARVIS checks each camera at most every 6 hours).", url: "https://developers.google.com/youtube/v3/getting-started", secret: true },
+  { k: "nasaKey", name: "NASA API key", what: "Orbit: NASA DONKI space-weather notifications. Without it JARVIS uses NASA's shared DEMO_KEY (a few requests an hour). Free, by email.", url: "https://api.nasa.gov/", secret: true },
   { k: "ucdpToken", name: "UCDP access token", what: "Researcher-coded conflict events from Uppsala University. Free; request a token by email (reply in 3–5 working days). Data is published with a delay of weeks.", url: "https://ucdp.uu.se/apidocs/", secret: true },
 ];
 Object.assign(SECTIONS, {

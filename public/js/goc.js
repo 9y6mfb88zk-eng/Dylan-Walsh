@@ -28,15 +28,16 @@ const OVERLAYS = [["boundaries", "Country boundaries"], ["labels", "Country name
   ["dossiers", "Blackbox research places"], ["trips", "Wayfinder routes & places"], ["webcams", "Sentinel webcams & watch areas"], ["satellites", "Orbit satellites"]];
 /** Operations (Mission Control modules). Their workspaces load only when first opened. */
 export const OPERATIONS = { "op-blackbox": "blackbox", "op-wayfinder": "wayfinder", "op-sentinel": "sentinel", "op-orbit": "orbit" };
+const OP_LAYERS_OFF = { dossiers: false, trips: false, webcams: false, satellites: false };
 const MODE_DEFAULTS = {
-  globalops: { events: true, conflict: true, flights: true },
-  world: { events: false, conflict: false, flights: false },
-  events: { events: true, conflict: true, flights: false },
-  flights: { events: false, conflict: false, flights: true },
-  "op-blackbox": { events: false, conflict: false, flights: false, dossiers: true },
-  "op-wayfinder": { events: false, conflict: false, flights: false, trips: true },
-  "op-sentinel": { events: true, conflict: true, flights: false, webcams: true },
-  "op-orbit": { events: false, conflict: false, flights: false, satellites: true },
+  globalops: { events: true, conflict: true, flights: true, ...OP_LAYERS_OFF },
+  world: { events: false, conflict: false, flights: false, ...OP_LAYERS_OFF },
+  events: { events: true, conflict: true, flights: false, ...OP_LAYERS_OFF },
+  flights: { events: false, conflict: false, flights: true, ...OP_LAYERS_OFF },
+  "op-blackbox": { events: false, conflict: false, flights: false, ...OP_LAYERS_OFF, dossiers: true },
+  "op-wayfinder": { events: false, conflict: false, flights: false, ...OP_LAYERS_OFF, trips: true },
+  "op-sentinel": { events: true, conflict: true, flights: false, ...OP_LAYERS_OFF, webcams: true },
+  "op-orbit": { events: false, conflict: false, flights: false, ...OP_LAYERS_OFF, satellites: true },
 };
 const altColor = (a) => (a.ground ? "#6b7785" : a.alt == null ? "#8893a0" : a.alt < 10000 ? "#5fb3b3" : a.alt < 25000 ? "#7aa2d6" : "#dfe8f2");
 const EMERGENCY = new Set(["7500", "7600", "7700"]);
