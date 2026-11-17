@@ -1,6 +1,6 @@
 # JARVIS — Project status
 
-_Last updated: 2026-11-16 — JARVIS 4.0 + Personal Intelligence, Voice Enhancement & Performance upgrade_
+_Last updated: 2026-11-17 — JARVIS 5.0 (4.0 + Personal Intelligence, Voice Enhancement & Performance + Mission Control)_
 
 This file is the hand-over document for the "JARVIS — Ultimate Upgrade & Redesign" specification. It lists what is done,
 what remains, known problems, technical decisions and exactly how to continue.
@@ -167,7 +167,7 @@ Measured here (software WebGL, no GPU):
    - packaged laptop mode: `npm run dist:linux-dir && xvfb-run -a node test/electron-local-e2e.js`
 4. Regenerate assets if needed: `npm run sounds` (alarm sounds) and `npm run icons` (app icons).
    - `desktop/scripts/sync-shared.js` copies the action allowlist and the alarm sounds into the desktop app; `npm run dist` runs it.
-5. Push to branch `claude/jarvis-prototype-spec-lpz2sl`. CI builds `JARVIS-Setup-<version>.exe` and publishes it to the `desktop-latest` release.
+5. Push to branch `claude/jarvis-prototype-spec-lpz2sl`. CI builds `JARVIS-Setup-5.0.exe` (the file name is set in `desktop/package.json` → `build.artifactName`; change it with the version) and publishes it to the `desktop-latest` release.
 
 ## Known issues / notes
 

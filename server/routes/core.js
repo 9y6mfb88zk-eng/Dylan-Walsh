@@ -181,7 +181,7 @@ router.post("/api/push/test", wrap(async (req, res) => res.json({ sent: await no
 router.get("/api/health", (req, res) => {
   const conns = connections.all().map(connections.view);
   res.json({
-    server: { ok: true, uptime: Math.round(process.uptime()), version: process.env.JARVIS_VERSION || process.env.npm_package_version || "4.0.0", env: config.env, node: process.version, hosting: config.hosting },
+    server: { ok: true, uptime: Math.round(process.uptime()), version: process.env.JARVIS_VERSION || process.env.npm_package_version || "5.0.0", env: config.env, node: process.version, hosting: config.hosting },
     services: healthReport(),
     desktops: desktopAgents(),
     connectedDevices: connectedDevices().length,

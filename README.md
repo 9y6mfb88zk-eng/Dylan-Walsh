@@ -1,4 +1,4 @@
-# JARVIS 4.0
+# JARVIS 5.0
 
 JARVIS is your personal AI system. It runs **entirely on your Windows laptop**, with no cloud server and no hosting bill.
 - **On the laptop** it listens for **"Hey JARVIS"** (or just **"JARVIS"**), keeps the conversation going without the wake word, rings alarms even with the window closed, and sits in the system tray.
@@ -40,8 +40,8 @@ JARVIS is your personal AI system. It runs **entirely on your Windows laptop**, 
 
 ## The 15 things to know
 
-### 1. Install or update to 4.0
-Download **`JARVIS-Setup-4.0.0.exe`** from **[Releases → "JARVIS for Windows (latest)"](https://github.com/9y6mfb88zk-eng/Dylan-Walsh/releases/tag/desktop-latest)** and run it.
+### 1. Install or update to 5.0
+Download **`JARVIS-Setup-5.0.exe`** from **[Releases → "JARVIS for Windows (latest)"](https://github.com/9y6mfb88zk-eng/Dylan-Walsh/releases/tag/desktop-latest)** and run it.
 - **Updating from 3.x:** your data, keys and settings are kept.
   - Before the database is upgraded, JARVIS saves a full copy to `%APPDATA%\JARVIS\data\backups\pre-migration-007-….db`.
 - **SmartScreen or Smart App Control** may block the unsigned installer:
@@ -211,7 +211,7 @@ The phone reaches JARVIS only while the laptop is on and awake.
   1. Exit JARVIS.
   2. Copy a backup over `%APPDATA%\JARVIS\data\jarvis.db`.
   3. Start JARVIS again.
-- **Updating:** download the newest `JARVIS-Setup-x.y.z.exe` from Releases and run it over the top. Data, keys and settings are kept, and the database upgrades itself (with a backup first).
+- **Updating:** download the newest `JARVIS-Setup-<version>.exe` from Releases and run it over the top. Data, keys and settings are kept, and the database upgrades itself (with a backup first).
 
 ## Credentials
 
