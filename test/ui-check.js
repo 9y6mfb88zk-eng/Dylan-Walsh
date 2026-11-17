@@ -123,6 +123,12 @@ try {
   if (pairErr) await P.screenshot({ path: path.join(out, "iphone-pair-error.png") });
   check("iPhone paired into the same account", !pairErr && !(await P.evaluate(() => document.querySelector("#app").hidden)), pairErr || "");
   await P.waitForSelector("#core", { timeout: 15000 });
+  // iPhone in Safari (not yet on the Home Screen): JARVIS explains how to install it, with the real buttons.
+  const guide = await P.waitForSelector("#iosInstall.in", { timeout: 12000 }).then(() => true, () => false);
+  check("iPhone Safari shows the Add to Home Screen guide", guide && /Add to Home Screen/.test(await P.textContent("#iosInstall")) && /Share/.test(await P.textContent("#iosInstall")));
+  await P.screenshot({ path: path.join(out, "iphone-install-guide.png") });
+  await P.click("#iosInstall [data-x].btn");
+  check("the install guide can be dismissed and stays dismissed", await P.waitForSelector("#iosInstall", { state: "detached", timeout: 3000 }).then(() => true, () => false) && await P.evaluate(() => Number(localStorage.getItem("jarvis.iosHint")) > Date.now()));
   await sleep(1200);
   check("iPhone shows the mobile navigation", await P.isVisible("#mobileNav"));
   await P.screenshot({ path: path.join(out, "iphone-home.png") });

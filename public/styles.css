@@ -716,3 +716,14 @@ html.mc-activating .panel, html.mc-deactivating .panel, html.mc-mode .mc-panel.m
 html.mc-activating .mc-panel:not(.mc-core-panel), html.mc-deactivating .mc-panel:not(.mc-core-panel), html.mc-activating #view .panel, html.mc-deactivating #view .panel { background: rgba(10, 8, 30, .92) !important; }
 @media (prefers-reduced-motion: reduce) { .mc-ring, .mc-edge.ok, .mc-banner-mark, .mc-state-dot.live, .mc-init li, .mc-arch.mc-draw .mc-node, .mc-arch.mc-draw .mc-edge { animation: none !important; } .mc-banner, .mc-banner-bar > i, body::after { transition: none !important; } }
 .reduce-motion .mc-ring, .reduce-motion .mc-edge.ok, .reduce-motion .mc-banner-mark, .reduce-motion .mc-state-dot.live, .reduce-motion .mc-init li { animation: none !important; }
+
+/* ---------------------------------------------------------------- iPhone install / notifications sheet */
+.ios-sheet { position: fixed; left: 12px; right: 12px; bottom: calc(84px + var(--safe-b, 0px)); z-index: 30; padding: 14px 16px; border-radius: 16px; border: 1px solid var(--edge-2);
+  box-shadow: var(--glow-strong, 0 0 30px rgba(0, 229, 255, .25)); transform: translateY(24px); opacity: 0; transition: transform .3s ease, opacity .3s ease; max-width: 520px; margin: 0 auto; }
+.ios-sheet.in { transform: none; opacity: 1; }
+.ios-title { display: inline-flex; align-items: center; gap: 8px; font: 600 16px var(--display); letter-spacing: .04em; color: var(--white); }
+.ios-title svg { width: 18px; height: 18px; color: var(--cyan-3); }
+.ios-steps { margin: 10px 0 12px; padding-left: 20px; display: grid; gap: 8px; font-size: 14px; }
+.ios-key { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 8px; border: 1px solid var(--edge-2); background: rgba(9, 24, 44, .8); color: var(--ice); font-weight: 600; white-space: nowrap; }
+.ios-key svg { color: var(--cyan-3); }
+.reduce-motion .ios-sheet { transition: none; }

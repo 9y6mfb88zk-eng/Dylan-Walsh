@@ -1,5 +1,6 @@
 // Voice I/O: neural TTS (streamed per sentence, interruptible), browser British voice fallback,
 // Web Speech or Whisper transcription with voice-activity detection, and live audio levels for the core.
+import { resampleTo16k } from "./resample.js";
 import { api } from "./api.js";
 import { core } from "./corestate.js";
 
@@ -241,8 +242,9 @@ export const voice = {
         this.setState("thinking");
         try {
           const wav = encodeWav16k(chunks, rate);
-          const { text } = await api("/api/transcribe", { method: "POST", raw: wav, headers: { "content-type": "audio/wav" } });
-          resolve(text || "");
+          const r = await api("/api/transcribe", { method: "POST", raw: wav, headers: { "content-type": "audio/wav" } });
+          this.lastResult = r;                    // text + confidence estimate, for "could you say that again?"
+          resolve(r.text || "");
         } catch (e) { reject(e); }
       };
       this.cancelListen = (d) => { discarded = d; finish(); };
@@ -261,17 +263,13 @@ export const voice = {
 if ("speechSynthesis" in window) speechSynthesis.onvoiceschanged = () => {};
 core.setLevelSource(() => voice.sample());
 
-/** Concatenate Float32 chunks, resample to 16 kHz and encode as 16-bit mono WAV. */
+/** Concatenate Float32 chunks, convert to 16 kHz (anti-aliased) and encode as 16-bit mono WAV. */
 export function encodeWav16k(chunks, rate) {
   const n = chunks.reduce((a, c) => a + c.length, 0);
   const all = new Float32Array(n); let o = 0; for (const c of chunks) { all.set(c, o); o += c.length; }
-  const ratio = rate / 16000, len = Math.floor(n / ratio);
-  const pcm = new Int16Array(len);
-  for (let i = 0; i < len; i++) {
-    const p = i * ratio, i0 = Math.floor(p), t = p - i0;
-    const v = (all[i0] ?? 0) + ((all[i0 + 1] ?? all[i0] ?? 0) - (all[i0] ?? 0)) * t;
-    pcm[i] = Math.max(-32768, Math.min(32767, Math.round(v * 32767)));
-  }
+  const s16 = resampleTo16k(all, rate);
+  const pcm = new Int16Array(s16.length);
+  for (let i = 0; i < s16.length; i++) pcm[i] = Math.max(-32768, Math.min(32767, Math.round(s16[i] * 32767)));
   const buf = new ArrayBuffer(44 + pcm.length * 2), dv = new DataView(buf);
   const w = (off, str) => { for (let i = 0; i < str.length; i++) dv.setUint8(off + i, str.charCodeAt(i)); };
   w(0, "RIFF"); dv.setUint32(4, 36 + pcm.length * 2, true); w(8, "WAVE"); w(12, "fmt ");

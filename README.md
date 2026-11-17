@@ -191,13 +191,22 @@ JARVIS always asks before changing or deleting anything in Google Calendar.
 Locks and doors ask for confirmation every time. JARVIS reads each device's state back from Home Assistant before saying it's done.
 
 ### 13. Your iPhone
-1. **Laptop:** install **Tailscale** (tailscale.com) and sign in.
-2. In JARVIS, go to **Settings → Devices & pairing → Turn on iPhone access**.
-3. **iPhone:** install Tailscale and sign in with the **same account**.
-4. On the laptop press **Show pairing code** and scan the code with the iPhone camera.
-5. In Safari: **Share → Add to Home Screen**. Then go to **Settings → Notifications → Turn on**.
+There's no App Store download. Apple only allows downloadable iPhone apps through the App Store, which needs a paid Apple developer account and a Mac to build. Instead, JARVIS installs straight from Safari onto your Home Screen. It gets its own icon, opens full-screen like an app, and can send notifications. It's the same JARVIS, connected to your laptop, with all your data.
 
-The phone reaches JARVIS only while the laptop is on and awake.
+**One-time setup (about 5 minutes):**
+1. **Laptop:** install **Tailscale** (tailscale.com, free) and sign in.
+2. **Laptop, in JARVIS:** **Settings → Devices & pairing → Turn on iPhone access**. You can also press **Ctrl+K** and choose "Set up JARVIS on my iPhone".
+3. **iPhone:** install **Tailscale** from the App Store and sign in with the **same account**. Leave it connected.
+4. **Laptop:** press **Show pairing code**.
+5. **iPhone:** point the **Camera** at the code and tap the link. It opens JARVIS in Safari, already signed in.
+6. **iPhone:** JARVIS shows how to install itself: tap **Share** at the bottom of Safari, then **Add to Home Screen**, then **Add**.
+7. **iPhone:** open **JARVIS from the new icon**. It offers to turn on **notifications**; tap **Turn on**. Apple only allows notifications for apps on the Home Screen.
+
+**On the iPhone:**
+- **What works:** everything except the wake word. That covers the Command Centre, Mission Control, voice (tap the core or the mic), alarms, reminders, money, projects, memory and every other section.
+- **"Hey JARVIS":** iPhones don't let any app listen in the background, so tap to talk instead.
+- **Speech recognition** runs on your laptop, the same as at the desk.
+- **Speed:** the phone reaches JARVIS only while the laptop is **on and awake**. If it isn't, the app opens offline, queues what you type, and sends it when the laptop is back.
 
 ### 14. Diagnostics and troubleshooting
 - **Diagnostics** shows every check with when it ran. **Test** makes a real request; history and logs (errors, API calls, security audit) are at the bottom. On the laptop you can also test the **microphone** and **speakers**.

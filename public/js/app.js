@@ -9,6 +9,7 @@ import { mountCore } from "./core.js";
 import { mission } from "./mission.js";
 import { handleUi, tryMacro } from "./commands.js";
 import { beginStartup } from "./startup.js";
+import { showInstallGuide, offerNotifications, isIOS } from "./iphone.js";
 import { $, $$, esc, toast, icon, fmtWhen, debounce, setDisplayTz } from "./util.js";
 
 const desktop = window.jarvisDesktop || null;           // present only inside the Windows app
@@ -187,6 +188,7 @@ const ACTIONS = [
   { label: "Record spending", icon: "money", run: () => go("money", { record: "1" }) },
   { label: "New note", icon: "memory", run: () => go("memory", { note: "1" }) },
   { label: "Session history", icon: "memory", run: () => go("memory", { history: "1" }) },
+  { label: "Set up JARVIS on my iPhone", icon: "mic", run: () => (isIOS() && !desktop ? showInstallGuide({ force: true }) : go("settings", { section: "devices" })) },
   { label: "Personal profile (what JARVIS knows about you)", icon: "memory", run: () => go("memory") },
   { label: "Run diagnostics", icon: "diagnostics", run: () => go("diagnostics") },
   { label: "Run full system diagnostics (spoken)", icon: "diagnostics", run: () => ctx.handleUi({ kind: "diagnostics", level: "full" }, { speak: shouldSpeakTyped() }) },
@@ -494,6 +496,8 @@ async function start() {
   boot?.step("Command centre", view.then(() => ""));
   boot?.finish();
   await view;
+  // iPhone: guide the Home Screen install in Safari; once installed, offer notifications (a tap is required).
+  if (!desktop && isIOS()) setTimeout(() => { showInstallGuide() || offerNotifications(ctx); }, boot ? 2600 : 900);
 }
 function partOfDayLocal() { const h = Number(new Date().toLocaleString("en-GB", { timeZone: ctx.settings.timezone, hour: "2-digit", hour12: false })); return h < 12 ? "morning" : h < 18 ? "afternoon" : "evening"; }
 

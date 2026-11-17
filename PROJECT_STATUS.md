@@ -131,6 +131,19 @@ Measured here (software WebGL, no GPU):
 - The animation itself is designed to take ~2.3 s, but here frames come at 1–2 fps, so stages 1–4 took 7–8 s, mostly waiting for frames.
 - On a real GPU the animations run at display rate. That could not be measured here.
 
+## iPhone
+
+- **How it's delivered:** an installable Home Screen web app (PWA), served from the laptop over Tailscale with HTTPS. A native or App Store build would need an Apple Developer account and a Mac; it's not possible from here.
+- **Added in this round:**
+  - In Safari, JARVIS shows how to add itself to the Home Screen (iPhone/iPad detection; separate wording for Chrome/Firefox on iOS). Dismissal is remembered.
+  - When opened from the Home Screen icon, a one-tap prompt turns on notifications (Apple requires a tap). Settings uses the same helper.
+  - iPhone/browser audio is converted to 16 kHz with an anti-aliasing filter (`public/js/resample.js`). Previously a 12 kHz tone passed at full strength; now it's removed, and speech below 4 kHz passes unchanged. Unit tested.
+  - Low-confidence speech on the phone triggers "could you say that again?", as on the laptop.
+  - The offline cache (service worker v5) includes every app module, so the installed app opens offline.
+  - The laptop's palette has "Set up JARVIS on my iPhone".
+- **Tested:** Chromium emulating an iPhone 13. That covers pairing by QR link, the install guide, layout, conversation sync, reminders, Mission Control and offline queueing.
+- **Not tested:** real Safari / WebKit isn't available in this environment. Real-iPhone microphone, Home Screen install and push still need checking on the device.
+
 ## Test results (latest run)
 
 | Suite | Result |

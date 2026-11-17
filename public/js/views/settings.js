@@ -193,11 +193,9 @@ const SECTIONS = {
     $("#push")?.addEventListener("click", async () => {
       const reg = await navigator.serviceWorker.ready;
       if (sub) { await api("/api/push/unsubscribe", { method: "POST", body: { endpoint: sub.endpoint } }); await sub.unsubscribe(); return draw(ctx); }
-      if ((await Notification.requestPermission()) !== "granted") return toast("Notifications weren't allowed.");
-      const key = ctx.session.vapidPublicKey; const pad = "=".repeat((4 - (key.length % 4)) % 4);
-      const bytes = Uint8Array.from(atob((key + pad).replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
-      const s = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: bytes });
-      await api("/api/push/subscribe", { method: "POST", body: s.toJSON() }); toast("Notifications on, sir."); draw(ctx);
+      void reg;
+      try { await (await import("../iphone.js")).enablePush(ctx); toast(`Notifications on, ${ctx.settings.profile?.title || "Sir"}.`); } catch (e) { toast(e.message, 7000); }
+      draw(ctx);
     });
   },
 

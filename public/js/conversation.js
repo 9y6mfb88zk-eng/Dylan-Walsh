@@ -183,8 +183,13 @@ export const conversation = {
       voice.setState("idle");
       return "";
     }
+    voice.lastResult = null;
     const t = await voice.listen({ noSpeechMs, onPartial: (p) => ctx.caption(p || "Listening…", true) });
-    return isHallucination(t) ? "" : t;
+    if (isHallucination(t)) return "";
+    // Phone/browser recordings get the same confidence check as the laptop (Safari's own recogniser gives none).
+    const r = voice.lastResult;
+    this.lastHeard = r && r.text === t ? { text: t, confidence: r.confidence, latencyMs: r.latencyMs, engine: r.engine } : null;
+    return t;
   },
   async transcribe(wav, { partial = false } = {}) {
     voice.setState("thinking");
