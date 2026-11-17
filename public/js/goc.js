@@ -130,7 +130,8 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
     if (k === "labels" && on) loadLabels();
     if (k === "radar") { if (on && !radar) radar = Lf.tileLayer("/tiles/radar/{z}/{x}/{y}", { ...tileOpts("radar"), maxNativeZoom: 7, opacity: 0.7, attribution: '<a href="https://www.rainviewer.com/" target="_blank" rel="noopener">Weather data by RainViewer</a>' }).addTo(map); else if (!on && radar) { map.removeLayer(radar); radar = null; } }
     if (k === "boundaries") { if (on) loadBoundaries(); else if (bounds) { map.removeLayer(bounds); bounds = null; } }
-    if (k === "flights") { if (on) pollFlights(true); else { st.selected = null; hideCard(); } renderBottom("flights"); }
+    if (k === "flights") { if (on) pollFlights(true); else { st.selected = null; hideCard(); } renderBottom("flights"); if (st.mode === "flights") renderRight(); }
+    if (k === "trails" && st.mode === "flights") renderRight();
     if (k === "events" || k === "conflict") renderRight();
     draw(); renderLegend();
   }
