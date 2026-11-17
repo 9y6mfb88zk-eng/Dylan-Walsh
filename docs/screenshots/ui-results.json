@@ -47,7 +47,7 @@
   {
     "name": "core speaks with a level driven by the real voice audio",
     "ok": true,
-    "detail": "level 0.52"
+    "detail": "level 0.36"
   },
   {
     "name": "caption shows the streamed reply",
@@ -467,7 +467,7 @@
   {
     "name": "“Track the International Space Station” answers with a calculated position",
     "ok": true,
-    "detail": "The International Space Station is over 34° south, 141° west, at about 429 kilometres, Sir — calculated from orbital elements 6 hours old."
+    "detail": "The International Space Station is over 34° south, 144° west, at about 429 kilometres, Sir — calculated from orbital elements 6 hours old."
   },
   {
     "name": "the Global Situation Report shows every line with its kind and source",
@@ -507,17 +507,17 @@
   {
     "name": "the same single core moves into Mission Control and back on every route, with no second click",
     "ok": true,
-    "detail": "[{\"name\":\"the Exit button\",\"enterMs\":2638,\"exitMs\":653,\"inMc\":true,\"n\":1,\"home\":true,\"shown\":true,\"alive\":1,\"drew\":3},{\"name\":\"the Mission Control button\",\"enterMs\":2365,\"exitMs\":650,\"inMc\":true,\"n\":1,\"home\":true,\"shown\":true,\"alive\":1,\"drew\":3},{\"name\":\"the command palette\",\"enterMs\":2072,\"exitMs\":9,\"inMc\":true,\"n\":1,\"home\":true,\"shown\":true,\"alive\":1,\"drew\":6},{\"name\":\"the Exit button (again)\",\"enterMs\":1658,\"exitMs\":649,\"inMc\":true,\"n\":1,\"home\":true,\"shown\":true,\"alive\":1,\"drew\":4}]"
+    "detail": "[{\"name\":\"the Exit button\",\"enterMs\":2977,\"exitMs\":652,\"inMc\":true,\"n\":1,\"home\":true,\"shown\":true,\"alive\":1,\"drew\":3},{\"name\":\"the Mission Control button\",\"enterMs\":2143,\"exitMs\":657,\"inMc\":true,\"n\":1,\"home\":true,\"shown\":true,\"alive\":1,\"drew\":2},{\"name\":\"the command palette\",\"enterMs\":2430,\"exitMs\":23,\"inMc\":true,\"n\":1,\"home\":true,\"shown\":true,\"alive\":1,\"drew\":4},{\"name\":\"the Exit button (again)\",\"enterMs\":1628,\"exitMs\":660,\"inMc\":true,\"n\":1,\"home\":true,\"shown\":true,\"alive\":1,\"drew\":2}]"
   },
   {
     "name": "entering Mission Control is interactive within about 1–2 seconds",
     "ok": true,
-    "detail": "2638 ms, 2365 ms, 2072 ms, 1658 ms"
+    "detail": "2977 ms, 2143 ms, 2430 ms, 1628 ms"
   },
   {
     "name": "leaving returns the core to the Command Centre within about a second",
     "ok": true,
-    "detail": "653 ms, 650 ms, 9 ms, 649 ms"
+    "detail": "652 ms, 657 ms, 23 ms, 660 ms"
   },
   {
     "name": "Mission Control enter and exit sounds are generated on the device and audible",
@@ -537,7 +537,7 @@
   {
     "name": "Settings → Interface: turning transitions off is saved and makes the switch instant",
     "ok": true,
-    "detail": "516 ms"
+    "detail": "463 ms"
   },
   {
     "name": "Global Events list has a real scroll area and its last item is reachable",
@@ -587,7 +587,7 @@
   {
     "name": "a spoken reply stops the moment it's interrupted",
     "ok": true,
-    "detail": "{\"heard\":\"Once upon a time, Sir, there was a laptop. It woke at seven.\",\"clientId\":\"9a3c1071-c83a-44c6-9360-c6dc9750726e\",\"firstAudioMs\":303,\"stopMs\":2,\"stopped\":true,\"faultState\":\"error\",\"after\":\"idle\"}"
+    "detail": "{\"heard\":\"Once upon a time, Sir, there was a laptop. It woke at seven.\",\"clientId\":\"4c6069dc-6b91-415c-9d4f-1bb5892b9ad8\",\"firstAudioMs\":255,\"stopMs\":2,\"stopped\":true,\"faultState\":\"error\",\"after\":\"idle\"}"
   },
   {
     "name": "JARVIS records how much of an interrupted reply was actually heard",
@@ -632,7 +632,7 @@
   {
     "name": "reduced motion: the same stages and checks, with no movement",
     "ok": true,
-    "detail": "4022 ms · start@0 1@5 core ready@7 built@10 2@78 map ready@125 outs done@125 core moved@126 rendered@126 enters done@146 3@146 interactive@147 4@4027 · moving: "
+    "detail": "3739 ms · start@0 1@6 core ready@6 built@9 2@73 map ready@116 outs done@116 core moved@118 rendered@118 enters done@133 3@133 interactive@133 4@3745 · moving: "
   },
   {
     "name": "“Run a quick diagnostic” shows the narrated report",
@@ -642,7 +642,7 @@
   {
     "name": "report's spoken lines name the real checks",
     "ok": true,
-    "detail": " Quick diagnostics6 checks · 0.3 s · Tue 17 Nov, 22:57\n    Artificial intelligence coreclaude-opus-5-5 · last success 5s agoVoice recognitionOpenAI Whisper (clo"
+    "detail": " Quick diagnostics6 checks · 0.3 s · Tue 17 Nov, 23:10\n    Artificial intelligence coreclaude-opus-5-5 · last success 5s agoVoice recognitionOpenAI Whisper (clo"
   },
   {
     "name": "performance panel shows live measurements",
@@ -676,8 +676,8 @@
   },
   {
     "name": "the database check really queried it",
-    "ok": false,
-    "detail": ""
+    "ok": true,
+    "detail": "operational: online · schema 010 · 0.5 MB · 3 open tasks · query 0.4 ms"
   },
   {
     "name": "the microphone line distinguishes devices from permission",
@@ -697,7 +697,7 @@
   {
     "name": "Stage 4: the summary matches the actual results",
     "ok": true,
-    "detail": "SYSTEM INITIALISATION FAILED (expected SYSTEM INITIALISATION FAILED)"
+    "detail": "SYSTEM INITIALISED — ATTENTION REQUIRED (expected SYSTEM INITIALISED — ATTENTION REQUIRED)"
   },
   {
     "name": "problems are listed in plain language with a diagnostics action",
@@ -712,7 +712,7 @@
   {
     "name": "sound is reported honestly (played only with a measured signal)",
     "ok": true,
-    "detail": "no signal · level 0"
+    "detail": "playing · level 0.0484"
   },
   {
     "name": "tap enters the Command Centre without reloading",
@@ -722,7 +722,7 @@
   {
     "name": "the Command Centre agrees with the start-up result",
     "ok": true,
-    "detail": "JARVIS is online. 14 items need attention."
+    "detail": "JARVIS is online. 8 items need attention."
   },
   {
     "name": "Diagnostics shows the last start-up report",

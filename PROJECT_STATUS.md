@@ -206,8 +206,10 @@ conversation, voice, recognition and look are improved. Full description: `docs/
 | Suite | Result |
 |---|---|
 | Conversation tests (`test/conversation.test.js`) | 15 / 15, including the local voice (run with `JARVIS_TEST_TTS_DIR`) |
-| Server and unit tests (`npm test`) | see the 6.8 release run |
-| UI checks (`npm run test:ui`) | see the 6.8 release run |
+| Server and unit tests (`npm test`) | 121 passed, 0 failed, 1 skipped (the local voice test needs the model path) |
+| Desktop app tests | 13 / 13 |
+| UI checks (`npm run test:ui`) | 156 / 156 on the final run. New checks: an interrupted reply stops in about 1 ms and the heard text is recorded; the core's Fault state appears and clears; Settings offers only usable voices; form of address; the microphone chip |
+| Layout audit, every tab at 1536×864 | Clean (Diagnostics honestly reports "no microphone" on this machine) |
 | Speech recognition with noise (`scripts/asr-noise.mjs`) | `docs/asr-noise-6.8.json` |
 | Earlier recogniser benchmark (`scripts/asr-bench.mjs`, gate off/on) | Identical: 2.6 % overall, 0 % quiet speech |
 | "Wait" / "Hold on" keyword spotting on synthesised speech | 8 / 8 detected; "Stop" dropped (0 / 2, plus a false trigger) |
