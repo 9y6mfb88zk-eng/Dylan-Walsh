@@ -313,7 +313,7 @@ try {
   await L.goto(`${base}/?tab=settings`); await L.waitForSelector('.tabs [data-s="interface"]', { timeout: 15000 });
   await L.click('.tabs [data-s="interface"]');
   await L.waitForSelector("#ifTrans", { state: "attached", timeout: 10000 });
-  await L.locator("#ifTrans").uncheck({ force: true }); await sleep(600);
+  await L.click("label:has(#ifTrans)"); await sleep(800);
   const savedOff = await L.evaluate(async () => (await (await fetch("/api/settings")).json()).interface?.transitions === false);
   await L.evaluate(() => { window.__mcTimeline = []; });
   await L.click("#mcBtn");
@@ -321,6 +321,7 @@ try {
   const instantMs = await L.evaluate(() => { const t = window.__mcTimeline, a = t.find((x) => x.label === "start"), b = t.find((x) => x.label === "interactive"); return a && b ? b.t - a.t : null; });
   check("Settings → Interface: turning transitions off is saved and makes the switch instant", savedOff && instantMs != null && instantMs < 1500, `${instantMs} ms`);
   // Global Events: the list scrolls to its last item; filters and sources fold away
+  await L.waitForSelector(".goc-evlist [data-ev]", { timeout: 30000 }).catch(() => {});
   check("Global Events list has a real scroll area and its last item is reachable", await L.evaluate(async () => { const l = document.querySelector(".goc-evlist"); if (!l || l.clientHeight < 150) return false; l.scrollTop = l.scrollHeight; await new Promise((r) => setTimeout(r, 300)); const last = [...l.children].at(-1).getBoundingClientRect(), box = l.getBoundingClientRect(); return last.bottom <= box.bottom + 2 && document.documentElement.scrollHeight <= innerHeight + 1; }));
   await L.click("#gocEvFilt");
   check("event filters open and close without hiding the list", await L.evaluate(() => !document.querySelector(".goc-feed-filters").hidden && document.querySelector(".goc-evlist").clientHeight > 60));

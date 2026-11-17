@@ -24,6 +24,18 @@ JARVIS is your personal AI system. It runs **entirely on your Windows laptop**, 
 - **ElevenLabs voice** is optional and has a free tier.
 - **Weather** is free (Open-Meteo).
 
+## What's new in 6.7
+
+| Area | What you get |
+|---|---|
+| **Mission Control transitions** | One JARVIS core that travels between the Command Centre and Mission Control. It is never rebuilt, never duplicated and never missing, and there's no second click. Entering takes about 1.5 s: the screen dims, the core brightens, an energy pulse goes out, the map expands and the panels slide in. Leaving is the reverse, in about 1 s |
+| **Transition sounds** | Original sounds made on the device: a low activation tone, beeps, a rising sweep and a confirmation tone; the reverse on exit. Settings → Interface has on/off, volume, reduced and silent |
+| **Fits your screen** | Mission Control ends exactly at the bottom of the window. Global Events scrolls through every result, and its filters fold away. The map controls are dark, and the bottom panels adapt to narrow laptop screens |
+| **World Explorer** | A larger map workspace. Search for countries, cities and places; see local time, weather, country facts, UK travel advice and nearby airports; save places; click the map to identify a country; expand the map |
+| **Settings → Interface** | Transitions on/off and speed, sounds and volume, reduced motion, reduced visual effects, automatic map resize and map animations |
+
+Details and measurements: `PROJECT_STATUS.md` → "JARVIS 6.7" and `docs/performance.md` → "JARVIS 6.7".
+
 ## What's new in 4.0
 
 | Area | What you get |

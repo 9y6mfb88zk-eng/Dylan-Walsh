@@ -428,7 +428,7 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
   const right = $("#gocRight", root);
   function renderRight() {
     if (OPERATIONS[st.mode]) return mountOperation(OPERATIONS[st.mode]);
-    if (st.opMod) { st.opMod.unmount?.(); st.opMod = null; st.opName = null; st.opContext = null; }
+    if (st.opMod || st.opLoading) { st.opMod?.unmount?.(); st.opMod = null; st.opName = null; st.opContext = null; st.opLoading = null; }
     if (st.mode === "flights") return renderFlightPanel();
     if (st.mode === "world") return renderWorld();
     const E = st.events, f = st.evFilter;
@@ -748,15 +748,24 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
     globe: () => st.globe, show3d: (on) => toggle3d(on),
     on3d: null,
   };
-  async function mountOperation(name) {
-    if (st.opName === name && st.opMod) { st.opMod.refresh?.(); return; }
+  // One load per operation: a command that arrives while it is still loading waits for the same load
+  // (starting a second one used to leave the command's results in a panel that had been replaced).
+  function mountOperation(name) {
+    if (st.opName === name && st.opMod) { st.opMod.refresh?.(); return Promise.resolve(st.opMod); }
+    if (st.opName === name && st.opLoading) return st.opLoading;
     st.opMod?.unmount?.(); st.opMod = null; st.opName = name; st.opContext = { operation: name };
     right.innerHTML = `<section class="goc-box goc-feed goc-op" data-op="${name}"><p class="goc-muted">Loading Operation ${esc(name[0].toUpperCase() + name.slice(1))}…</p></section>`;
-    try {
-      const mod = await import(`./ops/${name}.js`);
-      if (st.opName !== name || st.destroyed) return;
-      st.opMod = await mod.mount($(".goc-op", right), opApi);
-    } catch (e) { right.innerHTML = `<section class="goc-box"><h3>Operation ${esc(name)}</h3><p class="goc-warnline">This operation couldn't load: ${esc(e.message)}</p></section>`; }
+    const p = st.opLoading = (async () => {
+      try {
+        const mod = await import(`./ops/${name}.js`);
+        if (st.opName !== name || st.destroyed) return null;
+        const m = await mod.mount($(".goc-op", right), opApi);
+        if (st.opName !== name || st.destroyed) { m?.unmount?.(); return null; }
+        st.opMod = m; return m;
+      } catch (e) { right.innerHTML = `<section class="goc-box"><h3>Operation ${esc(name)}</h3><p class="goc-warnline">This operation couldn't load: ${esc(e.message)}</p></section>`; return null; }
+      finally { if (st.opLoading === p) st.opLoading = null; }
+    })();
+    return p;
   }
   function printHtml(title, html) {
     let area = document.getElementById("printArea");
@@ -852,7 +861,7 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
     setMode,
     context: () => ({ section: st.mode, operation: st.opName, ...(st.opContext || {}), selectedAircraft: opApi.selectedAircraft() }),
     openSitrep,
-    opCommand: async (cmd) => { if (!st.opMod) await mountOperation(OPERATIONS[st.mode] || cmd.op); for (let i = 0; i < 40 && !st.opMod; i++) await new Promise((r) => setTimeout(r, 100)); return st.opMod?.command ? st.opMod.command(cmd) : { ok: false, error: "That operation isn't ready." }; },
+    opCommand: async (cmd) => { const m = st.opMod || await mountOperation(OPERATIONS[st.mode] || cmd.op); return m?.command ? m.command(cmd) : { ok: false, error: "That operation isn't ready." }; },
     info: () => ({ mode: st.mode, operation: st.opName, layers: { ...st.layers }, base: st.base, aircraft: st.flights?.list?.length ?? null, events: st.events?.total ?? null, selected: st.selected?.hex || null, flightSource: st.flights?.attribution?.name || null, flightError: st.flightErr, view3d: st.view3d, center: map.getCenter(), zoom: map.getZoom() }),
     /** Voice / AI commands. Each answers only from data actually retrieved. */
     async command(c) {

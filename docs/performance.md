@@ -199,3 +199,34 @@ rendering). Raw data: `docs/perf-6.6-ops.json`.
 
 No optimisation was made because nothing measured needed it. Very large satellite groups are limited to 1,500
 objects on the map by design.
+
+## JARVIS 6.7: Mission Control refinement
+
+Measured with `node scripts/perf-transitions.mjs <checkout> <port> <label>`, the same script run on the 6.6 build
+(before) and on 6.7 (after). Both runs used the same container, a 1536×864 window (your laptop at 125 %), stand-in
+providers and software WebGL (about 5 frames a second). Raw data: `docs/perf-6.7-before.json` and
+`docs/perf-6.7-after.json`.
+
+| Measurement | 6.6 | 6.7 |
+|---|---|---|
+| Click → Mission Control interactive (median of 9 / 12) | 7,219 ms (waited for every check) | 1,956 ms (the checks finish in the core panel afterwards) |
+| Exit button → core back in the Command Centre | 1,486 / 934 ms | 733 / 680 ms |
+| Palette → Command Centre, core back | 4,020 / 3,742 ms (core rebuilt) | 105 / 228 ms |
+| Browser Back → Command Centre, core back | 4,064 / 3,180 ms (core rebuilt) | 181 / 73 ms |
+| 3D (WebGL) contexts created by 5 visits to the Command Centre | 10 | 0 |
+| WebGL contexts created in the whole run | 21 | 3 |
+| JS heap after each Mission Control cycle (after GC) | 44.3 → 47.4 MB, then a stuck activation on the 4th cycle | 11.7 → 11.9 MB over 6 cycles |
+| Page elements after each cycle | 539 → 1,429 (a Mission Control left behind) | 540 → 540 |
+
+Leak check (8 enter/exit cycles, 6.7): active intervals 7 → 7, window/document listeners 35 → 35, enter time
+1.7–2.2 s with no upward trend.
+
+**Global Events:**
+- **Before:** the list rendered 150 rows into a 33 px window at 1366×768. Anything past row 150 could not be reached.
+- **After:** it renders 60 rows at a time as you scroll, so every result can be reached. The list gets 402 px at
+  1280×800 (216 px with filters and sources open) and 459 px at 1536×864, and the page itself never scrolls.
+
+**Enter timing on this machine:** the enter animation is designed to take about 1.6 s. On this software-rendered
+machine it is interactive in 1.6–2.2 s (2.9 s once, under the load of the full UI test run), because slow frames
+delay the timers. A laptop with a GPU draws frames in milliseconds and should land close to 1.6 s. That has not been
+measured here.

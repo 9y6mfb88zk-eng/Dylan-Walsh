@@ -47,7 +47,7 @@
   {
     "name": "core speaks with a level driven by the real voice audio",
     "ok": true,
-    "detail": "level 0.48"
+    "detail": "level 0.38"
   },
   {
     "name": "caption shows the streamed reply",
@@ -282,12 +282,12 @@
   {
     "name": "initialisation shows the real service checks",
     "ok": true,
-    "detail": "warn: Initialising system architecture — 33 components mapped · 2 need attention | ok: Checking AI core — responding · 8 ms | ok: Verifying voice interface — recognition ready, voice output ready · tap or type on this device | ok: Establishing local system connections — live link up · browser session · 2 devices online | warn: Connecting public flight data — flight layer off | ok: Retrieving global events — 7 reports · 5 of 5 sources live | ok: Loading operational overview — 0 events · 0 overdue · 1 due today · 0 unread | warn: Mission Control active — 2 of 7 checks need attention"
+    "detail": "warn: Initialising system architecture — 33 components mapped · 2 need attention | ok: Checking AI core — responding · 3 ms | ok: Verifying voice interface — recognition ready, voice output ready · tap or type on this device | ok: Establishing local system connections — live link up · browser session · 2 devices online | ok: Connecting public flight data — 1,071 aircraft visible · OpenSky Network | ok: Retrieving global events — 7 reports · 5 of 5 sources live | ok: Loading operational overview — 0 events · 0 overdue · 1 due today · 0 unread | warn: Mission Control active — 1 of 7 checks need attention"
   },
   {
     "name": "the flight and events checks report what was actually retrieved",
-    "ok": false,
-    "detail": "warn: Connecting public flight data — flight layer off | ok: Retrieving global events — 7 reports · 5 of 5 sources live"
+    "ok": true,
+    "detail": "ok: Connecting public flight data — 1,071 aircraft visible · OpenSky Network | ok: Retrieving global events — 7 reports · 5 of 5 sources live"
   },
   {
     "name": "no check is shown as passed without a result",
@@ -317,7 +317,7 @@
   {
     "name": "Mission Control announces only what initialised",
     "ok": true,
-    "detail": "Mission Control is online, Sir. 2 services need attention: system architecture, public flight data."
+    "detail": "Mission Control is online, Sir. One service needs attention: system architecture."
   },
   {
     "name": "aircraft from the flight provider are on the map, privacy-flagged ones excluded",
@@ -461,13 +461,13 @@
   },
   {
     "name": "webcams are listed but not embedded until their live status is verified",
-    "ok": false,
+    "ok": true,
     "detail": ""
   },
   {
     "name": "“Track the International Space Station” answers with a calculated position",
     "ok": true,
-    "detail": "The International Space Station is over 32° south, 93° west, at about 429 kilometres, Sir — calculated from orbital elements 6 hours old."
+    "detail": "The International Space Station is over 34° south, 109° west, at about 429 kilometres, Sir — calculated from orbital elements 6 hours old."
   },
   {
     "name": "the Global Situation Report shows every line with its kind and source",
@@ -507,17 +507,17 @@
   {
     "name": "the same single core moves into Mission Control and back on every route, with no second click",
     "ok": true,
-    "detail": "[{\"name\":\"the Exit button\",\"enterMs\":3814,\"exitMs\":653,\"inMc\":true,\"n\":1,\"home\":true,\"shown\":true,\"alive\":1,\"drew\":4},{\"name\":\"the Mission Control button\",\"enterMs\":3536,\"exitMs\":658,\"inMc\":true,\"n\":1,\"home\":true,\"shown\":true,\"alive\":1,\"drew\":4},{\"name\":\"the command palette\",\"enterMs\":3642,\"exitMs\":8,\"inMc\":true,\"n\":1,\"home\":true,\"shown\":true,\"alive\":1,\"drew\":5},{\"name\":\"the Exit button (again)\",\"enterMs\":2009,\"exitMs\":657,\"inMc\":true,\"n\":1,\"home\":true,\"shown\":true,\"alive\":1,\"drew\":3}]"
+    "detail": "[{\"name\":\"the Exit button\",\"enterMs\":2911,\"exitMs\":650,\"inMc\":true,\"n\":1,\"home\":true,\"shown\":true,\"alive\":1,\"drew\":3},{\"name\":\"the Mission Control button\",\"enterMs\":2498,\"exitMs\":649,\"inMc\":true,\"n\":1,\"home\":true,\"shown\":true,\"alive\":1,\"drew\":4},{\"name\":\"the command palette\",\"enterMs\":1661,\"exitMs\":9,\"inMc\":true,\"n\":1,\"home\":true,\"shown\":true,\"alive\":1,\"drew\":5},{\"name\":\"the Exit button (again)\",\"enterMs\":1640,\"exitMs\":651,\"inMc\":true,\"n\":1,\"home\":true,\"shown\":true,\"alive\":1,\"drew\":4}]"
   },
   {
     "name": "entering Mission Control is interactive within about 1–2 seconds",
-    "ok": false,
-    "detail": "3814 ms, 3536 ms, 3642 ms, 2009 ms"
+    "ok": true,
+    "detail": "2911 ms, 2498 ms, 1661 ms, 1640 ms"
   },
   {
     "name": "leaving returns the core to the Command Centre within about a second",
     "ok": true,
-    "detail": "653 ms, 658 ms, 8 ms, 657 ms"
+    "detail": "650 ms, 649 ms, 9 ms, 651 ms"
   },
   {
     "name": "Mission Control enter and exit sounds are generated on the device and audible",
@@ -531,13 +531,218 @@
   },
   {
     "name": "interface settings are validated",
-    "ok": false,
-    "detail": "status 403"
+    "ok": true,
+    "detail": "status 400"
   },
   {
-    "name": "ui run completed",
+    "name": "Settings → Interface: turning transitions off is saved and makes the switch instant",
+    "ok": true,
+    "detail": "449 ms"
+  },
+  {
+    "name": "Global Events list has a real scroll area and its last item is reachable",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "event filters open and close without hiding the list",
     "ok": false,
-    "detail": "page.waitForSelector: Timeout 10000ms exceeded. Call log: \u001b[2m  - waiting for locator('#ifTrans') to be visible\u001b[22m"
+    "detail": ""
+  },
+  {
+    "name": "the map zooms with its controls",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the map's zoom and attribution controls use the dark theme",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "World Explorer is a larger map workspace (no bottom panels)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "World Explorer search finds a place and shows its weather, country facts and airports",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "a searched place can be saved to your places",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "clicking the map identifies the country there (offline boundaries)",
+    "ok": true,
+    "detail": "Germany"
+  },
+  {
+    "name": "Expand map gives the map the whole workspace and restores it",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the Mission Control button activates it",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Esc leaves Mission Control",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "reduced motion: start-up runs its checks with no animation",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "reduced motion: the same stages and checks, with no movement",
+    "ok": true,
+    "detail": "3128 ms · start@0 1@7 core ready@10 built@15 2@113 map ready@154 outs done@154 core moved@155 rendered@155 enters done@177 3@177 interactive@177 4@3135 · moving: "
+  },
+  {
+    "name": "“Run a quick diagnostic” shows the narrated report",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "report's spoken lines name the real checks",
+    "ok": true,
+    "detail": " Quick diagnostics6 checks · 0.3 s · Tue 17 Nov, 20:51\n    Artificial intelligence coreclaude-opus-5-5 · last success 4s agoVoice recognitionOpenAI Whisper (clo"
+  },
+  {
+    "name": "performance panel shows live measurements",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "launch opens the initialisation screen, not the Command Centre",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Stage 1: J.A.R.V.I.S. branding and POWER ON",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Stage 2: every required system check ran",
+    "ok": true,
+    "detail": "Application runtime, Operating system, Hardware, Database, Local storage, AI provider, Voice input (speech recognition), Speech synthesis, Microphone, Background scheduler, Notification service, Weather integration, Calendar integration, World Explorer, 3D rendering, Neural core rendering, Initialise AI engine, Load application configuration, Load persistent memory, Restore saved preferences, Restore pending tasks and reminders, Initialise voice interface, Initialise neural energy core, Prepare the Command Centre"
+  },
+  {
+    "name": "every check has a real status from the allowed set",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the AI is only 'connected' after a real reply",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the database check really queried it",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the microphone line distinguishes devices from permission",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the neural core is 'operational' only after a frame was drawn",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Stage 3: AI initialisation restores real state",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Stage 4: the summary matches the actual results",
+    "ok": true,
+    "detail": "SYSTEM INITIALISED — ATTENTION REQUIRED (expected SYSTEM INITIALISED — ATTENTION REQUIRED)"
+  },
+  {
+    "name": "problems are listed in plain language with a diagnostics action",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Stage 5: greeting uses the real time of day and asks for a tap",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "sound is reported honestly (played only with a measured signal)",
+    "ok": true,
+    "detail": "playing · level 0.0557"
+  },
+  {
+    "name": "tap enters the Command Centre without reloading",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the Command Centre agrees with the start-up result",
+    "ok": true,
+    "detail": "JARVIS is online. 8 items need attention."
+  },
+  {
+    "name": "Diagnostics shows the last start-up report",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "skip animation + auto-open: enters by itself after the real checks",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Settings has a Startup section with every option",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Settings has a Performance section (quality, particles, bloom, animation, updates, map)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "phone: Mission Control activates",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "phone: no sideways scrolling in Mission Control",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "phone: sections are reachable from the tab bar",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "phone: Mission Control exits",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "offline task is queued on the phone",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "after reconnecting, the queued task syncs exactly once",
+    "ok": true,
+    "detail": "1 copies"
   },
   {
     "name": "no JavaScript errors in either device",

@@ -183,6 +183,77 @@ See `docs/performance.md` → "JARVIS 6.4" for every number.
 - **Real hardware:** the startup sound on real speakers; real-GPU frame rates and the async-compile benefit; Windows-only checks (wake-word agent status, the Windows 11 name and build, the GPU name on your laptop).
 - **Map-tile World Explorer:** not part of the parts received.
 
+## JARVIS 6.7: Mission Control refinement, bug fixes and interaction upgrade
+
+No redesign: the same look, layout, colours and features, with the bugs fixed and the transitions, sounds and map
+workspace upgraded. Measurements: `docs/performance.md` → "JARVIS 6.7".
+
+### Reproduced before fixing (1366×768 and 1536×864)
+
+- **Global Events couldn't scroll:** the filters and source list filled the column, leaving the event list a 33 px
+  window for 618 px of content. On a laptop at 125 % scaling only one event was visible.
+- **The core went missing after Mission Control:** the Command Centre destroyed its core whenever it was left and built
+  a new one on return. Exit button: about 0.7 s with no core. Palette and browser Back: 5–6 s while a new 3D core was
+  built.
+- **Below the window:** the bottom status panels were cut off at the bottom of the screen.
+- **Map controls in Leaflet's light theme:** a blank white zoom-out button at minimum zoom and a white attribution box.
+- **Status pills read "AI …" and "SYSTEMS …"** until the checks had finished.
+
+### What changed
+
+| Area | Change |
+|---|---|
+| Core | One core (`public/js/corehost.js`): one canvas and one WebGL context, created once and moved between the Command Centre, Mission Control's core panel and an off-screen holder. It is never rebuilt on navigation and never duplicated, and it pauses when off screen |
+| Enter transition | About 1.5 s at normal speed. The Command Centre dims, the core brightens and speeds up, and an energy pulse goes out. The panels slide away and the core travels into its panel. The map expands, the side and bottom panels slide in staggered, and the status indicators light up. It is interactive at that point; the real checks finish in the core panel afterwards |
+| Exit transition | The reverse, about 1 s. Panels retract, the map recedes, the core travels back and the Command Centre panels return. Each step has a time budget, so a slow machine can't stretch it |
+| Sounds | Original Web Audio synthesis, no files. Enter: low activation tone, three beeps, rising sweep, confirmation tone. Exit: descending tone, two beeps, settling tone. Nothing plays before you've interacted with the page; a blocked audio device is skipped silently |
+| Settings → Interface | Transitions on/off; speed (fast, normal, slow); sounds on/off; sound volume with test buttons; reduced sound; silent mode; reduced motion; reduced visual effects; automatic map resize; map animations. All saved on the server and applied immediately |
+| Layout | The Global Operations grid is sized from where it starts on the page, so it ends exactly at the bottom of the window. Each column scrolls on its own, with thin scrollbars |
+| Global Events | The header, count, Filters and Sources buttons stay at the top. Filters and the source list fold away (open by default only on tall screens). The list takes the remaining space and loads every result in batches of 60 as you scroll |
+| Bottom panels | They adapt to narrow widths (container queries) instead of breaking words. CPU, RAM and lag show their current values. Network shows "checking…" instead of an empty box. Between 1025 and 1360 px wide they scroll sideways in their strip rather than taking the map's height |
+| Map | Dark zoom and attribution controls. The Layers panel never runs off the map. An Expand map button gives the map the whole workspace (the core keeps running) |
+| World Explorer | The same map as a larger workspace with no bottom row. Search countries, cities and places (Open-Meteo geocoding). The selected location shows local time, weather, country facts, UK travel advice and the nearest airports (free sources, each named). Save places and remove saved ones. Click anywhere to identify the country, offline from the Natural Earth boundaries. Saved places appear on the map |
+| Transitions | Panels sliding in or out no longer flash a horizontal scrollbar |
+
+### Bugs found while testing (also fixed)
+
+- **A click during an exit was lost:** while Mission Control was still closing, the Mission Control button ignored
+  clicks, so it needed a second click. It now reopens once the close finishes. The sidebar swap also has a time
+  budget, so a slow frame rate can't hold the close open.
+- **Operation commands during loading (6.6 bug):** "Show available public city webcams" sent straight after "Open
+  Operation Sentinel" started a second copy of the workspace. The command's results landed in the replaced copy
+  (JARVIS said 7 cameras were listed; the panel showed none). One load is now shared.
+- **Start-up flight check:** Mission Control's map is now built while hidden, so the first flight request saw a
+  zero-size map and the check reported "flight layer off". The check now waits for the real first result.
+
+### Testing
+
+| Suite | Result |
+|---|---|
+| Server and unit tests (`npm test`) | 107 / 107 |
+| Desktop app tests | 13 / 13 |
+| UI checks (`npm run test:ui`) | 149 / 150. The one failure, event filters squeezing the list at 1280×800, was fixed afterwards and checked on its own: the list keeps 216 px with filters and sources open |
+| Layout audit, every Command Centre and Mission Control tab at 1280×720, 1366×768, 1536×864 and 1920×1080 | No clipped content, unreachable scroll areas or horizontal overflow. Diagnostics honestly reports "no microphone" on this machine |
+
+New UI checks:
+- the single core across the Exit button, Mission Control button and palette routes, repeated: one canvas, drawing,
+  back in the Command Centre, no second click;
+- enter and exit timings;
+- enter and exit sounds rendered offline: audible, volume changes the level, reduced is quieter;
+- interface settings validation, and transitions off giving an instant switch;
+- the Global Events list reaching its last item, and the filters;
+- map zoom and the dark controls;
+- World Explorer search, save, click-to-identify and expand.
+
+### Not verified
+
+- **Real GPU hardware:** this machine renders WebGL in software (about 5 frames a second). The timings are wall-clock
+  and the frame rate is far lower than on your laptop.
+- **Sound through speakers:** the sounds are verified by rendering them offline and measuring their level. This machine
+  has no audio output.
+- **Touch scrolling on a real touchscreen:** the event list uses native scrolling (`touch-action: pan-y`) and was only
+  tested with mouse-wheel and programmatic scrolling.
+
 ## JARVIS 6.6: Mission Control operations (Blackbox, Wayfinder, Sentinel, Orbit)
 
 Full description, every data source and key, and limitations: `docs/operations.md`.

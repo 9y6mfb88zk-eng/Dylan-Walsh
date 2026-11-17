@@ -1096,3 +1096,9 @@ html.reduce-motion .goc.goc-lit .goc-pills, html.reduce-motion .goc.goc-lit .goc
 .goc-core-host .mc-cmd .pill-input input { min-width: 0; width: 100%; }
 .goc-core-host .mc-cmd .mic { flex: none; }
 .goc { height: calc(100dvh - var(--goc-top, 150px) - var(--goc-below, 16px)); }
+/* Reduced motion: nothing in Mission Control or its navigation transitions (inherited values such as scrollbar colours included) */
+@media (prefers-reduced-motion: reduce) { #mcView, #mcView *, #mcNav, #mcNav * { transition: none !important; } }
+html.reduce-motion #mcView, html.reduce-motion #mcView *, html.reduce-motion #mcNav, html.reduce-motion #mcNav * { transition: none !important; }
+/* With filters and sources open, the header block takes at most about half the panel (and scrolls); the list keeps the rest */
+.goc-feed > .goc-feed-head { max-height: 52%; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.goc-feed > .goc-evlist { min-height: 120px; }
