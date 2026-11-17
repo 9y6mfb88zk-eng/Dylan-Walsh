@@ -295,9 +295,14 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
   map.on("resize", () => { sizeCanvas(); draw(); });
   map.on("moveend", () => { scheduleFlights(700); hint(); });
   // The display fills the window below the header; its height is measured, not guessed, so nothing scrolls twice.
-  const fitHeight = () => { const r = root.getBoundingClientRect(); if (!r.height) return; const top = Math.round(r.top + scrollY); if (top !== st.gocTop) { st.gocTop = top; root.style.setProperty("--goc-top", `${top}px`); } };
+  const fitHeight = () => { const r = root.getBoundingClientRect(); if (!r.height) return; const top = Math.round(r.top + scrollY); if (top !== st.gocTop) { st.gocTop = top; root.style.setProperty("--goc-top", `${top}px`); }
+    // The page's own padding/margins under the grid, so the grid ends exactly at the bottom of the window.
+    let below = 0;
+    for (let e = root; e && e !== document.documentElement; e = e.parentElement) { const cs = getComputedStyle(e); below += parseFloat(cs.marginBottom) || 0; if (e !== root) below += (parseFloat(cs.paddingBottom) || 0) + (parseFloat(cs.borderBottomWidth) || 0); }
+    below = Math.max(4, Math.min(64, Math.ceil(below) + 2));
+    if (below !== st.gocBelow && innerWidth > 1024) { st.gocBelow = below; root.style.setProperty("--goc-below", `${below}px`); } };
   const refit = () => { map.invalidateSize({ pan: false }); sizeCanvas(); draw(); };
-  const ro = new ResizeObserver(() => { fitHeight(); if ((ctx.settings.interface?.mapAutoResize ?? true) !== false) refit(); });
+  const ro = new ResizeObserver(() => { fitHeight(); if (st.layers.flights && !st.flights && !flightBusy && !st.destroyed) pollFlights(true); if ((ctx.settings.interface?.mapAutoResize ?? true) !== false) refit(); });
   ro.observe($("#gocMap", root));
   const onWinResize = () => { fitHeight(); refit(); };
   addEventListener("resize", onWinResize);
@@ -337,6 +342,8 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
   }
   let flightT = 0, flightBusy = false;
   function scheduleFlights(ms) { clearTimeout(flightT); if (st.layers.flights && !st.destroyed) flightT = setTimeout(() => pollFlights(), ms); }
+  // The first flight result (Mission Control's start-up check waits for it, even while the map is still hidden).
+  let firstFlightsDone; const firstFlightsP = new Promise((r) => { firstFlightsDone = r; });
   async function pollFlights(force = false) {
     if (!st.layers.flights || st.destroyed || flightBusy) return;
     if (document.visibilityState === "hidden" && !force) return scheduleFlights(15000);
@@ -360,7 +367,7 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
         st.firstFlights ||= { ok: true, n: list.length, source: r.attribution?.name };
       } else st.firstFlights ||= { ok: false, error: r.error };
     } catch (e) { st.flightErr = e.message; st.firstFlights ||= { ok: false, error: e.message }; }
-    finally { flightBusy = false; }
+    finally { flightBusy = false; if (st.firstFlights) firstFlightsDone(); }
     draw(); renderBottom("flights"); renderLegend(); if (st.mode === "flights") renderRight();
     const next = st.flights?.nextUpdateSec ?? 30;
     st.nextFlightT = Date.now() + Math.max(15, next) * 1000;
@@ -561,6 +568,7 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
   }
   async function wxSelect(sel, { fly = true } = {}) {
     wx.sel = sel; wx.info = null; wx.infoErr = null;
+    $("#gocLayers", root).hidden = true; $("#gocLayersBtn", root).setAttribute("aria-expanded", "false");
     if (fly) { if (st.view3d) st.globe?.flyTo(sel.lat, sel.lon); else map.setView([sel.lat, sel.lon], Math.max(map.getZoom(), sel.zoom || 7), { animate: animOK() }); }
     wxDraw(); renderRight();
     if (!sel.query) return;
@@ -823,7 +831,6 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
     if (!MODE_DEFAULTS[m]) return;
     st.mode = m; root.dataset.mode = m;
     for (const [k, v] of Object.entries(MODE_DEFAULTS[m])) if (st.layers[k] !== v) setOverlay(k, v);
-    if (m === "world") { $("#gocLayers", root).hidden = false; $("#gocLayersBtn", root).setAttribute("aria-expanded", "true"); }
     renderRight(); draw(); renderLegend(); wxDraw();
     requestAnimationFrame(() => { map.invalidateSize({ pan: false }); sizeCanvas(); draw(); });
   }
@@ -836,7 +843,7 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
   const ready = Promise.allSettled([
     api("/api/world").then((w) => { st.world = w; renderClocks(); }),
     loadDiag(), loadPerf(), loadActivity(), loadEvents(),
-    st.layers.flights ? pollFlights(true) : Promise.resolve(),
+    st.layers.flights ? (pollFlights(true), Promise.race([firstFlightsP, new Promise((r) => setTimeout(r, 30000))])) : Promise.resolve(),
   ]).then(() => ({ flights: st.firstFlights, events: st.firstEvents }));
 
   return {

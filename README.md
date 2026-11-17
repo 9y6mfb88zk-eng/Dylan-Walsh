@@ -1,4 +1,4 @@
-# JARVIS 6.6
+# JARVIS 6.7
 
 JARVIS is your personal AI system. It runs **entirely on your Windows laptop**, with no cloud server and no hosting bill.
 - **On the laptop** it listens for **"Hey JARVIS"** (or just **"JARVIS"**), keeps the conversation going without the wake word, rings alarms even with the window closed, and sits in the system tray.
@@ -41,7 +41,7 @@ JARVIS is your personal AI system. It runs **entirely on your Windows laptop**, 
 ## The 15 things to know
 
 ### 1. Install or update to 6.6
-Download **`JARVIS-Setup-6.6.exe`** from **[Releases → "JARVIS for Windows (latest)"](https://github.com/9y6mfb88zk-eng/Dylan-Walsh/releases/tag/desktop-latest)** and run it.
+Download **`JARVIS-Setup-6.7.exe`** from **[Releases → "JARVIS for Windows (latest)"](https://github.com/9y6mfb88zk-eng/Dylan-Walsh/releases/tag/desktop-latest)** and run it.
 - **Updating from 3.x:** your data, keys and settings are kept.
   - Before the database is upgraded, JARVIS saves a full copy to `%APPDATA%\JARVIS\data\backups\pre-migration-007-….db`.
 - **SmartScreen or Smart App Control** may block the unsigned installer:

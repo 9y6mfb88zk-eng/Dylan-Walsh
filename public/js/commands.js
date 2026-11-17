@@ -27,7 +27,7 @@ export async function handleUi(cmd, ctx, { speak = true, text = "" } = {}) {
   const t = title(ctx);
   if (cmd.kind === "mission") {
     if (cmd.on) {
-      const already = mission.open;
+      const already = mission.phase === "active" || mission.phase === "activating";
       const r = await mission.show(ctx);
       if (!already) logCommand("Mission Control activated", text);
       // Only services that actually initialised are claimed as ready.

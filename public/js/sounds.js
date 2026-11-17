@@ -156,13 +156,15 @@ export const sounds = {
   },
 };
 /** Render one sound into memory (no speakers needed) and measure it — used by the automated tests. */
-export async function renderSound(name, seconds = 2) {
+export async function renderSound(name, seconds = 2, { uiVolume = null, reduced = false } = {}) {
   const saved = { ctx, master, verb, meter, uiMaster, opts: { ...opts }, ui: { ...ui } };
   const off = new OfflineAudioContext(1, Math.round(44100 * seconds), 44100);
   ctx = off; meter = null; opts.enabled = true; opts.reduced = false; opts.volume = saved.opts.volume || 0.6;
   master = off.createGain(); master.gain.value = opts.volume * 0.8; master.connect(off.destination);
   verb = off.createGain(); verb.gain.value = 0; verb.connect(master);
-  uiMaster = master; ui.enabled = true; ui.reduced = false;
+  // Interface sounds go through their own volume (Settings → Interface) when one is given.
+  if (uiVolume != null) { uiMaster = off.createGain(); uiMaster.gain.value = uiVolume * 0.7; uiMaster.connect(master); } else uiMaster = master;
+  ui.enabled = true; ui.reduced = !!reduced;
   liveOverride = true; sounds._last = -1;
   try { sounds[name](name === "check" ? "ok" : undefined); } finally { liveOverride = false; }
   const buf = await off.startRendering();

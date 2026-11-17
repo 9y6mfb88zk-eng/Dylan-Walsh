@@ -182,6 +182,8 @@ try {
   check("Stage 1: dims the interface and shows “ACTIVATING MISSION CONTROL”", await L.waitForFunction(() => document.documentElement.classList.contains("mc-activating") && /ACTIVATING MISSION CONTROL/.test(document.querySelector(".mc-banner")?.textContent || ""), null, { timeout: 8000, polling: 30 }).then(() => true, () => false));
   const active = await L.waitForFunction(() => document.documentElement.classList.contains("mc-active"), null, { timeout: 60000 }).then(() => true, () => false);
   check("Mission Control becomes active", active);
+  // Mission Control is interactive straight away; the real checks finish in the core panel just after.
+  await L.waitForFunction(() => (window.__mcTimeline || []).some((x) => x.stage === 4), null, { timeout: 60000 }).catch(() => {});
   const stages = await L.evaluate(() => (window.__mcTimeline || []).filter((x) => x.stage).map((x) => x.stage));
   check("the four stages run in order: activating, transformation, initialisation, active", JSON.stringify(stages) === "[1,2,3,4]", JSON.stringify(stages));
   const init = await L.$$eval(".mc-init li", (l) => l.map((x) => `${x.dataset.state}: ${x.querySelector("b").textContent} — ${x.querySelector(".faint").textContent}`));
@@ -208,7 +210,7 @@ try {
   await sleep(2500);
   await L.screenshot({ path: path.join(out, "laptop-mission-control.png") });
   const sectionChecks = {
-    world: async () => /Dhekelia/.test(await L.textContent(".goc-right")) && await L.evaluate(() => !document.querySelector("#gocLayers").hidden),
+    world: async () => /Dhekelia/.test(await L.textContent(".goc-right")) && await L.evaluate(() => !!document.querySelector("#wxQ") && !!document.querySelector("#gocLayersBtn")),
     events: async () => (await L.locator(".goc-ev").count()) >= 3 && /Natural disaster/.test(await L.textContent(".goc-chips")),
     flights: async () => (await L.locator(".goc-flist button").count()) >= 1,
     overview: async () => { const v = await L.$$eval("#mcView [data-panel]:not([hidden])", (p) => p.map((x) => x.dataset.panel)); return ["core", "overview", "ops", "arch", "diag", "map", "res", "intel", "comms", "act"].every((x) => v.includes(x)) && /\d+%/.test(await L.textContent('[data-panel="res"]')); },
@@ -278,6 +280,74 @@ try {
   await L.fill("#mcSay", "JARVIS, deactivate Mission Control"); await L.press("#mcSay", "Enter");
   check("“Deactivate Mission Control” reverses the transformation", await L.waitForSelector("#mcView", { state: "detached", timeout: 30000 }).then(() => true, () => false));
   check("Command Centre is back with its core, normal colours and sidebar", await L.evaluate(() => !!document.querySelector("#view .core-stage canvas#core") && !document.documentElement.classList.contains("mc-mode") && !document.querySelector("#nav").hidden && !document.querySelector("#mcNav")));
+  // ---- 6.7: one persistent core, timed transitions, sounds, interface settings, map workspace
+  const coreState = () => L.evaluate(() => new Promise((ok) => { const f0 = window.__jarvisCore?.frames ?? 0; setTimeout(() => { const c = document.querySelectorAll("canvas#core"); ok({ n: c.length, home: !!document.querySelector("#view .core-stage canvas#core"), shown: !!c[0] && c[0].getBoundingClientRect().width > 50 && c[0].checkVisibility(), alive: window.__jarvisCore?.alive ?? 1, drew: (window.__jarvisCore?.frames ?? 0) - f0 }); }, 1200); }));
+  const exitRoutes = [
+    ["the Exit button", async () => L.click("#mcNav [data-mcexit]")],
+    ["the Mission Control button", async () => L.click("#mcBtn")],
+    ["the command palette", async () => { await L.keyboard.press("Control+k"); await L.fill("#palInput", "Command Centre"); await sleep(250); await L.keyboard.press("Enter"); }],
+    ["the Exit button (again)", async () => L.click("#mcNav [data-mcexit]")],
+  ];
+  const coreRuns = [];
+  for (const [name, leave] of exitRoutes) {
+    await L.evaluate(() => { window.__mcTimeline = []; });
+    await L.click("#mcBtn");
+    await L.waitForFunction(() => (window.__mcTimeline || []).some((x) => x.stage === 4), null, { timeout: 60000 });
+    const enterMs = await L.evaluate(() => { const t = window.__mcTimeline, a = t.find((x) => x.label === "start"), b = t.find((x) => x.label === "interactive"); return a && b ? b.t - a.t : null; });
+    const inMc = await L.evaluate(() => document.querySelectorAll("canvas#core").length === 1 && !!document.querySelector(".goc-core-host canvas#core"));
+    await leave();
+    await L.waitForFunction(() => !document.documentElement.classList.contains("mc-mode") && !document.querySelector("#mcView"), null, { timeout: 30000 });
+    const exitMs = await L.evaluate(() => { const t = window.__mcTimeline, a = t.find((x) => x.label === "exit start"), b = t.find((x) => x.label === "exit core home"); return a && b ? b.t - a.t : null; });
+    if (!/tab=home|^[^?]*$/.test(L.url()) || !(await L.$("#view .core-stage"))) { await L.click('.sidebar [data-tab="home"]').catch(() => {}); await sleep(600); }
+    coreRuns.push({ name, enterMs, exitMs, inMc, ...(await coreState()) });
+  }
+  check("the same single core moves into Mission Control and back on every route, with no second click", coreRuns.every((r) => r.inMc && r.n === 1 && r.home && r.shown && r.alive === 1 && r.drew > 0), JSON.stringify(coreRuns));
+  check("entering Mission Control is interactive within about 1–2 seconds", coreRuns.every((r) => r.enterMs != null && r.enterMs < 3000), coreRuns.map((r) => `${r.enterMs} ms`).join(", "));
+  check("leaving returns the core to the Command Centre within about a second", coreRuns.every((r) => r.exitMs != null && r.exitMs < 1500), coreRuns.map((r) => `${r.exitMs} ms`).join(", "));
+  const snd = await L.evaluate(async () => { const m = await import("/js/sounds.js"); return { enter: await m.renderSound("mcEnter", 2.6), exit: await m.renderSound("mcExit", 2), quiet: await m.renderSound("mcEnter", 2.6, { uiVolume: 0.1 }), loud: await m.renderSound("mcEnter", 2.6, { uiVolume: 1 }), reduced: await m.renderSound("mcEnter", 2.6, { reduced: true }) }; });
+  check("Mission Control enter and exit sounds are generated on the device and audible", snd.enter.peak > 0.02 && snd.exit.peak > 0.02, JSON.stringify(snd));
+  check("the transition sound volume setting changes the level, and reduced sound is quieter", snd.loud.rms > snd.quiet.rms * 4 && snd.reduced.rms < snd.enter.rms, `quiet ${snd.quiet.rms} · loud ${snd.loud.rms} · reduced ${snd.reduced.rms} · full ${snd.enter.rms}`);
+  const badSpeed = await L.evaluate(async () => { const { api } = await import("/js/api.js"); try { await api("/api/settings", { method: "PATCH", body: { interface: { transitionSpeed: "warp" } } }); return 200; } catch (e) { return e.status; } });
+  check("interface settings are validated", badSpeed === 400, `status ${badSpeed}`);
+  // Transitions off: the same checks run, the switch is instant
+  await L.goto(`${base}/?tab=settings`); await L.waitForSelector('.tabs [data-s="interface"]', { timeout: 15000 });
+  await L.click('.tabs [data-s="interface"]');
+  await L.waitForSelector("#ifTrans", { state: "attached", timeout: 10000 });
+  await L.locator("#ifTrans").uncheck({ force: true }); await sleep(600);
+  const savedOff = await L.evaluate(async () => (await (await fetch("/api/settings")).json()).interface?.transitions === false);
+  await L.evaluate(() => { window.__mcTimeline = []; });
+  await L.click("#mcBtn");
+  await L.waitForFunction(() => document.documentElement.classList.contains("mc-active"), null, { timeout: 30000 });
+  const instantMs = await L.evaluate(() => { const t = window.__mcTimeline, a = t.find((x) => x.label === "start"), b = t.find((x) => x.label === "interactive"); return a && b ? b.t - a.t : null; });
+  check("Settings → Interface: turning transitions off is saved and makes the switch instant", savedOff && instantMs != null && instantMs < 1500, `${instantMs} ms`);
+  // Global Events: the list scrolls to its last item; filters and sources fold away
+  check("Global Events list has a real scroll area and its last item is reachable", await L.evaluate(async () => { const l = document.querySelector(".goc-evlist"); if (!l || l.clientHeight < 150) return false; l.scrollTop = l.scrollHeight; await new Promise((r) => setTimeout(r, 300)); const last = [...l.children].at(-1).getBoundingClientRect(), box = l.getBoundingClientRect(); return last.bottom <= box.bottom + 2 && document.documentElement.scrollHeight <= innerHeight + 1; }));
+  await L.click("#gocEvFilt");
+  check("event filters open and close without hiding the list", await L.evaluate(() => !document.querySelector(".goc-feed-filters").hidden && document.querySelector(".goc-evlist").clientHeight > 60));
+  await L.click("#gocEvFilt");
+  // The shared map: zoom, World Explorer search, selected place, save, click-to-identify
+  const z0 = await L.evaluate(() => window.__jarvisGoc?.zoom);
+  await L.click(".goc .leaflet-control-zoom-in"); await sleep(900);
+  check("the map zooms with its controls", await L.evaluate((z) => window.__jarvisGoc?.zoom > z, z0));
+  check("the map's zoom and attribution controls use the dark theme", await L.evaluate(() => { const bg = (s) => getComputedStyle(document.querySelector(s)).backgroundColor; const lum = (c) => { const m = c.match(/\d+(\.\d+)?/g).map(Number); return (m[0] + m[1] + m[2]) / 3; }; return lum(bg(".goc .leaflet-control-zoom-out")) < 60 && lum(bg(".goc .leaflet-control-attribution")) < 60; }));
+  await L.click('#mcNav [data-mc="world"]');
+  await L.waitForSelector("#wxQ", { timeout: 15000 });
+  check("World Explorer is a larger map workspace (no bottom panels)", await L.evaluate(() => getComputedStyle(document.querySelector(".goc-bottom")).display === "none" && document.querySelector(".goc-centre").getBoundingClientRect().height > innerHeight * 0.6));
+  await L.fill("#wxQ", "Tokyo"); await L.press("#wxQ", "Enter");
+  check("World Explorer search finds a place and shows its weather, country facts and airports", await L.waitForFunction(() => { const t = document.querySelector(".goc-wx-sel")?.textContent || ""; return /Tokyo/.test(t) && /Japan/.test(t) && /Weather/.test(t) && /Airports/.test(t); }, null, { timeout: 20000 }).then(() => true, () => false));
+  await L.click("#wxSave");
+  check("a searched place can be saved to your places", await L.waitForFunction(() => [...document.querySelectorAll(".goc-wx-side .goc-places [data-fly] b")].some((b) => /Tokyo/.test(b.textContent)), null, { timeout: 10000 }).then(() => true, () => false));
+  await L.selectOption("#gocRegion", "europe"); await sleep(1200);
+  const mb = await L.locator("#gocMap").boundingBox();
+  await L.mouse.click(mb.x + mb.width / 2, mb.y + mb.height / 2);
+  check("clicking the map identifies the country there (offline boundaries)", await L.waitForFunction(() => /Germany|Austria|Czechia|Switzerland|France/.test(document.querySelector(".goc-wx-sel .goc-card-head b")?.textContent || ""), null, { timeout: 10000 }).then(() => true, () => false), await L.evaluate(() => document.querySelector(".goc-wx-sel .goc-card-head b")?.textContent));
+  await L.click("#gocExpand"); await sleep(500);
+  check("Expand map gives the map the whole workspace and restores it", await L.evaluate(() => document.querySelector(".goc-centre").getBoundingClientRect().width > innerWidth * 0.7) && await L.click("#gocExpand").then(() => L.evaluate(() => !!document.querySelector(".goc-left").offsetWidth)));
+  await L.screenshot({ path: path.join(out, "laptop-world-explorer.png") });
+  await L.click("#mcNav [data-mcexit]");
+  await L.waitForSelector("#mcView", { state: "detached", timeout: 30000 });
+  await L.evaluate(async () => { const { api } = await import("/js/api.js"); await api("/api/settings", { method: "PATCH", body: { interface: { transitions: true } } }); });
+  await L.goto(base); await L.waitForSelector("#view canvas#core", { timeout: 20000 });
   await L.click("#mcBtn");
   check("the Mission Control button activates it", await L.waitForFunction(() => document.documentElement.classList.contains("mc-active"), null, { timeout: 60000 }).then(() => true, () => false));
   // Esc: the first press stops JARVIS speaking (if it is), the next leaves Mission Control.
@@ -291,10 +361,10 @@ try {
   check("reduced motion: start-up runs its checks with no animation", await enterJarvis(R) && await R.evaluate(() => window.__jarvisBoot.lines.length >= 20));
   await R.evaluate(() => { window.__mcTimeline = []; });
   await R.click("#mcBtn");
-  await R.waitForFunction(() => document.documentElement.classList.contains("mc-active"), null, { timeout: 30000 }).catch(() => {});
+  await R.waitForFunction(() => (window.__mcTimeline || []).some((x) => x.stage === 4), null, { timeout: 30000 }).catch(() => {});
   const full = await R.evaluate(() => window.__mcTimeline || []);
   const tl = full.filter((x) => x.stage);
-  const moving = await R.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.closest?.("#mcView, #mcNav")).map((a) => a.constructor.name + ":" + (a.animationName || "js")));
+  const moving = await R.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.closest?.("#mcView, #mcNav")).map((a) => `${a.constructor.name}:${a.animationName || a.transitionProperty || "js"}@${a.effect.target.id || a.effect.target.className}`));
   check("reduced motion: the same stages and checks, with no movement", tl.length === 4 && moving.length === 0, `${tl.length >= 4 ? tl[3].t - tl[0].t : "?"} ms · ${full.map((x) => `${x.label || x.stage}@${x.t - full[0].t}`).join(" ")} · moving: ${moving.join(",")}`);
   await rm.close();
   await L.fill("#say", "Run a quick diagnostic"); await L.press("#say", "Enter");

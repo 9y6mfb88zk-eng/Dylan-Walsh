@@ -230,7 +230,8 @@ $("#palInput").addEventListener("keydown", (e) => {
 $("#searchBtn").addEventListener("click", () => openPalette());
 // Mission Control button (also: "JARVIS, activate Mission Control").
 $("#mcBtn").innerHTML = `${icon("cpu")}<span class="hide-m">Mission Control</span>`;
-$("#mcBtn").addEventListener("click", () => { if (mission.phase === "activating" || mission.phase === "deactivating") return; ctx.handleUi({ kind: "mission", on: !mission.open }, { speak: shouldSpeakTyped() }); });
+// A click while Mission Control is closing reopens it once the close finishes (never needs a second click).
+$("#mcBtn").addEventListener("click", () => { if (mission.phase === "activating") return; ctx.handleUi({ kind: "mission", on: mission.phase === "deactivating" ? true : !mission.open }, { speak: shouldSpeakTyped() }); });
 $("#searchBtn").innerHTML = icon("search");
 $("#gearBtn").innerHTML = icon("settings");
 $("#gearBtn").addEventListener("click", () => go("settings"));

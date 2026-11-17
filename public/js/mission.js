@@ -190,24 +190,26 @@ async function activate() {
   html.classList.add("mc-mode", "mc-activating");
   banner("ACTIVATING MISSION CONTROL", 1);
   coreCanvas = await ensureCore(ctx.settings).then(() => hostCanvas());
+  mark("core ready");
   const cc = coreCtl();
   cc?.setPalette?.("mission"); cc?.setBoost?.(I.reducedEffects ? 1.3 : 1.8); cc?.pulse?.(I.reducedEffects ? 0.8 : 1.4);
   const inView = view.contains(coreCanvas) && !view.hidden;
   if (!I.instant && !I.reducedEffects) energyPulse(inView ? coreCanvas : $(".main"), T);
   const blocks = viewBlocks(view);
-  if (!I.instant) blocks.forEach((b) => anim(b, [{ opacity: 1, transform: "none" }, { opacity: 0.55, transform: "scale(.985)" }], { duration: T(240) }));
+  if (!I.instant) blocks.forEach((b) => anim(b, [{ opacity: 1, transform: "none" }, { opacity: 0.55, transform: "scale(.985)" }], { duration: T(200) }));
   // Mission Control is assembled (hidden) while the Command Centre dims, so nothing waits on it later.
   build();
   applyLayout("globalops");
   root.hidden = true;
-  const gocReady = ensureGoc(ctx, "globalops").catch((e) => { console.error("[mission] goc", e); return null; });
-  await wait(T(200));
+  mark("built");
+  const gocReady = ensureGoc(ctx, "globalops").then((g) => { mark("map ready"); return g; }).catch((e) => { console.error("[mission] goc", e); return null; });
+  await wait(T(160));
 
   // 2 · Command Centre panels slide away; the navigation becomes Mission Control's
   banner("RECONFIGURING INTERFACE", 2);
   const outs = I.instant ? [] : animateOut(blocks, T);
   const navDone = navSwap(true, I.instant, T);
-  await Promise.all([settle(outs, T(560) + 80), gocReady]);
+  await Promise.all([settle(outs, T(480) + 60), gocReady]);
   mark("outs done");
   const first = inView ? coreCanvas.getBoundingClientRect() : null;
   view.hidden = true;
@@ -217,24 +219,25 @@ async function activate() {
   placeCore();                                                         // the same living core moves into its panel
   mark("core moved");
   renderAll();
+  mark("rendered");
   // 3 · the map expands into place, the core panel locks in, the events column and status panels follow
   const enters = [];
   const last = coreCanvas.getBoundingClientRect();
   if (!I.instant) {
     enters.push(first?.width && last.width
-      ? anim(coreCanvas, [{ transform: `translate(${first.left - last.left}px, ${first.top - last.top}px) scale(${first.width / last.width}, ${first.height / last.height})`, transformOrigin: "0 0" }, { transform: "none", transformOrigin: "0 0" }], { duration: T(720) })
+      ? anim(coreCanvas, [{ transform: `translate(${first.left - last.left}px, ${first.top - last.top}px) scale(${first.width / last.width}, ${first.height / last.height})`, transformOrigin: "0 0" }, { transform: "none", transformOrigin: "0 0" }], { duration: T(640) })
       : anim(coreCanvas, [{ opacity: 0, transform: "scale(.7)" }, { opacity: 1, transform: "none" }], { duration: T(560) }));
     if (isGoc(section) && goc) {
       const g = goc.root;
-      enters.push(anim($(".goc-centre", g), [{ opacity: 0, transform: "scale(.9)", filter: "brightness(1.6)" }, { opacity: 1, transform: "none", filter: "none" }], { duration: T(680), delay: T(40) }));
+      enters.push(anim($(".goc-centre", g), [{ opacity: 0, transform: "scale(.9)", filter: "brightness(1.6)" }, { opacity: 1, transform: "none", filter: "none" }], { duration: T(620), delay: T(30) }));
       enters.push(anim($(".goc-left .goc-box", g), ENTER.slideL, { duration: T(480), delay: T(120) }));
       enters.push(anim($(".goc-right", g), ENTER.slideR, { duration: T(520), delay: T(190) }));
-      $$(".goc-bottom > *", g).forEach((b, i) => enters.push(anim(b, ENTER.rise, { duration: T(420), delay: T(260 + i * 45) })));
-      enters.push(anim($(".goc-strip", g), [{ opacity: 0, transform: "translateY(-10px)" }, { opacity: 1, transform: "none" }], { duration: T(380), delay: T(300) }));
+      $$(".goc-bottom > *", g).forEach((b, i) => enters.push(anim(b, ENTER.rise, { duration: T(400), delay: T(220 + i * 35) })));
+      enters.push(anim($(".goc-strip", g), [{ opacity: 0, transform: "translateY(-10px)" }, { opacity: 1, transform: "none" }], { duration: T(360), delay: T(260) }));
     } else for (const id of visibleIds()) enters.push(anim(panelEl(id), ENTER[PANELS[id].enter] || ENTER.rise, { duration: T(520), delay: T(ENTER_DELAY[id] || 0) * 0.6 }));
   }
   root.classList.remove("mc-building");
-  await settle(enters, T(900) + 120);
+  await settle(enters, T(820) + 80);
   clearAnims([coreCanvas, ...$$("[data-panel]", root), ...(goc ? $$(".goc-strip, .goc-centre, .goc-left .goc-box, .goc-right, .goc-bottom > *", goc.root) : [])]);
   await navDone;
   mark("enters done");
@@ -352,10 +355,10 @@ async function navSwap(toMission, instant = false, T = (ms) => ms) {
   const nav = $("#nav");
   if (!navEl) return;
   const from = toMission ? nav : navEl, to = toMission ? navEl : nav;
-  if (!instant) await settle([...from.children].map((e, i) => anim(e, [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateX(-26px)" }], { duration: T(200), delay: T(Math.min(i * 8, 120)), easing: "ease-in" })));
+  if (!instant) await settle([...from.children].map((e, i) => anim(e, [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateX(-26px)" }], { duration: T(200), delay: T(Math.min(i * 8, 120)), easing: "ease-in" })), instant ? 0 : T(320) + 60);
   from.hidden = true; to.hidden = false;
   clearAnims([...from.children]);
-  if (!instant) await settle([...to.children].map((e, i) => anim(e, [{ opacity: 0, transform: "translateX(-26px)" }, { opacity: 1, transform: "none" }], { duration: T(280), delay: T(Math.min(i * 18, 260)) })));
+  if (!instant) await settle([...to.children].map((e, i) => anim(e, [{ opacity: 0, transform: "translateX(-26px)" }, { opacity: 1, transform: "none" }], { duration: T(280), delay: T(Math.min(i * 18, 260)) })), instant ? 0 : T(540) + 60);
   clearAnims([...to.children]);
 }
 function energyPulse(at, T = (ms) => ms) {

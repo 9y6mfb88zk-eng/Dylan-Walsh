@@ -1089,3 +1089,10 @@ html.reduce-motion .goc.goc-lit .goc-pills, html.reduce-motion .goc.goc-lit .goc
 @media (max-height: 800px) { .goc-feed > #gocFRes:empty { display: none; } .goc-feed .goc-toggles { margin: 0 0 4px; } }
 /* Panels sliding in or out during transitions never produce a horizontal scrollbar flash */
 #mcView, html.mc-mode .main, html.mc-activating .main, html.mc-deactivating .main { overflow-x: clip; }
+/* The core panel's command box (and its mic button) always fits the left column */
+.goc-core-host, .goc-core-host .mc-core-panel { min-width: 0; max-width: 100%; }
+.goc-core-host .mc-cmd { width: 100%; min-width: 0; gap: 6px; }
+.goc-core-host .mc-cmd .pill-input { flex: 1 1 auto; min-width: 0; }
+.goc-core-host .mc-cmd .pill-input input { min-width: 0; width: 100%; }
+.goc-core-host .mc-cmd .mic { flex: none; }
+.goc { height: calc(100dvh - var(--goc-top, 150px) - var(--goc-below, 16px)); }
