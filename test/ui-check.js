@@ -93,8 +93,9 @@ try {
     await L.click(`.sidebar [data-tab="${tab}"]`);
     await L.waitForFunction((t) => document.querySelector("#pageTitle")?.textContent && !document.querySelector("#view .empty:only-child"), tab, { timeout: 8000 }).catch(() => {});
     await sleep(tab === "world" || tab === "home" ? 1500 : 500);
-    const bad = await L.locator("#view .error").count();
-    check(`section renders: ${tab}`, bad === 0, bad ? await L.locator("#view .error").first().textContent() : "");
+    // Page errors only: a diagnostics card that honestly shows a failing service is not a page error.
+    const bad = await L.locator("#view .error:not(.check-card)").count();
+    check(`section renders: ${tab}`, bad === 0, bad ? await L.locator("#view .error:not(.check-card)").first().textContent() : "");
     await L.screenshot({ path: path.join(out, `laptop-${tab}.png`), fullPage: ["money", "diagnostics", "alarms", "settings"].includes(tab) });
   }
   check("sidebar lists 21 sections", (await L.locator(".sidebar [data-tab]").count()) === 21);
@@ -253,7 +254,7 @@ try {
   const fresh = await browser.newContext({ viewport: { width: 1600, height: 960 }, storageState: await lap.storageState() });
   const F = await fresh.newPage(); watch(F, "startup");
   await F.goto(base);
-  check("launch opens the initialisation screen, not the Command Centre", await F.waitForSelector(".boot2", { timeout: 8000 }).then(() => true, () => false));
+  check("launch opens the initialisation screen, not the Command Centre", await F.waitForSelector(".boot2", { timeout: 25000 }).then(() => true, () => false));
   check("Stage 1: J.A.R.V.I.S. branding and POWER ON", /J\.A\.R\.V\.I\.S\./.test(await F.textContent(".b2-title")) && await F.waitForFunction(() => /POWER ON/.test(document.querySelector(".b2-log")?.textContent || ""), null, { timeout: 8000 }).then(() => true, () => false));
   await F.waitForFunction(() => window.__jarvisBootReady, null, { timeout: 120000 });
   const boot = await F.evaluate(() => window.__jarvisBoot);

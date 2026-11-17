@@ -13,7 +13,21 @@ const GOOD = ["operational", "connected"], LIMITED = ["degraded", "permission_re
 const WORD = { operational: "OPERATIONAL", connected: "CONNECTED", degraded: "DEGRADED", not_configured: "NOT CONFIGURED", permission_required: "PERMISSION REQUIRED", offline: "OFFLINE", failed: "FAILED", initialising: "INITIALISING", pending: "CHECKING" };
 const light = (s) => (GOOD.includes(s) ? "ok" : s === "not_configured" ? "off" : BAD.includes(s) ? "bad" : s === "pending" ? "pending" : "warn");
 const tone = (s) => (GOOD.includes(s) ? "ok" : BAD.includes(s) ? "bad" : s === "not_configured" ? null : "warn");
-const timeout = (p, ms, label) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error(`${label} didn't respond within ${Math.round(ms / 1000)} s`), { code: "timeout" })), ms))]);
+// A timeout that can't be fooled by a frozen page: if the timer itself fires late (the page was busy, e.g. a GPU
+// driver compiling shaders), answers that already arrived get a moment to be processed before anything is failed.
+const timeout = (p, ms, label) => {
+  const start = performance.now();
+  let timer;
+  const expire = new Promise((_, rej) => {
+    const fire = (graceUsed) => {
+      const late = performance.now() - start - ms;
+      if (late > 400 && !graceUsed) { timer = setTimeout(() => fire(true), 1500); return; }
+      rej(Object.assign(new Error(`${label} didn't respond within ${Math.round(ms / 1000)} s`), { code: "timeout" }));
+    };
+    timer = setTimeout(() => fire(false), ms);
+  });
+  return Promise.race([p.finally?.(() => clearTimeout(timer)) ?? p, expire]);
+};
 
 // ---------------------------------------------------------------- Device-side checks (this computer / browser)
 async function checkMicrophone(ctx) {
