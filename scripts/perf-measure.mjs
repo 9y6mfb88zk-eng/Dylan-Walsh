@@ -78,8 +78,10 @@ try {
   const F = await fresh.newPage();
   const ts = performance.now();
   await F.goto(base);
-  await F.waitForFunction(() => window.__jarvisBootReady || (document.querySelector(".wx-days") && !document.querySelector(".boot")), null, { timeout: 60000, polling: 50 }).catch(() => {});
-  r.startup = { usableMs: Math.round(performance.now() - ts), checks: await F.evaluate(() => (window.__jarvisBoot || []).map((x) => `${x.label}:${x.ok === false ? "bad" : x.warn ? "warn" : "ok"}:${x.ms ?? "?"}ms`)) };
+  // Usable = start-up checks finished and the Command Centre loaded (6.4: behind the tap prompt; before: boot closed).
+  await F.waitForFunction(() => document.querySelector(".wx-days") && (window.__jarvisBootReady || !document.querySelector(".boot")), null, { timeout: 120000, polling: 50 }).catch(() => {});
+  // 6.4 reports {lines, summary}; earlier versions an array of steps.
+  r.startup = { usableMs: Math.round(performance.now() - ts), checks: await F.evaluate(() => { const b = window.__jarvisBoot; const l = Array.isArray(b) ? b : b?.lines || []; return l.map((x) => `${x.label}:${x.status || (x.ok === false ? "bad" : x.warn ? "warn" : "ok")}:${x.ms ?? "?"}ms`); }), summary: await F.evaluate(() => window.__jarvisBoot?.summary || null) };
   await fresh.close();
   // API latency (median of 15).
   const lat = async (path) => { const a = []; for (let i = 0; i < 15; i++) { const s = performance.now(); await P.request.get(`${base}${path}`); a.push(performance.now() - s); } a.sort((x, y) => x - y); return Math.round(a[7]); };

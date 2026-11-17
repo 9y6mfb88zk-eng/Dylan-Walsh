@@ -1,0 +1,20 @@
+[
+  {
+    "usableMs": 431,
+    "longestTaskMs": 222,
+    "longTasksTotalMs": 326,
+    "longTasks": 2
+  },
+  {
+    "usableMs": 4985,
+    "longestTaskMs": 4547,
+    "longTasksTotalMs": 4646,
+    "longTasks": 2
+  },
+  {
+    "usableMs": 375,
+    "longestTaskMs": 84,
+    "longTasksTotalMs": 84,
+    "longTasks": 1
+  }
+]
