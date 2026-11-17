@@ -18,8 +18,12 @@ export async function startServer(mock, extraEnv = {}, port = 3900 + Math.floor(
   proc.stdout.on("data", (d) => { out += d; if (process.env.DEBUG) process.stdout.write(d); });
   proc.stderr.on("data", (d) => { out += d; if (process.env.DEBUG) process.stderr.write(d); });
   const base = `http://127.0.0.1:${port}`;
-  for (let i = 0; i < 80; i++) { try { if ((await fetch(base + "/api/health/ping")).ok) break; } catch {} await sleep(100); }
-  return { proc, base, dataDir, port, output: () => out, stop: () => new Promise((r) => { proc.once("exit", r); proc.kill(); }) };
+  let up = false;
+  for (let i = 0; i < 80 && proc.exitCode === null; i++) { try { if ((await fetch(base + "/api/health/ping")).ok) { up = true; break; } } catch {} await sleep(100); }
+  // A server that crashed on start must fail the test run loudly, not leave it waiting forever.
+  if (!up) { if (proc.exitCode === null) proc.kill(); throw new Error(`JARVIS server didn't start (exit ${proc.exitCode}):\n${out.slice(-3000)}`); }
+  const stop = () => new Promise((r) => { if (proc.exitCode !== null || proc.signalCode) return r(); proc.once("exit", r); proc.kill(); });
+  return { proc, base, dataDir, port, output: () => out, stop };
 }
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
