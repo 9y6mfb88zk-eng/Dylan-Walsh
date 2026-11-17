@@ -54,6 +54,7 @@ export async function handleUi(cmd, ctx, { speak = true, text = "" } = {}) {
   }
   if (cmd.kind === "diagnostics") return narrateDiagnostics(cmd.level, ctx, { speak });
   if (cmd.kind === "goc") return gocCommand(cmd, ctx, { speak, text });
+  if (cmd.kind === "op") return opCommand(cmd, ctx, { speak, text });
   if (cmd.kind === "mcSection") {
     if (!mission.open) return null;
     mission.setSection(cmd.section);
@@ -138,8 +139,28 @@ async function gocCommand(cmd, ctx, { speak, text }) {
     case "flights_find": line = r?.ok && r.results?.length ? `Found ${r.results[0].callsign || cmd.query}, ${t}: ${r.results[0].ground ? "on the ground" : `${n(r.results[0].alt)} feet`}${r.results[0].gs != null ? `, ${Math.round(r.results[0].gs)} knots` : ""}.` : `${cmd.query} isn't visible in the available flight data right now, ${t}.${r?.error && !/not visible/.test(r.error) ? ` ${r.error}.` : ""}`; break;
     case "nearest": line = r.ok ? `Nearest visible aircraft selected, ${t}: ${r.aircraft.callsign || r.aircraft.hex.toUpperCase()}${r.aircraft.alt != null ? ` at ${n(r.aircraft.alt)} feet` : ""}.` : `No aircraft are visible near there, ${t}.${r.error ? ` ${r.error}.` : ""}`; break;
     case "events": line = r.ok ? `${n(r.count)} ${cmd.category ? `${cmd.category} ` : ""}reports on screen, ${t}. Each links to its original source.` : `Global events aren't available right now, ${t}.`; break;
+    case "sitrep": line = r.ok ? `Global situation report compiled, ${t}: ${r.sections} sections${r.problems ? `, ${r.problems} source${r.problems === 1 ? "" : "s"} unavailable` : ""}. ${r.summary ? r.summary.split(/(?<=\.)\s/)[0] : ""}` : `I couldn't compile the report, ${t}: ${r.error}.`; break;
     default: line = r.ok ? `Done, ${t}.` : `I couldn't do that, ${t}: ${r.error}.`;
   }
+  await say(ctx, line, speak);
+  return line;
+}
+
+const OP_TITLE = { blackbox: "Operation Blackbox", wayfinder: "Operation Wayfinder", sentinel: "Operation Sentinel", orbit: "Operation Orbit" };
+async function opCommand(cmd, ctx, { speak, text }) {
+  const t = title(ctx);
+  let r;
+  try { r = await mission.gocCommand(cmd); } catch (e) { r = { ok: false, error: e.message }; }
+  logCommand(`${OP_TITLE[cmd.op]}${cmd.action && cmd.action !== "open" ? `: ${cmd.action}` : ""}`, text);
+  const fmtN = (x) => Math.round(x).toLocaleString("en-GB");
+  let line;
+  if (!cmd.action || cmd.action === "open") line = r.ok ? `${OP_TITLE[cmd.op]} is open, ${t}.` : `I couldn't open ${OP_TITLE[cmd.op]}, ${t}.`;
+  else if (cmd.action === "iss") line = r.ok ? `The International Space Station is over ${Math.abs(r.lat).toFixed(0)}° ${r.lat >= 0 ? "north" : "south"}, ${Math.abs(r.lon).toFixed(0)}° ${r.lon >= 0 ? "east" : "west"}, at about ${fmtN(r.altKm)} kilometres, ${t} — calculated from orbital elements ${r.epochAgeH} hours old.` : `I can't place the ISS right now, ${t}: ${r.error}.`;
+  else if (cmd.action === "spaceweather") line = r.ok ? `Space weather, ${t}: planetary K index ${r.kp ?? "unavailable"}${r.storm ? ` — ${r.storm}` : ""}${r.flare ? `; X-ray flux ${r.flare}` : ""}. Source: NOAA.` : `Space weather data isn't available right now, ${t}.`;
+  else if (cmd.action === "launches") line = `Upcoming launches on screen, ${t}. Times are as announced and often change.`;
+  else if (cmd.action === "webcams") line = r.ok ? `${r.count} public cameras listed, ${t}${r.verified ? `, ${r.verified} verified live` : ", live status not yet verified"}. They're operator-published feeds, not evidence of events.` : `The webcam registry isn't available, ${t}.`;
+  else if (cmd.action === "watchlists") line = `Your Sentinel watchlists, ${t}: ${r.count ?? 0}.`;
+  else line = r.ok ? `Done, ${t}.` : `I couldn't do that, ${t}: ${r.error}.`;
   await say(ctx, line, speak);
   return line;
 }

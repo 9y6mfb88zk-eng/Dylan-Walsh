@@ -98,10 +98,23 @@ export async function mountGlobe(canvas, labels, animation, mapQuality = "auto")
     if (pointCloud) { g.remove(pointCloud); pointCloud.geometry.dispose(); pointCloud.material.dispose(); pointCloud = null; }
     if (!ps?.length) return;
     const pos = new Float32Array(ps.length * 3), col = new Float32Array(ps.length * 3), c = new THREE.Color();
-    ps.forEach((p, i) => { const v = toV(p.lat, p.lon, 1.012); pos.set([v.x, v.y, v.z], i * 3); c.set(p.color || "#9fb4c8"); col.set([c.r, c.g, c.b], i * 3); });
+    // p.altKm places a point above the surface at true scale (Earth radius 6,371 km), e.g. satellites.
+    ps.forEach((p, i) => { const v = toV(p.lat, p.lon, p.altKm != null ? 1 + p.altKm / 6371 : 1.012); pos.set([v.x, v.y, v.z], i * 3); c.set(p.color || "#9fb4c8"); col.set([c.r, c.g, c.b], i * 3); });
     const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.BufferAttribute(pos, 3)); geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
-    pointCloud = new THREE.Points(geo, new THREE.PointsMaterial({ size: 0.028, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false }));
+    pointCloud = new THREE.Points(geo, new THREE.PointsMaterial({ size: ps.some((p) => p.altKm != null) ? 0.022 : 0.028, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false }));
     g.add(pointCloud);
+  }
+  // Paths above the surface (orbit tracks): [{ points: [{lat, lon, altKm}], color }]
+  let pathGroup = null;
+  function setPaths(paths) {
+    if (pathGroup) { g.remove(pathGroup); pathGroup.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); }); pathGroup = null; }
+    if (!paths?.length) return;
+    pathGroup = new THREE.Group();
+    for (const pth of paths) {
+      const pts = pth.points.map((p) => toV(p.lat, p.lon, 1 + (p.altKm || 0) / 6371));
+      pathGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: pth.color || 0xa394e8, transparent: true, opacity: 0.75 })));
+    }
+    g.add(pathGroup);
   }
   // Interaction
   let rotY = -0.6, rotX = 0.35, velY = 0.0015, drag = null, target = null;
@@ -109,7 +122,7 @@ export async function mountGlobe(canvas, labels, animation, mapQuality = "auto")
   canvas.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY, ry: rotY, rx: rotX }; canvas.setPointerCapture(e.pointerId); canvas.style.cursor = "grabbing"; target = null; });
   canvas.addEventListener("pointermove", (e) => { if (!drag) return; rotY = drag.ry + (e.clientX - drag.x) * 0.006; rotX = Math.max(-1.2, Math.min(1.2, drag.rx + (e.clientY - drag.y) * 0.006)); });
   canvas.addEventListener("pointerup", () => { drag = null; canvas.style.cursor = "grab"; });
-  canvas.addEventListener("wheel", (e) => { e.preventDefault(); camera.position.z = Math.max(2.4, Math.min(7, camera.position.z + e.deltaY * 0.002)); }, { passive: false });
+  canvas.addEventListener("wheel", (e) => { e.preventDefault(); camera.position.z = Math.max(2.4, Math.min(18, camera.position.z + e.deltaY * 0.002)); }, { passive: false });
   function resize() { const r = canvas.getBoundingClientRect(); renderer.setPixelRatio(Math.min(devicePixelRatio || 1, maxPr)); renderer.setSize(r.width, r.height, false); camera.aspect = r.width / Math.max(1, r.height); camera.updateProjectionMatrix(); }
   const ro = new ResizeObserver(resize); ro.observe(canvas); resize();
   let raf = 0, t = 0;
@@ -133,8 +146,8 @@ export async function mountGlobe(canvas, labels, animation, mapQuality = "auto")
   }
   frame();
   return {
-    setPlaces, setPoints,
+    setPlaces, setPoints, setPaths,
     flyTo(lat, lon) { const ry = -((lon + 180) * Math.PI / 180) + Math.PI / 2 + Math.PI; let d = ((ry - rotY) % (Math.PI * 2) + Math.PI * 3) % (Math.PI * 2) - Math.PI; target = { ry: rotY + d, rx: lat * Math.PI / 180 }; },
-    destroy() { cancelAnimationFrame(raf); ro.disconnect(); setPoints(null); renderer.dispose(); renderer.forceContextLoss?.(); },
+    destroy() { cancelAnimationFrame(raf); ro.disconnect(); setPoints(null); setPaths(null); renderer.dispose(); renderer.forceContextLoss?.(); },
   };
 }

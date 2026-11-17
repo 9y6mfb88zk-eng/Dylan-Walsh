@@ -71,6 +71,17 @@ export function startMock() {
 
   // Decide what "Claude" does, from the conversation so far.
   function anthropicReply(body) {
+    const fmtSchema = JSON.stringify(body.output_config?.format || "");
+    if (/executiveSummary/.test(fmtSchema)) {
+      const prompt = body.messages[0].content;
+      if (/Subject: John Smith of 12/.test(prompt)) return text(JSON.stringify({ privateIndividual: true, title: "x", executiveSummary: "", overview: "", keyFindings: [], timeline: [], locations: [], historicalContext: "", contradictions: [], documents: [], limitations: [] }));
+      return text(JSON.stringify({ privateIndividual: false, title: "Airbus A350 — dossier", executiveSummary: "The Airbus A350 is a long-range wide-body airliner built in Toulouse.", overview: "A twin-engine wide-body aircraft family.",
+        keyFindings: [{ text: "First flight took place in 2013.", sources: [1], confidence: "high", interpretation: false }, { text: "A claim citing a source that doesn't exist.", sources: [99], confidence: "high", interpretation: false }, { text: "Demand is likely to stay strong.", sources: [], confidence: "medium", interpretation: true }],
+        timeline: [{ date: "2013-06-14", event: "First flight", sources: [1] }, { date: "2004", event: "Programme launched (disputed)", sources: [2] }], locations: [{ name: "Toulouse, France", why: "Final assembly line" }],
+        historicalContext: "Developed in response to the Boeing 787.", contradictions: [{ topic: "Launch year", positions: [{ claim: "2004", sources: [1] }, { claim: "2006", sources: [2] }] }], documents: [{ title: "Type certificate", source: 2 }], limitations: ["Synthetic test sources."] }));
+    }
+    if (/itinerary/.test(fmtSchema) && /estimatedCosts/.test(fmtSchema)) return text(JSON.stringify({ title: "Iceland — 5 days", itinerary: [1, 2, 3, 4, 5].map((d) => ({ day: d, title: `Day ${d}`, items: ["Explore"] })), places: [{ name: "Larnaca", why: "Test place" }], estimatedCosts: [{ item: "Car hire", amount: 400, currency: "ISK" }], equipment: ["Waterproof jacket"], notes: ["Test note"] }));
+    if (/"summary"/.test(fmtSchema) && /situation report/i.test(body.messages[0].content)) return text(JSON.stringify({ summary: "Reported events and space weather were compiled from the listed sources." }));
     if (body.output_config?.format) {
       ideaN++;
       return text(JSON.stringify({ title: `Idea ${ideaN}: ${["Villa cleaning scheduler", "Ship crew visa assistant", "Greek menu translator"][ideaN % 3]}`,
@@ -97,6 +108,7 @@ export function startMock() {
       return text("Very good, sir. Consider it done.");
     }
     const t = typeof last.content === "string" ? last.content : "";
+    if (/Research this subject for a dossier/.test(t)) return text("The A350 first flew in 2013.", [{ type: "web_search_result_location", url: "https://example.org/a350-history", title: "A350 history", cited_text: "first flew in 2013" }]);
     if (/business idea/i.test(t)) { const m = JSON.stringify(body.system || "").match(/#(\d+) [^#]*website design agency[^\\|]*/i); return text(m ? `That would be the website design agency for small businesses, Sir (memory #${m[1]}).` : "I don't have a business idea on file, Sir."); }
     if (body.tools) {
       if (/aircraft around cyprus/i.test(t)) return toolUse("global_operations", { action: "flights_area", place: "Cyprus", radius_nm: 120 });
@@ -293,6 +305,31 @@ export function startMock() {
     if (p === "/rainviewer") return json(200, { version: "2.0", host: url.origin === "http://x" ? `http://${req.headers.host}` : url.origin, radar: { past: [{ time: Math.floor(Date.now() / 1000) - 600, path: "/v2/radar/test1" }] } });
     if (p.startsWith("/tile/") || p.startsWith("/v2/radar/")) { log.tiles++; res.writeHead(200, { "content-type": "image/png" }); return res.end(Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082", "hex")); }
 
+    // ---- Operations stand-ins: Wikipedia/Commons, CelesTrak, SWPC, NASA, Launch Library, GOV.UK, OSRM, EONET, FAA, Windy, YouTube
+    if (p === "/wiki/w/api.php") return json(200, { query: { search: [{ title: "Airbus A350" }] } });
+    if (p.startsWith("/wiki/api/rest_v1/page/summary/")) return json(200, { type: "standard", title: "Airbus A350", description: "Wide-body airliner", extract: "The Airbus A350 is a long-range, wide-body twin-engine jet airliner.", content_urls: { desktop: { page: "https://en.wikipedia.org/wiki/Airbus_A350" } }, coordinates: null, wikibase_item: "Q6488", timestamp: "2026-11-01T00:00:00Z", thumbnail: { source: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/A350.jpg/320px-A350.jpg" } });
+    if (p === "/commons/w/api.php") return json(200, { query: { pages: { "1": { imageinfo: [{ descriptionurl: "https://commons.wikimedia.org/wiki/File:A350.jpg", extmetadata: { LicenseShortName: { value: "CC BY-SA 4.0" }, Artist: { value: "<a>Test Photographer</a>" } } }] } } } });
+    if (p === "/celestrak") {
+      const omm = (id, name, mm = 15.49, inc = 51.63) => ({ OBJECT_NAME: name, OBJECT_ID: "1998-067A", EPOCH: new Date(Date.now() - 6 * 3600_000).toISOString().replace("Z", ""), MEAN_MOTION: mm, ECCENTRICITY: 0.0007, INCLINATION: inc, RA_OF_ASC_NODE: 262.8, ARG_OF_PERICENTER: 34.9, MEAN_ANOMALY: 325.3, EPHEMERIS_TYPE: 0, CLASSIFICATION_TYPE: "U", NORAD_CAT_ID: id, ELEMENT_SET_NO: 999, REV_AT_EPOCH: 59547, BSTAR: 0.00018, MEAN_MOTION_DOT: 0.0001, MEAN_MOTION_DDOT: 0 });
+      log.celestrak = (log.celestrak || 0) + 1;
+      const q = Object.fromEntries(url.searchParams);
+      if (q.CATNR === "25544" || /ISS/i.test(q.NAME || "") || q.GROUP === "stations") return json(200, [omm(25544, "ISS (ZARYA)"), omm(48274, "CSS (TIANHE)", 15.6, 41.47)]);
+      if (q.GROUP) return json(200, [omm(20580, "HST", 15.28, 28.47), omm(25544, "ISS (ZARYA)")]);
+      res.writeHead(200, { "content-type": "text/plain" }); return res.end("No GP data found");
+    }
+    if (p === "/swpc/products/noaa-planetary-k-index.json") return json(200, [{ time_tag: new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 19), Kp: 2.33 }, { time_tag: new Date().toISOString().slice(0, 19), Kp: 5.67 }]);
+    if (p === "/swpc/json/goes/primary/xray-flares-latest.json") return json(200, [{ current_class: "B8.2", max_class: "C2.1", begin_time: "2026-11-17T12:08:00Z", max_time: "2026-11-17T12:15:00Z", end_time: "2026-11-17T12:20:00Z" }]);
+    if (p === "/swpc/products/alerts.json") return json(200, [{ product_id: "K05W", issue_datetime: "2026-11-17 10:00:00.000", message: "WARNING: Geomagnetic K-index of 5 expected" }]);
+    if (p === "/nasa/DONKI/notifications") return json(200, [{ messageType: "FLR", messageIssueTime: "2026-11-16T10:00Z", messageURL: "https://ccmc.gsfc.nasa.gov/test", messageBody: "## Summary:\nC2 flare observed.\n##" }]);
+    if (p === "/ll2/launches/upcoming/") return json(200, { results: [{ id: "l1", name: "Falcon 9 | Test Mission", net: new Date(Date.now() + 86400_000).toISOString(), net_precision: { name: "Hour" }, status: { abbrev: "TBC", name: "To Be Confirmed" }, launch_service_provider: { name: "SpaceX" }, pad: { name: "SLC-40", latitude: "28.56", longitude: "-80.58", location: { name: "Cape Canaveral, FL, USA" } }, mission: { name: "Test Mission", orbit: { name: "LEO" } }, url: "https://ll.thespacedevs.com/2.3.0/launches/l1/", infoURLs: [] }] });
+    if (p.startsWith("/govuk/api/content/foreign-travel-advice/")) return p.endsWith("/cyprus") ? json(200, { public_updated_at: "2026-10-01T10:00:00Z", details: { updated_at: "2026-10-01T10:00:00Z", reviewed_at: "2026-10-01T10:00:00Z", alert_status: [], parts: [{ title: "Warnings and insurance", slug: "warnings-and-insurance", body: "<p>Test advice for Cyprus.</p>" }, { title: "Getting help", slug: "getting-help", body: "<p>Call 112.</p>" }] } }) : json(404, {});
+    if (p.startsWith("/osrm/")) return json(200, { code: "Ok", routes: [{ distance: 47700, duration: 2820, legs: [{ distance: 47700, duration: 2820 }], geometry: { coordinates: [[33.6, 34.9], [33.4, 34.95], [33.36, 35.17]] } }] });
+    if (p === "/eonet") return json(200, { events: [{ id: "EONET_1", title: "Wildfire near Limassol, Cyprus", link: "https://eonet.gsfc.nasa.gov/api/v3/events/EONET_1", categories: [{ id: "wildfires" }], sources: [{ id: "InciWeb", url: "https://example.org/fire" }], geometry: [{ date: new Date(Date.now() - 7200_000).toISOString(), type: "Point", coordinates: [33.0, 34.7] }] }] });
+    if (p === "/faa") { res.writeHead(200, { "content-type": "application/xml" }); return res.end(`<AIRPORT_STATUS_INFORMATION><Update_Time>${new Date().toUTCString().replace(/^(\w+), (\d+) (\w+) (\d+) ([\d:]+) GMT$/, "$1 $3 $2 $5 $4 GMT")}</Update_Time><Delay_type><Name>Ground Stops</Name><Ground_Stop_List><Program><ARPT>JFK</ARPT><Reason>weather</Reason><End_Time>5:00 pm EST</End_Time></Program></Ground_Stop_List></Delay_type></AIRPORT_STATUS_INFORMATION>`); }
+    if (p === "/windy") { if (req.headers["x-windy-api-key"] !== "windy-test") return json(403, { message: "Missing Header" }); return json(200, { webcams: [{ webcamId: 111, title: "Larnaca: Finikoudes", status: "active", lastUpdatedOn: new Date().toISOString(), location: { city: "Larnaca", country: "Cyprus", country_code: "CY", latitude: 34.91, longitude: 33.64 }, player: { day: "https://webcams.windy.com/webcams/public/embed/player/111/day" }, images: { current: { preview: "https://imgproxy.windy.com/test.jpg" } }, urls: { detail: "https://www.windy.com/webcams/111" }, categories: [{ name: "Beach" }] }, { webcamId: 222, title: "Kyiv: square", status: "active", location: { city: "Kyiv", country: "Ukraine", country_code: "UA", latitude: 50.45, longitude: 30.52 }, player: {}, images: {}, urls: {} }] }); }
+    if (p === "/youtube/search") return json(200, url.searchParams.get("q") === "Times Square" ? { items: [{ id: { videoId: "TSQvideo001" }, snippet: { title: "Times Square Live Cam" } }] } : { items: [] });
+    if (p === "/youtube/videos") return json(200, { items: [{ snippet: { liveBroadcastContent: "live", title: "Times Square Live Cam" }, status: { embeddable: true }, liveStreamingDetails: { actualStartTime: "2026-01-01T00:00:00Z" } }] });
+
     if (p.startsWith("/push/")) { log.push.push({ path: p, bytes: raw.length }); res.writeHead(201); return res.end(); }
     json(404, { error: "mock: not found " + p });
   };
@@ -315,6 +352,8 @@ export function startMock() {
         NODE_EXTRA_CA_CERTS: tls.certPath,
         ADSB_LOL_URL: `${url}/adsb`, OPENSKY_URL: `${url}/opensky`, OPENSKY_AUTH_URL: `${url}/opensky-auth`, GDACS_URL: `${url}/gdacs`, USGS_URL: `${url}/usgs`, GDELT_URL: `${url}/gdelt`, GDELT_SPACING_MS: "20",
         RELIEFWEB_URL: `${url}/reliefweb`, UCDP_URL: `${url}/ucdp`, RAINVIEWER_URL: `${url}/rainviewer`, TILES_TEST_URL: `${url}/tile`,
+        WIKIPEDIA_URL: `${url}/wiki`, COMMONS_URL: `${url}/commons`, CELESTRAK_URL: `${url}/celestrak`, SWPC_URL: `${url}/swpc`, NASA_API_URL: `${url}/nasa`, LL2_URL: `${url}/ll2`, GOVUK_URL: `${url}/govuk`,
+        OSRM_CAR_URL: `${url}/osrm/car`, OSRM_FOOT_URL: `${url}/osrm/foot`, OSRM_BIKE_URL: `${url}/osrm/bike`, EONET_URL: `${url}/eonet`, FAA_URL: `${url}/faa`, WINDY_URL: `${url}/windy`, YOUTUBE_API_URL: `${url}/youtube`,
       },
     });
   })));

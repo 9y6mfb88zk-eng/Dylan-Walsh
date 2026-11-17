@@ -32,20 +32,27 @@ const URLS = {
   gdelt: () => process.env.GDELT_URL || "https://api.gdeltproject.org/api/v2/doc/doc",
   reliefweb: () => process.env.RELIEFWEB_URL || "https://api.reliefweb.int/v2",
   ucdp: () => process.env.UCDP_URL || "https://ucdpapi.pcr.uu.se/api",
+  eonet: () => process.env.EONET_URL || "https://eonet.gsfc.nasa.gov/api/v3/events",
+  faa: () => process.env.FAA_URL || "https://nasstatus.faa.gov/api/airport-status-information",
 };
 export const CATEGORIES = {
   conflict: "Armed conflict", attack: "Reported attack", unrest: "Civil unrest", disaster: "Natural disaster",
   humanitarian: "Humanitarian emergency", diplomacy: "Diplomatic development", ceasefire: "Ceasefire / peace process",
+  weather: "Severe weather", infrastructure: "Infrastructure / airport disruption",
 };
 export const STATUS_LABEL = {
   coded: "Coded by UCDP researchers", official: "Official monitoring body", reviewed: "Reviewed by seismologists (USGS)", automatic: "Automatic solution, not yet reviewed",
-  corroborated: "Reported by several independent outlets (not independently verified)", single: "Single report — unconfirmed",
+  corroborated: "Independently corroborated: outlets in several countries report it (not verified by JARVIS)",
+  multiple: "Multiple-source reporting (outlets in one country)", single: "Single-source report — unconfirmed",
+  contested: "Conflicting or disputed reporting",
 };
 export const PROVIDERS = {
   gdacs: { name: "GDACS (UN / European Commission)", url: "https://www.gdacs.org/", ttlMin: 30, needs: null, attribution: "Disaster alerts: GDACS, a cooperation of the United Nations and the European Commission" },
   usgs: { name: "USGS Earthquake Hazards Program", url: "https://earthquake.usgs.gov/", ttlMin: 10, needs: null, attribution: "Earthquakes: U.S. Geological Survey (public domain)" },
   gdelt: { name: "GDELT Project", url: "https://www.gdeltproject.org/", ttlMin: 30, needs: null, attribution: "News monitoring: The GDELT Project" },
   reliefweb: { name: "ReliefWeb (UN OCHA)", url: "https://reliefweb.int/", ttlMin: 60, needs: "reliefwebAppname", attribution: "Humanitarian information: ReliefWeb, UN OCHA" },
+  eonet: { name: "NASA EONET (natural events)", url: "https://eonet.gsfc.nasa.gov/", ttlMin: 60, needs: null, attribution: "Natural events: NASA Earth Observatory Natural Event Tracker (EONET)" },
+  faa: { name: "FAA National Airspace System status", url: "https://nasstatus.faa.gov/", ttlMin: 15, needs: null, attribution: "US airport status: Federal Aviation Administration (public domain)" },
   ucdp: { name: "UCDP (Uppsala University)", url: "https://ucdp.uu.se/", ttlMin: 720, needs: "ucdpToken", attribution: "Conflict data: Uppsala Conflict Data Program (UCDP), CC BY 4.0" },
 };
 
@@ -171,17 +178,19 @@ async function fetchGdelt() {
       const c = countryFromText(a.title);
       const w = words(a.title);
       const s = stories.find((x) => (x.c3 || null) === (c?.c3 || null) && jaccard(x.w, w) >= 0.3);
-      const src = { name: a.domain || domainOf(a.url), url: a.url, publishedAt: at, sourceCountry: a.sourcecountry || null };
+      const src = { name: a.domain || domainOf(a.url), url: a.url, publishedAt: at, sourceCountry: a.sourcecountry || null, title: a.title.slice(0, 200) };
       if (s) { if (!s.sources.some((x) => x.name === src.name)) s.sources.push(src); for (const x of w) s.w.add(x); if (at && at < s.eventDate) s.eventDate = at; if (at && at > s.publishedAt) s.publishedAt = at; }
       else stories.push({ c3: c?.c3 || null, c, w, title: a.title, eventDate: at, publishedAt: at, sources: [src] });
     }
     for (const s of stories) {
       const domains = new Set(s.sources.map((x) => x.name));
+      const pubCountries = new Set(s.sources.map((x) => x.sourceCountry).filter(Boolean));
+      const disputed = /\b(denies|denied|disputes? (the )?(claims?|reports?|account)|rejects? (the )?(claims?|reports?)|conflicting (reports|accounts|claims)|contradict(s|ed)? (claims?|reports?))\b/i.test(s.sources.map((x) => x.title || "").join(" ") + " " + s.title);
       out.push({
         id: `gdelt:${cat}:${s.sources[0].url}`, provider: "gdelt", category: cat, subtype: null, title: s.title, summary: null,
         ...place(s.c), placeName: s.c?.name || null, lat: s.c ? s.c.lat : null, lon: s.c ? s.c.lon : null, locAccuracy: s.c ? "country (from headline)" : "unknown",
         eventDate: s.eventDate, eventDateLabel: "first reported", publishedAt: s.publishedAt, sources: s.sources.slice(0, 8), sourceCount: domains.size,
-        status: domains.size >= 2 ? "corroborated" : "single", severity: Math.min(3, domains.size),
+        status: disputed ? "contested" : domains.size >= 2 ? (pubCountries.size >= 2 ? "corroborated" : "multiple") : "single", severity: Math.min(3, domains.size), publisherCountries: [...pubCountries],
       });
     }
   }
@@ -235,7 +244,48 @@ async function fetchUcdp() {
     };
   });
 }
-const FETCH = { usgs: fetchUsgs, gdacs: fetchGdacs, gdelt: fetchGdelt, reliefweb: fetchReliefweb, ucdp: fetchUcdp };
+// NASA EONET: wildfires, severe storms, volcanoes and floods, each with its latest reported position.
+const EONET_CAT = { wildfires: ["disaster", "Wildfire"], severeStorms: ["weather", "Severe storm"], volcanoes: ["disaster", "Volcano"], floods: ["disaster", "Flood"], earthquakes: ["disaster", "Earthquake"], landslides: ["disaster", "Landslide"], drought: ["disaster", "Drought"], tempExtremes: ["weather", "Temperature extreme"] };
+async function fetchEonet() {
+  const j = await getJson(`${URLS.eonet()}?status=open&days=14&limit=300`);
+  return (j.events || []).flatMap((e) => {
+    const cat = EONET_CAT[e.categories?.[0]?.id]; if (!cat) return [];
+    const g = (e.geometry || []).filter((x) => x.type === "Point").at(-1); if (!g) return [];
+    const [lon, lat] = g.coordinates; const c = countryFromText(e.title);
+    return [{ id: `eonet:${e.id}`, provider: "eonet", category: cat[0], subtype: cat[1], title: e.title, summary: g.magnitudeValue ? `${g.magnitudeValue} ${g.magnitudeUnit || ""}`.trim() : null,
+      ...place(c), placeName: c?.name || null, lat, lon, locAccuracy: "reported point (NASA EONET)", eventDate: iso(e.geometry[0]?.date), publishedAt: iso(g.date),
+      sources: [{ name: "NASA EONET", url: e.link || `https://eonet.gsfc.nasa.gov/api/v3/events/${e.id}`, publishedAt: iso(g.date) }, ...(e.sources || []).slice(0, 2).map((s) => ({ name: s.id, url: s.url, publishedAt: null }))],
+      status: "official", severity: 1 }];
+  });
+}
+// FAA: current US airport ground stops, ground delay programmes, delays and closures.
+let AIRPORT_BY_CODE = null;
+function airportByCode(code) {
+  if (!AIRPORT_BY_CODE) { AIRPORT_BY_CODE = new Map(); for (const a of JSON.parse(fs.readFileSync(path.join(here, "..", "data", "airports.json"), "utf8"))) { if (a.iata) AIRPORT_BY_CODE.set(a.iata, a); if (a.icao) AIRPORT_BY_CODE.set(a.icao, a); } }
+  return AIRPORT_BY_CODE.get(code) || AIRPORT_BY_CODE.get(`K${code}`) || null;
+}
+async function fetchFaa() {
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 20000);
+  let xml;
+  try { const r = await fetch(URLS.faa(), { headers: { "user-agent": UA, accept: "application/xml" }, signal: ctl.signal }); if (!r.ok) throw new Error(`HTTP ${r.status}`); xml = await r.text(); }
+  catch (e) { throw new Error(e.name === "AbortError" ? "timed out" : e.message); } finally { clearTimeout(t); }
+  const updated = xml.match(/<Update_Time>([^<]+)<\/Update_Time>/)?.[1];
+  const at = updated ? iso(updated.replace(/^\w+ (\w+) (\d+) ([\d:]+) (\d+) GMT$/, "$1 $2 $4 $3 GMT")) : new Date().toISOString();
+  const out = [];
+  const tag = (blk, n) => blk.match(new RegExp(`<${n}>([\\s\\S]*?)</${n}>`))?.[1]?.trim();
+  const add = (code, kind, detail) => {
+    const ap = airportByCode(code); const usa = BY_C3.USA;
+    out.push({ id: `faa:${kind}:${code}`, provider: "faa", category: "infrastructure", subtype: kind, title: `${kind} at ${ap?.name || code}${detail ? ` — ${detail}` : ""}`, summary: detail || null,
+      ...place(usa), placeName: ap ? `${ap.name}, ${ap.city}` : code, lat: ap?.lat ?? null, lon: ap?.lon ?? null, locAccuracy: ap ? "airport" : "unknown",
+      eventDate: at, publishedAt: at, sources: [{ name: "FAA NAS Status", url: "https://nasstatus.faa.gov/", publishedAt: at }], status: "official", severity: /Stop|Closure/.test(kind) ? 2 : 1 });
+  };
+  for (const b of xml.match(/<Ground_Delay>[\s\S]*?<\/Ground_Delay>/g) || []) add(tag(b, "ARPT"), "Ground delay programme", [tag(b, "Reason"), tag(b, "Avg") && `average ${tag(b, "Avg")}`].filter(Boolean).join(", "));
+  for (const b of xml.match(/<Program>[\s\S]*?<\/Program>/g) || []) add(tag(b, "ARPT"), "Ground stop", [tag(b, "Reason"), tag(b, "End_Time") && `until ${tag(b, "End_Time")}`].filter(Boolean).join(", "));
+  for (const b of xml.match(/<Delay>[\s\S]*?<\/Delay>/g) || []) if (tag(b, "ARPT")) add(tag(b, "ARPT"), "Delays", tag(b, "Reason"));
+  for (const b of xml.match(/<Airport>[\s\S]*?<\/Airport>/g) || []) if (/Closure/i.test(xml) && tag(b, "ARPT")) add(tag(b, "ARPT"), "Airport closure", tag(b, "Reason"));
+  return out;
+}
+const FETCH = { usgs: fetchUsgs, gdacs: fetchGdacs, gdelt: fetchGdelt, reliefweb: fetchReliefweb, ucdp: fetchUcdp, eonet: fetchEonet, faa: fetchFaa };
 
 // ---------------------------------------------------------------- Refresh (only on demand, never on a timer)
 function due(p) {

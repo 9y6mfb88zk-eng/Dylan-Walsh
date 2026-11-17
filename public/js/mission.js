@@ -23,6 +23,11 @@ export const MC_SECTIONS = [
   ["events", "Global Events", "fire"],
   ["flights", "Flight Tracking", "send"],
   ["diagnostics", "System Diagnostics", "diagnostics"],
+  // Operations: modules inside Mission Control (same core, map, data and voice), not separate applications.
+  ["op-blackbox", "Blackbox", "intel"],
+  ["op-wayfinder", "Wayfinder", "world"],
+  ["op-sentinel", "Sentinel", "shield"],
+  ["op-orbit", "Orbit", "globe"],
   ["overview", "Operational Overview", "home"],
   ["architecture", "System Architecture", "cpu"],
   ["processes", "Active Processes", "wave"],
@@ -30,7 +35,8 @@ export const MC_SECTIONS = [
   ["projects", "Projects", "projects"],
   ["personal", "Personal Operations", "tasks"],
 ];
-const GOC_SECTIONS = ["globalops", "world", "events", "flights"];
+const GOC_SECTIONS = ["globalops", "world", "events", "flights", "op-blackbox", "op-wayfinder", "op-sentinel", "op-orbit"];
+export const OP_NAMES = { "op-blackbox": "Operation Blackbox", "op-wayfinder": "Operation Wayfinder", "op-sentinel": "Operation Sentinel", "op-orbit": "Operation Orbit" };
 const isGoc = (sec) => GOC_SECTIONS.includes(sec);
 const OVERVIEW = ["core", "overview", "ops", "arch", "diag", "map", "res", "intel", "comms", "act"];
 const FOCUS = {
@@ -126,10 +132,20 @@ export const mission = {
   setSection,
   /** The Global Operations display (null until Mission Control is active). */
   get goc() { return goc; },
+  /** What's on screen in Mission Control, for the AI ("research this aircraft", "save this journey"). */
+  context() { return phase === "off" ? null : { section, ...(goc?.context?.() || {}) }; },
   /** Voice/AI commands for Global Operations: switches to the right section first. */
   async gocCommand(cmd) {
     if (phase === "off" || phase === "deactivating") await mission.show(CTX);
     else if (phase === "activating") await readyP;
+    if (cmd.op) {
+      const sec = `op-${cmd.op}`;
+      if (section !== sec) await setSection(sec);
+      await gocP;
+      if (!cmd.action || (cmd.action === "open" && !cmd.id)) return { ok: !!goc };
+      return goc ? goc.opCommand(cmd) : { ok: false, error: "Mission Control isn't available." };
+    }
+    if (cmd.action === "sitrep") { if (!isGoc(section)) await setSection("globalops"); await gocP; const r = await goc?.openSitrep(); return r ? { ok: true, sections: r.data.sections.length, problems: r.data.problems.length, summary: r.data.summary } : { ok: false, error: "The report couldn't be compiled." }; }
     const want = cmd.section || (/^flights|^select|^nearest/.test(cmd.action) ? "flights" : cmd.action === "events" ? "events" : null);
     if (want && section !== want && !(section === "globalops" && want !== "world")) await setSection(want);
     else if (!isGoc(section)) await setSection("globalops");
@@ -421,7 +437,7 @@ function build() {
   navEl = document.createElement("nav");
   navEl.id = "mcNav"; navEl.className = "nav mc-nav"; navEl.hidden = true;
   navEl.setAttribute("aria-label", "Mission Control sections");
-  navEl.innerHTML = `<div class="nav-group">Mission Control</div>${MC_SECTIONS.map(([id, l, ic]) => `<button class="nav-btn" data-mc="${id}" title="${esc(l)}">${icon(ic)}<span>${esc(l)}</span></button>`).join("")}
+  navEl.innerHTML = `<div class="nav-group">Mission Control</div>${MC_SECTIONS.map(([id, l, ic]) => `${id === "op-blackbox" ? '<div class="nav-group">Operations</div>' : id === "overview" ? '<div class="nav-group">More</div>' : ""}<button class="nav-btn" data-mc="${id}" title="${esc(OP_NAMES[id] || l)}">${icon(ic)}<span>${esc(l)}</span></button>`).join("")}
     <div class="nav-group">Mode</div><button class="nav-btn mc-exit-btn" data-mcexit title="Exit Mission Control">${icon("x")}<span>Exit Mission Control</span></button>`;
   nav.after(navEl);
   root = document.createElement("section");
@@ -453,7 +469,7 @@ function applyLayout(sec) {
     $(".mc-goc", root).hidden = false; $(".mc-grid", root).hidden = true;
     for (const p of $$(".mc-grid > [data-panel]", root)) if (p.dataset.panel !== "core") { p.hidden = true; p.style.gridArea = ""; p.classList.remove("expanded"); }
     $$("[data-mc]").forEach((b) => { const on = b.dataset.mc === sec; b.classList.toggle("active", on); if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
-    const t = $("#pageTitle"); if (t) t.textContent = `Mission Control · ${sectionLabel(sec)}`;
+    const t = $("#pageTitle"); if (t) t.textContent = `Mission Control · ${OP_NAMES[sec] || sectionLabel(sec)}`;
     return;
   }
   $(".mc-goc", root).hidden = true; $(".mc-grid", root).hidden = false;

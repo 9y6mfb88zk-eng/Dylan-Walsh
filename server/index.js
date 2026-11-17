@@ -13,6 +13,7 @@ import { router as financeRoutes, callback as monzoCallback } from "./routes/fin
 import { router as calendarRoutes, callback as googleCallback } from "./routes/calendar.js";
 import { router as upgradeRoutes } from "./routes/upgrade.js";
 import { router as globalopsRoutes } from "./routes/globalops.js";
+import { router as opsRoutes } from "./routes/ops.js";
 import { logError } from "./services/diagnostics.js";
 import { startScheduler } from "./scheduler.js";
 import { brainReady } from "./brain.js";
@@ -32,7 +33,11 @@ app.use((req, res, next) => {
   res.setHeader("x-frame-options", "DENY");
   res.setHeader("permissions-policy", "camera=(self), microphone=(self), geolocation=(self)");
   res.setHeader("content-security-policy", [
-    "default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob:",
+    "default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'",
+    // Images: Wikimedia (dossier pictures with their licence) and Windy webcam previews. Frames: only the official
+    // YouTube (privacy-enhanced) and Windy timelapse players, for public webcams that permit embedding.
+    "img-src 'self' data: blob: https://upload.wikimedia.org https://imgproxy.windy.com https://images-webcams.windy.com",
+    "frame-src https://www.youtube-nocookie.com https://webcams.windy.com",
     "media-src 'self' blob:", "connect-src 'self' ws: wss:", "worker-src 'self' blob:", "font-src 'self' data:",
     "frame-ancestors 'none'", "base-uri 'self'", "form-action 'self'",
   ].join("; "));
@@ -54,6 +59,7 @@ app.use(financeRoutes);
 app.use(calendarRoutes);
 app.use(upgradeRoutes);
 app.use(globalopsRoutes);
+app.use(opsRoutes);
 app.use("/api", (_req, res) => res.status(404).json({ error: "Not found" }));
 
 app.use((err, req, res, _next) => {

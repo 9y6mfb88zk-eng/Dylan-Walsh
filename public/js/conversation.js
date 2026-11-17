@@ -54,7 +54,7 @@ export const conversation = {
       const res = await fetch("/api/chat/stream", {
         method: "POST", credentials: "same-origin", signal: ac.signal,
         headers: { "content-type": "application/json", "x-jarvis": "1" },
-        body: JSON.stringify({ text, clientId, voice: viaVoice, loc: ctx.loc?.() || undefined }),
+        body: JSON.stringify({ text, clientId, voice: viaVoice, loc: ctx.loc?.() || undefined, screen: ctx.mission?.context?.() || undefined }),
       });
       if (!res.ok || !res.body) { const j = await res.json().catch(() => ({})); throw Object.assign(new Error(j.error || `Request failed (${res.status})`), { status: res.status }); }
       const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";

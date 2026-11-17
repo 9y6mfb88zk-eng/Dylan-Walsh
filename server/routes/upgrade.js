@@ -41,7 +41,7 @@ router.post("/api/chat/stream", rateLimit({ name: "chat", limit: 30, windowMs: 6
   const send = (ev) => { if (!res.writableEnded) res.write(`data: ${JSON.stringify(ev)}\n\n`); };
   const ping = setInterval(() => send({ type: "ping" }), 15_000);
   try {
-    const out = await chat({ text, conversationId: req.body?.conversationId, clientId: req.body?.clientId || null, deviceId: req.auth.deviceId, deviceKind: req.auth.kind, loc: req.body?.loc, voice: !!req.body?.voice, onEvent: send });
+    const out = await chat({ text, conversationId: req.body?.conversationId, clientId: req.body?.clientId || null, deviceId: req.auth.deviceId, deviceKind: req.auth.kind, loc: req.body?.loc, voice: !!req.body?.voice, screen: req.body?.screen && typeof req.body.screen === "object" ? req.body.screen : null, onEvent: send });
     send({ type: "done", ...out });
   } catch (e) {
     const err = friendlyAiError(e);
@@ -331,7 +331,7 @@ export function onSettingsChanged(patch) {
 void memory;
 
 // ---------------------------------------------------------------- Your data: export everything / delete by category (backup first)
-const EXPORT_TABLES = ["tasks", "reminders", "projects", "milestones", "events", "memories", "notes", "documents", "saved_sources", "research", "ideas", "alarms", "alarm_events",
+const EXPORT_TABLES = ["op_records", "tasks", "reminders", "projects", "milestones", "events", "memories", "notes", "documents", "saved_sources", "research", "ideas", "alarms", "alarm_events",
   "savings_goals", "debts", "bills", "budgets", "businesses", "clients", "proposals", "invoices", "business_expenses", "interactions", "saved_locations", "routines", "routine_runs",
   "focus_sessions", "goals", "goal_milestones", "habits", "habit_checks", "briefings", "notifications", "activity", "conversations", "messages"];
 router.get("/api/export", (req, res) => {

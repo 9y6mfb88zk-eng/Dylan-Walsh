@@ -46,6 +46,16 @@ export function uiCommand(text, { missionOpen = false } = {}) {
     const s = t.match(/^(?:show|open|go to|switch to|display|view)(?: me)? (.+)$/);
     if (s) for (const [id, re] of MC_SECTION_WORDS) if (re.test(s[1])) return { kind: "mcSection", section: id };
   }
+  // Mission Control operations.
+  m = t.match(/^(?:initiate|open|start|launch|activate|engage|begin|go to|switch to|show)(?: the)? operation (blackbox|black box|wayfinder|way finder|sentinel|orbit)$/) || t.match(/^operation (blackbox|black box|wayfinder|way finder|sentinel|orbit)$/);
+  if (m) return { kind: "op", op: m[1].replace(/\s+/g, ""), action: "open" };
+  if (/^(track|show|find|where is)(?: me)? the (international space station|iss)( now)?$/.test(t) || /^track the iss$/.test(t)) return { kind: "op", op: "orbit", action: "iss" };
+  if (/^(show|display|what'?s|what is|check)(?: me)?(?: the)? (current |latest )?space weather( now| today)?$/.test(t)) return { kind: "op", op: "orbit", action: "spaceweather" };
+  if (/^(show|display|list)(?: me)?(?: the)? (upcoming |next )?(rocket )?launches$/.test(t)) return { kind: "op", op: "orbit", action: "launches" };
+  if (/^(show|display|list|open)(?: me)?(?: the)? (available )?(public )?(city )?(web ?cams|webcams|cameras)$/.test(t)) return { kind: "op", op: "sentinel", action: "webcams" };
+  if (/^(show|open|display)(?: me)?(?: my)? (sentinel )?watchlists?$/.test(t)) return { kind: "op", op: "sentinel", action: "watchlists" };
+  if (/^(show|open)(?: me)? the latest global events$/.test(t) || /^(show|open)(?: me)? the latest (world )?news events$/.test(t)) return { kind: "goc", action: "events", category: null };
+  if (/^(generate|create|compile|show|give me|run)(?: me)?(?: a| the)? (global )?situation report$/.test(t) || /^(global )?sitrep$/.test(t)) return { kind: "goc", action: "sitrep" };
   // Global Operations: flight tracking and events. Places other than the region presets go to the AI (it geocodes them).
   if (/^(hide|turn off|switch off|disable|stop) (the )?(flight tracking|aircraft|flights|air traffic)$/.test(t)) return { kind: "goc", action: "flights_hide" };
   if (/^(show|turn on|switch on|enable|start) (the )?(flight tracking|aircraft|flights)$/.test(t)) return { kind: "goc", action: "flights_show" };

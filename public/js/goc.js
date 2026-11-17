@@ -24,12 +24,19 @@ export const REGIONS = {
   africa: ["Africa", [-35, -18, 37, 52]], southasia: ["South Asia", [5, 60, 35, 95]], eastasia: ["East Asia", [20, 100, 46, 146]], oceania: ["Oceania", [-47, 110, -8, 180]],
 };
 const BASES = [["dark", "Standard"], ["satellite", "Satellite"], ["today", "Satellite · latest day"], ["terrain", "Terrain"], ["relief", "Relief"], ["osm", "OpenStreetMap"]];
-const OVERLAYS = [["boundaries", "Country boundaries"], ["labels", "Country names"], ["events", "Global events"], ["conflict", "War & conflict reporting"], ["flights", "Public civil flights"], ["trails", "Flight trails"], ["radar", "Weather radar"]];
+const OVERLAYS = [["boundaries", "Country boundaries"], ["labels", "Country names"], ["events", "Global events"], ["conflict", "War & conflict reporting"], ["flights", "Public civil flights"], ["trails", "Flight trails"], ["radar", "Weather radar"],
+  ["dossiers", "Blackbox research places"], ["trips", "Wayfinder routes & places"], ["webcams", "Sentinel webcams & watch areas"], ["satellites", "Orbit satellites"]];
+/** Operations (Mission Control modules). Their workspaces load only when first opened. */
+export const OPERATIONS = { "op-blackbox": "blackbox", "op-wayfinder": "wayfinder", "op-sentinel": "sentinel", "op-orbit": "orbit" };
 const MODE_DEFAULTS = {
   globalops: { events: true, conflict: true, flights: true },
   world: { events: false, conflict: false, flights: false },
   events: { events: true, conflict: true, flights: false },
   flights: { events: false, conflict: false, flights: true },
+  "op-blackbox": { events: false, conflict: false, flights: false, dossiers: true },
+  "op-wayfinder": { events: false, conflict: false, flights: false, trips: true },
+  "op-sentinel": { events: true, conflict: true, flights: false, webcams: true },
+  "op-orbit": { events: false, conflict: false, flights: false, satellites: true },
 };
 const altColor = (a) => (a.ground ? "#6b7785" : a.alt == null ? "#8893a0" : a.alt < 10000 ? "#5fb3b3" : a.alt < 25000 ? "#7aa2d6" : "#dfe8f2");
 const EMERGENCY = new Set(["7500", "7600", "7700"]);
@@ -55,7 +62,8 @@ async function leaflet() {
 export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
   const tz = ctx.settings.timezone;
   const st = {
-    mode, layers: { boundaries: true, labels: false, radar: false, trails: true, ...MODE_DEFAULTS[mode] }, base: "dark",
+    mode, layers: { boundaries: true, labels: false, radar: false, trails: true, dossiers: false, trips: false, webcams: false, satellites: false, ...MODE_DEFAULTS[mode] }, base: "dark",
+    opLayers: {}, opMod: null, opName: null, opContext: null,
     flights: null, flightErr: null, flightsAt: 0, nextFlightT: 0, selected: null, follow: false, history: new Map(),
     filter: { type: "", alt: "all" }, events: null, eventsErr: null, evFilter: { cats: new Set(), region: "", country: "", days: "3", provider: "", status: "" },
     status: null, diag: null, perf: null, activity: null, world: null, series: { cpu: [], ram: [], lag: [] }, globe: null, view3d: false, destroyed: false,
@@ -67,7 +75,9 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
       <div class="goc-brand"><b>J.A.R.V.I.S.</b><span>Global Operations</span></div>
       <div class="goc-clocks" id="gocClocks"></div>
       <div class="goc-pills" id="gocPills"></div>
+      <button class="goc-tb" id="gocSitrep" title="Compile a Global Situation Report from every operation">Situation report</button>
     </header>
+    <div class="goc-sitrep" id="gocSitrepPanel" hidden></div>
     <aside class="goc-left" aria-label="JARVIS core and systems">
       <div class="goc-core-host"></div>
       <section class="goc-box"><h3>Systems</h3><dl class="goc-sys" id="gocSys"><div class="goc-muted">Reading live status…</div></dl></section>
@@ -182,6 +192,33 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
         g2.fillStyle = "rgba(190,205,220,.72)"; g2.fillText(name, p.x, p.y);
       }
     }
+    // Operation layers (Blackbox places, Wayfinder routes, Sentinel webcams, Orbit satellites)
+    for (const [name, layer] of Object.entries(st.opLayers)) {
+      if (!st.layers[name] || !layer) continue;
+      for (const ln of layer.lines || []) {
+        g2.beginPath(); g2.lineWidth = ln.width || 1.6; g2.strokeStyle = ln.color || "#8fb3d9"; g2.setLineDash(ln.dash || []);
+        let prev = null;
+        for (const [la, lo] of ln.coords) {
+          const p = map.latLngToContainerPoint([la, lo]);
+          if (prev && Math.abs(lo - prev) > 180) g2.moveTo(p.x, p.y); else if (prev === null) g2.moveTo(p.x, p.y); else g2.lineTo(p.x, p.y);
+          prev = lo;
+        }
+        g2.stroke(); g2.setLineDash([]);
+      }
+      for (const pt of layer.points || []) {
+        const p = map.latLngToContainerPoint([pt.lat, pt.lon]);
+        if (p.x < -20 || p.y < -20 || p.x > size.x + 20 || p.y > size.y + 20) continue;
+        const r = pt.r || 5, col = pt.color || "#a394e8";
+        g2.beginPath();
+        if (pt.shape === "square") g2.rect(p.x - r, p.y - r, r * 2, r * 2);
+        else if (pt.shape === "diamond") { g2.moveTo(p.x, p.y - r - 1); g2.lineTo(p.x + r + 1, p.y); g2.lineTo(p.x, p.y + r + 1); g2.lineTo(p.x - r - 1, p.y); g2.closePath(); }
+        else g2.arc(p.x, p.y, r, 0, Math.PI * 2);
+        if (pt.hollow) { g2.strokeStyle = col; g2.lineWidth = 1.5; g2.stroke(); } else { g2.fillStyle = col; g2.fill(); g2.strokeStyle = "rgba(3,6,10,.7)"; g2.lineWidth = 1; g2.stroke(); }
+        if (pt.selected) { g2.beginPath(); g2.arc(p.x, p.y, r + 5, 0, Math.PI * 2); g2.strokeStyle = "#c4b5fd"; g2.lineWidth = 1.4; g2.stroke(); }
+        if (pt.label && (pt.selected || z >= (pt.labelZoom ?? 5))) { g2.font = "10.5px var(--mono, ui-monospace, monospace)"; g2.textAlign = "left"; g2.textBaseline = "middle"; g2.fillStyle = "rgba(220,230,240,.85)"; g2.fillText(pt.label, p.x + r + 5, p.y); }
+        hits.push({ x: p.x, y: p.y, r: r + 3, kind: "op", layer: name, pt });
+      }
+    }
     // Events
     for (const e of visibleEvents()) {
       const p = map.latLngToContainerPoint([e.lat, e.lon]);
@@ -261,7 +298,7 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
     mapEl.style.cursor = h ? "pointer" : "";
     if (!h) { tip.hidden = true; return; }
     tip.hidden = false; tip.style.left = `${ev.clientX - r.left + 14}px`; tip.style.top = `${ev.clientY - r.top + 10}px`;
-    tip.innerHTML = h.kind === "aircraft" ? `<b>${esc(h.a.callsign || h.a.hex.toUpperCase())}</b> ${esc(h.a.type || "")}<br><span>${h.a.ground ? "on ground" : h.a.alt != null ? `${fmtN(h.a.alt)} ft` : "altitude unknown"} · ${h.a.gs != null ? `${Math.round(h.a.gs)} kt` : "—"}</span>`
+    tip.innerHTML = h.kind === "op" ? `<b>${esc(h.pt.label || h.pt.title || "")}</b>${h.pt.sub ? `<br><span>${esc(h.pt.sub)}</span>` : ""}` : h.kind === "aircraft" ? `<b>${esc(h.a.callsign || h.a.hex.toUpperCase())}</b> ${esc(h.a.type || "")}<br><span>${h.a.ground ? "on ground" : h.a.alt != null ? `${fmtN(h.a.alt)} ft` : "altitude unknown"} · ${h.a.gs != null ? `${Math.round(h.a.gs)} kt` : "—"}</span>`
       : h.kind === "cluster" ? `<b>${fmtN(h.n)} aircraft</b><br><span>zoom in to see them individually</span>`
       : `<b>${esc(h.e.title.slice(0, 90))}</b><br><span>${esc(h.e.placeName || h.e.country || "location unknown")} · ${esc(ctx.goc?.cats?.[h.e.category] || h.e.category)}</span>`;
   });
@@ -269,6 +306,7 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
   map.on("click", (ev) => {
     const h = hitAt(ev.containerPoint.x, ev.containerPoint.y);
     if (!h) return;
+    if (h.kind === "op") { h.pt.onClick?.(h.pt); return; }
     if (h.kind === "aircraft") selectAircraft(h.a.hex);
     else if (h.kind === "cluster") map.setView(ev.latlng, Math.min(map.getZoom() + 2, 8));
     else if (h.kind === "event") { st.selectedEvent = h.e.id; renderRight(); draw(); const it = $(`[data-ev="${CSS.escape(h.e.id)}"]`, root); it?.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "auto" : "smooth" }); it?.classList.add("open"); }
@@ -365,6 +403,8 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
   // ------------------------------------------------------------ Right column
   const right = $("#gocRight", root);
   function renderRight() {
+    if (OPERATIONS[st.mode]) return mountOperation(OPERATIONS[st.mode]);
+    if (st.opMod) { st.opMod.unmount?.(); st.opMod = null; st.opName = null; st.opContext = null; }
     if (st.mode === "flights") return renderFlightPanel();
     if (st.mode === "world") return renderPlaces();
     const E = st.events, f = st.evFilter;
@@ -546,6 +586,55 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
     $("#gocMapHint", root).textContent = st.layers.flights && z < 4 && (st.flights?.list?.length || 0) > 400 ? "Aircraft grouped — zoom in to see individual flights" : "";
   }
 
+  // ------------------------------------------------------------ Operations (lazy-loaded workspaces in the right column)
+  const opApi = {
+    api, map, L: Lf, ctx, tz, esc, toast, root,
+    setLayer(name, layer) { st.opLayers[name] = layer; draw(); },
+    clearLayer(name) { delete st.opLayers[name]; draw(); },
+    showLayer(name, on = true) { if (st.layers[name] !== on) setOverlay(name, on); },
+    fly(lat, lon, zoom = 6) { if (st.view3d) toggle3d(false); map.setView([lat, lon], zoom, { animate: !reducedMotion() }); },
+    fit(points, maxZoom = 8) { const p = points.filter((x) => x && Number.isFinite(x[0]) && Number.isFinite(x[1])); if (!p.length) return; if (st.view3d) toggle3d(false); if (p.length === 1) map.setView(p[0], Math.min(maxZoom, 7)); else map.fitBounds(p, { padding: [30, 30], maxZoom, animate: !reducedMotion() }); },
+    selectedAircraft: () => (st.selected ? { hex: st.selected.hex, ...(st.selected.detail || {}), ...(st.selected.live ? { callsign: st.selected.live.callsign, type: st.selected.live.type, reg: st.selected.live.reg } : {}) } : null),
+    setContext(c) { st.opContext = c; },
+    print: printHtml,
+    globe: () => st.globe, show3d: (on) => toggle3d(on),
+    on3d: null,
+  };
+  async function mountOperation(name) {
+    if (st.opName === name && st.opMod) { st.opMod.refresh?.(); return; }
+    st.opMod?.unmount?.(); st.opMod = null; st.opName = name; st.opContext = { operation: name };
+    right.innerHTML = `<section class="goc-box goc-feed goc-op" data-op="${name}"><p class="goc-muted">Loading Operation ${esc(name[0].toUpperCase() + name.slice(1))}…</p></section>`;
+    try {
+      const mod = await import(`./ops/${name}.js`);
+      if (st.opName !== name || st.destroyed) return;
+      st.opMod = await mod.mount($(".goc-op", right), opApi);
+    } catch (e) { right.innerHTML = `<section class="goc-box"><h3>Operation ${esc(name)}</h3><p class="goc-warnline">This operation couldn't load: ${esc(e.message)}</p></section>`; }
+  }
+  function printHtml(title, html) {
+    let area = document.getElementById("printArea");
+    if (!area) { area = Object.assign(document.createElement("div"), { id: "printArea" }); document.body.append(area); }
+    area.innerHTML = `<article class="print-doc"><header><b>J.A.R.V.I.S.</b><span>${esc(title)}</span><span>Printed ${esc(new Date().toLocaleString("en-GB", { timeZone: tz }))}</span></header>${html}</article>`;
+    document.documentElement.classList.add("printing");
+    const done = () => { document.documentElement.classList.remove("printing"); removeEventListener("afterprint", done); };
+    addEventListener("afterprint", done);
+    setTimeout(() => { try { print(); } finally { setTimeout(done, 1500); } }, 50);
+  }
+  // Global Situation Report: compiled on the server from every operation, shown over the map, exportable as PDF.
+  const sitrep = $("#gocSitrepPanel", root);
+  async function openSitrep() {
+    sitrep.hidden = false;
+    sitrep.innerHTML = `<div class="goc-box"><h3>Global Situation Report</h3><p class="goc-muted">Compiling from events, watchlists, travel, aviation, space weather and research…</p></div>`;
+    try {
+      const rep = await api("/api/report/situation", { method: "POST", body: {} });
+      const { renderReport } = await import("./ops/report.js");
+      sitrep.innerHTML = `<div class="goc-box goc-sitrep-box"><div class="goc-sitrep-head"><h3>${esc(rep.title)}</h3><button class="goc-btn" id="gocSitrepPdf">Export PDF</button><button class="goc-x" id="gocSitrepX" aria-label="Close">×</button></div>${renderReport(rep, tz)}</div>`;
+      $("#gocSitrepX", sitrep).onclick = () => { sitrep.hidden = true; };
+      $("#gocSitrepPdf", sitrep).onclick = () => printHtml(rep.title, renderReport(rep, tz, { print: true }));
+      return rep;
+    } catch (e) { sitrep.innerHTML = `<div class="goc-box"><h3>Global Situation Report</h3><p class="goc-warnline">Couldn't compile the report: ${esc(e.message)}</p><button class="goc-btn" id="gocSitrepX">Close</button></div>`; $("#gocSitrepX", sitrep).onclick = () => { sitrep.hidden = true; }; return null; }
+  }
+  $("#gocSitrep", root).onclick = openSitrep;
+
   // ------------------------------------------------------------ 3D view (the World Explorer globe)
   async function toggle3d(on = !st.view3d) {
     st.view3d = on;
@@ -560,6 +649,7 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
         st.globe.setPlaces(st.world || []);
         st.globe.setPoints(visibleEvents().map((e) => ({ lat: e.lat, lon: e.lon, color: CAT_COLOR[e.category] })));
         const c = map.getCenter(); st.globe.flyTo(c.lat, c.lng);
+        opApi.on3d?.(st.globe);
       } catch (e) { toast(`The 3D view isn't available here: ${e.message}`); st.view3d = false; $("#gocGlobe", root).hidden = true; $("#gocMap", root).style.visibility = ""; cv.style.visibility = ""; }
     } else if (!on && st.globe) { st.globe.destroy(); st.globe = null; draw(); }
   }
@@ -611,7 +701,10 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
     root, map, ready,
     get coreHost() { return $(".goc-core-host", root); },
     setMode,
-    info: () => ({ mode: st.mode, layers: { ...st.layers }, base: st.base, aircraft: st.flights?.list?.length ?? null, events: st.events?.total ?? null, selected: st.selected?.hex || null, flightSource: st.flights?.attribution?.name || null, flightError: st.flightErr, view3d: st.view3d, center: map.getCenter(), zoom: map.getZoom() }),
+    context: () => ({ section: st.mode, operation: st.opName, ...(st.opContext || {}), selectedAircraft: opApi.selectedAircraft() }),
+    openSitrep,
+    opCommand: async (cmd) => { if (!st.opMod) await mountOperation(OPERATIONS[st.mode] || cmd.op); for (let i = 0; i < 40 && !st.opMod; i++) await new Promise((r) => setTimeout(r, 100)); return st.opMod?.command ? st.opMod.command(cmd) : { ok: false, error: "That operation isn't ready." }; },
+    info: () => ({ mode: st.mode, operation: st.opName, layers: { ...st.layers }, base: st.base, aircraft: st.flights?.list?.length ?? null, events: st.events?.total ?? null, selected: st.selected?.hex || null, flightSource: st.flights?.attribution?.name || null, flightError: st.flightErr, view3d: st.view3d, center: map.getCenter(), zoom: map.getZoom() }),
     /** Voice / AI commands. Each answers only from data actually retrieved. */
     async command(c) {
       if (c.action === "flights_show" || c.action === "flights_hide") { setOverlay("flights", c.action === "flights_show"); return { ok: true }; }
@@ -641,6 +734,7 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
     destroy() {
       st.destroyed = true;
       timers.forEach(clearInterval); clearTimeout(flightT); offs.forEach((f) => f?.());
+      st.opMod?.unmount?.(); st.opMod = null;
       ro.disconnect(); st.globe?.destroy(); map.remove(); el.innerHTML = "";
       delete window.__jarvisGoc; delete window.__jarvisGocRedraw;
     },

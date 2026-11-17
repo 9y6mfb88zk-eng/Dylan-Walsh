@@ -7,8 +7,11 @@
 import { kvGet, kvSet } from "../db.js";
 import { encrypt, decrypt } from "../security/crypto.js";
 
-export const KEY_NAMES = ["adsbKey", "openskyClientId", "openskyClientSecret", "reliefwebAppname", "ucdpToken"];
-const ENV = { adsbKey: "ADSB_LOL_KEY", openskyClientId: "OPENSKY_CLIENT_ID", openskyClientSecret: "OPENSKY_CLIENT_SECRET", reliefwebAppname: "RELIEFWEB_APPNAME", ucdpToken: "UCDP_TOKEN" };
+//   windyKey          Windy Webcams API key (free tier: timelapse player embeds, image links valid 15 min)
+//   youtubeKey        YouTube Data API v3 key (free quota) to verify that operator-published camera streams are live
+//   nasaKey           NASA api.nasa.gov key (free; without it DEMO_KEY allows a few requests an hour)
+export const KEY_NAMES = ["adsbKey", "openskyClientId", "openskyClientSecret", "reliefwebAppname", "ucdpToken", "windyKey", "youtubeKey", "nasaKey"];
+const ENV = { adsbKey: "ADSB_LOL_KEY", openskyClientId: "OPENSKY_CLIENT_ID", openskyClientSecret: "OPENSKY_CLIENT_SECRET", reliefwebAppname: "RELIEFWEB_APPNAME", ucdpToken: "UCDP_TOKEN", windyKey: "WINDY_WEBCAMS_KEY", youtubeKey: "YOUTUBE_API_KEY", nasaKey: "NASA_API_KEY" };
 
 export function getKey(name) {
   const stored = kvGet("globalops.keys", {})[name];

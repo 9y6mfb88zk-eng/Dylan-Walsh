@@ -132,6 +132,11 @@ export function startScheduler() {
     every(30_000, safe("notifications", () => notifications.deliverSnoozed())),
     every(60_000, () => runIdeaJob().catch((e) => logError("ideas", e.message))),
     every(15 * 60_000, safe("weather", weather)),
+    // Sentinel watchlists: only does anything when an enabled watchlist exists (then events refresh on their own TTLs).
+    every(Number(process.env.SENTINEL_CHECK_SECONDS || 600) * 1000, safe("sentinel", async () => {
+      const { checkWatchlists } = await import("./services/ops/sentinel.js");
+      await checkWatchlists({ tz: getSettings().timezone, notify });
+    })),
     every(config.financeSyncMinutes * 60_000, () => (hasBank() ? safe("finance_sync", syncFinance)() : Promise.resolve())),
     every(config.calendarSyncMinutes * 60_000, () => (connections.get("google") ? safe("calendar_sync", calendar.syncGoogle)() : Promise.resolve())),
     every(10 * 60_000, safe("diagnostics", () => runDiagnostics({ record: true }).then((d) => ({ overall: d.overall, errors: d.counts.error || 0 })))),

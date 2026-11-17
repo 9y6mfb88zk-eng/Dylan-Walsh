@@ -186,6 +186,9 @@ const TOOLS = [
   { name: "global_operations", description: "Mission Control Global Operations on the user's screen: public civil flight tracking (ADS-B, incomplete coverage; military/private-flagged aircraft are never shown) and the Global Events tracker (published reports of conflicts, attacks, unrest, disasters, humanitarian crises, diplomacy, ceasefires — each with its source). action: flights_area {place or region, radius_nm} | flights_find {query: callsign, ICAO24 hex or registration} | flights_world | flights_show | flights_hide | nearest {place?} | events {category?, country?, days?} | layer {base: dark|satellite|today|terrain|relief|osm, layer: boundaries|labels|events|conflict|flights|trails|radar|3d, on}. Answer ONLY from the returned data; if something isn't found say it isn't visible in the available data.",
     input_schema: obj({ action: { type: "string", enum: ["flights_area", "flights_find", "flights_world", "flights_show", "flights_hide", "nearest", "events", "layer"] }, place: S, region: { type: "string", enum: ["world", "europe", "mediterranean", "cyprus", "uk", "middleeast", "northamerica", "southamerica", "africa", "southasia", "eastasia", "oceania"] }, radius_nm: I, query: S,
       category: { type: "string", enum: ["conflict", "attack", "unrest", "disaster", "humanitarian", "diplomacy", "ceasefire"] }, country: S, days: I, base: S, layer: S, on: B }, ["action"]) },
+  { name: "mission_operations", description: "Mission Control operations on the user's screen. Answer only from returned data. Actions:\n- blackbox_research {subject, question?, category?}: start a sourced research dossier (public information only; public figures only in their public role; never private individuals). Categories: company, organisation, country, city, location, person, aircraft, airport, space, history, conflict, technology, science, aerospace, news, institution, general.\n- blackbox_list / blackbox_get {id}: saved dossiers.\n- wayfinder_plan {destination, days?, kind? (trip|hiking|roadtrip|camping|city|multicountry|photography|research), start? YYYY-MM-DD}: create and save a trip/expedition with real weather, FCDO advice and airports plus an AI-drafted itinerary.\n- wayfinder_destination {destination}: real facts (weather forecast, FCDO advice summary, airports, currency).\n- wayfinder_flights_to {destination}: airports serving it. There is NO free source of flight schedules or fares — say so.\n- wayfinder_trips: saved trips (they save automatically).\n- sentinel_watchlist {name, countries?, regions?, categories?, min_level? (any|multiple|corroborated|official)}: create a watchlist that alerts on new matching reports.\n- sentinel_webcams {query?}: show public operator-published webcams.\n- orbit_iss | orbit_track {query: satellite name or NORAD id} | orbit_spaceweather | orbit_launches.\n- situation_report: compile the Global Situation Report.",
+    input_schema: obj({ action: { type: "string", enum: ["blackbox_research", "blackbox_list", "blackbox_get", "wayfinder_plan", "wayfinder_destination", "wayfinder_flights_to", "wayfinder_trips", "sentinel_watchlist", "sentinel_webcams", "orbit_iss", "orbit_track", "orbit_spaceweather", "orbit_launches", "situation_report"] },
+      subject: S, question: S, category: S, id: I, destination: S, days: I, kind: S, start: S, name: S, countries: { type: "array", items: S }, regions: { type: "array", items: S }, categories: { type: "array", items: S }, min_level: S, query: S }, ["action"]) },
   { name: "recall", description: "Search long-term memory.", input_schema: obj({ query: S }, ["query"]) },
   { name: "forget", description: "Delete a memory by id.", input_schema: obj({ id: I }, ["id"]) },
   { name: "computer", description: "Do something on the user's Windows laptop through the allowlisted actions: open_app {app}, open_folder {folder}, open_bookmark {name}, open_url {url}, create_document {title, content, format}, search_files {query, folder}, open_file {path}, create_folder {name, parent}, screenshot, list_windows, focus_window {target}, minimize_window {target}, close_window {target} (needs confirmation), clipboard_read, clipboard_write {text}, lock_screen, system_status.",
@@ -414,6 +417,51 @@ async function runTool(name, input, ctx) {
       }
       return { ok: true, onScreen: show({ action: a, base: input.base, layer: input.layer, on: input.on }) };
     }
+    case "mission_operations": {
+      const { sendToDevice } = await import("./realtime.js");
+      const show = (cmd) => sendToDevice(ctx.deviceId, { type: "ui", action: "goc", cmd });
+      const { records } = await import("./services/ops/records.js");
+      const a = input.action;
+      if (a === "blackbox_research") {
+        const bb = await import("./services/ops/blackbox.js");
+        const { notify: n } = await import("./services/notify.js");
+        const r = bb.createDossier({ subject: input.subject, question: input.question, category: input.category }, { notify: n });
+        show({ op: "blackbox", action: "open", id: r.id });
+        return { ok: true, id: r.id, status: "researching", note: "The dossier is being researched in the background and opens on screen; it is not finished yet, so don't state findings." };
+      }
+      if (a === "blackbox_list") return { dossiers: records.list({ op: "blackbox", kind: "dossier", limit: 20 }).map((d) => ({ id: d.id, title: d.title, status: d.status, category: d.data.category, updated: d.updated_at })) };
+      if (a === "blackbox_get") { const d = records.get(input.id); if (!d || d.op !== "blackbox") return { ok: false, error: "No such dossier" }; show({ op: "blackbox", action: "open", id: d.id }); return { id: d.id, title: d.title, status: d.status, summary: d.data.executiveSummary, findings: (d.data.findings || []).slice(0, 8), sources: (d.data.sources || []).slice(0, 12).map((s) => ({ title: s.title, url: s.url })), limitations: d.data.limitations }; }
+      if (a === "wayfinder_plan") {
+        const wf = await import("./services/ops/wayfinder.js");
+        const t = await wf.planTrip({ destination: input.destination, days: input.days, kind: input.kind, start: input.start });
+        show({ op: "wayfinder", action: "open", id: t.id });
+        return { ok: true, id: t.id, title: t.title, saved: true, destination: t.data.destination?.name, aiDraftedItinerary: t.data.aiDraft, weather: t.data.research?.weatherAtCreation?.daily?.slice(0, 7), advice: t.data.research?.advice?.summary?.slice(0, 400), airports: (t.data.research?.airports || []).slice(0, 3).map((x) => `${x.name} (${x.iata || x.icao}) ${x.km} km`) };
+      }
+      if (a === "wayfinder_destination" || a === "wayfinder_flights_to") {
+        const wf = await import("./services/ops/wayfinder.js");
+        const d = await wf.destination(input.destination);
+        if (!d.ok) return d;
+        if (a === "wayfinder_flights_to") return { destination: d.place.name, airports: d.airports.map((x) => ({ name: x.name, iata: x.iata, icao: x.icao, km: x.km })), note: "No free source provides airline schedules or fares; live status of a known flight number is available once it's flying." };
+        return { place: d.place.name, localTime: d.localTime, country: d.country, weather: d.weather?.daily?.slice(0, 7) || d.weather, adviceSummary: d.advice?.summary?.slice(0, 500), adviceUrl: d.advice?.url, adviceUpdated: d.advice?.updatedAt, airports: d.airports.slice(0, 3) };
+      }
+      if (a === "wayfinder_trips") { show({ op: "wayfinder", action: "list" }); return { trips: records.list({ op: "wayfinder", limit: 20 }).map((t) => ({ id: t.id, title: t.title, destination: t.data.destination?.name, depart: t.data.depart, return: t.data.return })), note: "Trips are saved automatically as they change." }; }
+      if (a === "sentinel_watchlist") {
+        const sn = await import("./services/ops/sentinel.js");
+        const w = records.create({ op: "sentinel", kind: "watchlist", title: input.name || (input.countries || []).join(", ") || "Watchlist", data: sn.normaliseWatchlist({ countries: input.countries, regions: input.regions, categories: input.categories, minLevel: input.min_level, enabled: true }) });
+        show({ op: "sentinel", action: "watchlists" });
+        return { ok: true, id: w.id, title: w.title, watching: w.data };
+      }
+      if (a === "sentinel_webcams") { show({ op: "sentinel", action: "webcams", q: input.query || "" }); const sn = await import("./services/ops/sentinel.js"); const r = await sn.webcams({ q: input.query }); return { count: r.cams.length, verifiedLive: r.cams.filter((c) => c.liveStatus === "live").length, cameras: r.cams.slice(0, 10).map((c) => ({ name: c.name, city: c.city, country: c.country, kind: c.kind, status: c.liveStatus })), note: r.note }; }
+      if (a.startsWith("orbit_")) {
+        const ob = await import("./services/ops/orbit.js");
+        if (a === "orbit_iss") { show({ op: "orbit", action: "iss" }); return await ob.iss(); }
+        if (a === "orbit_track") { const r = await ob.search(input.query); if (!r.elements.length) return { ok: false, error: "No catalogued object matches that." }; show({ op: "orbit", action: "search", query: input.query }); return { ok: true, ...ob.describe(r.elements[0]), matches: r.total, fetchedAt: r.fetchedAt }; }
+        if (a === "orbit_spaceweather") { show({ op: "orbit", action: "spaceweather" }); const w = await ob.spaceWeather(); return { kp: w.kp && { latest: w.kp.latest, time: w.kp.time, storm: w.kp.storm }, flare: w.flare, alerts: (w.alerts || []).slice(0, 3), donki: (w.donki || []).slice(0, 3), errors: w.errors }; }
+        if (a === "orbit_launches") { show({ op: "orbit", action: "launches" }); const l = await ob.launches(6); return { launches: l.items.map((x) => ({ name: x.name, net: x.net, precision: x.netPrecision, status: x.statusName, provider: x.provider, site: x.site })), fetchedAt: l.fetchedAt }; }
+      }
+      if (a === "situation_report") { show({ action: "sitrep" }); return { ok: true, note: "The report is compiling on screen; summarise it only after the user has read it or ask what they'd like to know." }; }
+      return { ok: false, error: "Unknown action" };
+    }
     case "forget": return { ok: memory.remove(input.id) };
     case "computer": {
       const { action, ...rest } = input;
@@ -441,6 +489,13 @@ pending.registerHandler("calendar.update", ({ id, patch }) => calendar.update(id
 pending.registerHandler("calendar.delete", ({ id }) => calendar.remove(id).then((ok) => ({ deleted: ok })));
 pending.registerHandler("smarthome.control", ({ entity, service, data }) => smarthome.control(entity, service, data, { confirmed: true }));
 
+// What the user's Mission Control is showing, so "this aircraft", "this journey" or "this dossier" make sense.
+function screenLine(sc) {
+  if (!sc || typeof sc !== "object") return "";
+  const j = JSON.stringify(sc, (k, v) => (typeof v === "string" ? v.slice(0, 160) : v)).slice(0, 1500);
+  return `\nOn the user's screen now (Mission Control): ${j}. Use the mission_operations / global_operations tools for anything on it.`;
+}
+
 // ---------------- Conversation turn
 function textAndSources(content) {
   const sources = [];
@@ -458,7 +513,7 @@ function textAndSources(content) {
  * Idempotent per clientId: a retried message returns the original reply.
  * With onEvent the reply is streamed: {type:"delta", text} as words arrive, {type:"tool", name, phase} around tool use.
  */
-export async function chat({ text, conversationId, deviceId, deviceKind, clientId, loc, voice = false, onEvent } = {}) {
+export async function chat({ text, conversationId, deviceId, deviceKind, clientId, loc, voice = false, screen = null, onEvent } = {}) {
   conversationId ||= conversations.currentId();
   const prior = clientId ? conversations.findByClientId(clientId) : null;
   if (prior) {
@@ -477,7 +532,7 @@ export async function chat({ text, conversationId, deviceId, deviceKind, clientI
   const system = [
     { type: "text", text: persona(), cache_control: { type: "ephemeral" } },
     ...((getSettings().memory?.mode || "ask") !== "off" ? [{ type: "text", text: `Personal profile (from saved memory; ids for corrections):\n${memory.profileBlock() || "Nothing saved yet."}`, cache_control: { type: "ephemeral" } }] : []),
-    { type: "text", text: `${summary ? `Earlier in this conversation (summary): ${summary}\n` : ""}${await contextBlock({ userText: text, deviceKind, loc, voiceTurn: voice })}` },
+    { type: "text", text: `${summary ? `Earlier in this conversation (summary): ${summary}\n` : ""}${await contextBlock({ userText: text, deviceKind, loc, voiceTurn: voice })}${screenLine(screen)}` },
   ];
   const messages = [...turns, { role: "user", content: text }];
   const tools = [...TOOLS, ...(config.webSearch ? [WEB_SEARCH(5)] : [])];
@@ -542,6 +597,28 @@ async function maybeSummarize(conversationId) {
 }
 
 // ---------------- Research (sourced, background)
+/** Web research for operations (Blackbox, Wayfinder): returns the report text and the real cited URLs. */
+export async function webResearch(prompt, { maxUses = 8 } = {}) {
+  if (!client) throw new Error("Anthropic API key missing");
+  if (!config.webSearch) throw new Error("Web search is disabled (JARVIS_WEB_SEARCH=false)");
+  const messages = [{ role: "user", content: prompt }];
+  let out = { text: "", sources: [] };
+  for (let i = 0; i < 4; i++) {
+    const msg = await ai("ops-research", { model: config.researchModel, max_tokens: 12000, tools: [research.webSearch(maxUses)], messages, output_config: { effort: "medium" }, ...research.fallback });
+    messages.push({ role: "assistant", content: msg.content });
+    const part = textAndSources(msg.content);
+    out = { text: (out.text + "\n" + part.text).trim(), sources: [...out.sources, ...part.sources.filter((s) => !out.sources.some((o) => o.url === s.url))] };
+    if (msg.stop_reason !== "pause_turn") break;
+  }
+  return out;
+}
+/** Structured JSON from the AI (zod schema). Returns null on refusal. */
+export async function structured(purpose, schema, prompt, { effort = "medium", maxTokens = 12000 } = {}) {
+  if (!client) throw new Error("Anthropic API key missing");
+  const msg = await ai(purpose, { model: config.model, max_tokens: maxTokens, output_config: { effort, format: betaZodOutputFormat(schema) }, ...FALLBACK, messages: [{ role: "user", content: prompt }] }, "parse");
+  return msg.stop_reason === "refusal" ? null : msg.parsed_output;
+}
+
 export function startResearch(query) {
   const r = db.prepare("INSERT INTO research (query, status) VALUES (?, 'running')").run(String(query).slice(0, 500));
   const id = Number(r.lastInsertRowid);
