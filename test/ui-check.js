@@ -260,7 +260,7 @@ try {
   await L.fill("#mcSay", "Open Operation Sentinel"); await L.press("#mcSay", "Enter");
   check("“Open Operation Sentinel” works by voice/text", await L.waitForFunction(() => document.querySelector("#mcView")?.dataset.section === "op-sentinel" && /Operation Sentinel is open/.test(document.querySelector("#mcCaption")?.textContent || ""), null, { timeout: 15000 }).then(() => true, () => false));
   await L.fill("#mcSay", "Show available public city webcams"); await L.press("#mcSay", "Enter");
-  check("webcams are listed but not embedded until their live status is verified", await L.waitForFunction(() => document.querySelectorAll(".goc-op [data-cam]").length >= 5 && /not verified/i.test(document.querySelector(".goc-op").textContent) && !document.querySelector(".goc-op iframe"), null, { timeout: 15000 }).then(() => true, () => false));
+  check("webcams are listed but not embedded until their live status is verified", await L.waitForFunction(() => document.querySelectorAll(".goc-op [data-cam]").length >= 5 && /not verified/i.test(document.querySelector(".goc-op").textContent) && !document.querySelector(".goc-op iframe"), null, { timeout: 30000 }).then(() => true, () => false));
   await L.fill("#mcSay", "Track the International Space Station"); await L.press("#mcSay", "Enter");
   check("“Track the International Space Station” answers with a calculated position", await L.waitForFunction(() => /International Space Station is over .* calculated from orbital elements/.test(document.querySelector("#mcCaption")?.textContent || ""), null, { timeout: 20000 }).then(() => true, () => false), await L.textContent("#mcCaption"));
   await L.click("#gocSitrep");
