@@ -25,7 +25,7 @@ import { getKey } from "./globalops-keys.js";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const COUNTRIES = JSON.parse(fs.readFileSync(path.join(here, "..", "data", "countries.json"), "utf8"));
 const BY_C3 = Object.fromEntries(COUNTRIES.map((c) => [c.c3, c]));
-const UA = "JARVIS-personal-assistant/6.5 (non-commercial; single user)";
+const UA = "JARVIS-personal-assistant/6.6 (non-commercial; single user)";
 const URLS = {
   gdacs: () => process.env.GDACS_URL || "https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH",
   usgs: () => process.env.USGS_URL || "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_week.geojson",

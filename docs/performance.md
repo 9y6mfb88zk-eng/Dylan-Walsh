@@ -182,3 +182,20 @@ Not improved, and not claimed:
   3D core and compositor, not the map or the aircraft (turning flights off changed nothing measurable).
 - **Panning:** 6–8 fps while dragging, for the same reason.
 - Neither number says anything about a real GPU, which this container lacks.
+
+## JARVIS 6.6: Mission Control operations
+
+Measured with `node scripts/perf-ops.mjs` (stand-in providers, 3,000 synthetic satellites; same container, software
+rendering). Raw data: `docs/perf-6.6-ops.json`.
+
+| Measurement | Result |
+|---|---|
+| Orbit: full map redraw with 3,000 satellites loaded (941 in view) | 17.6 ms median |
+| Orbit: main-thread stalls > 50 ms over 6.5 s of 2-second position updates | none |
+| API requests per idle minute (Orbit / Blackbox / Wayfinder / Sentinel open) | 18 / 20 / 18 / 20 — of which 12 are the existing live system readings. The operations themselves add ≤ 2 (records and events refresh) |
+| CelesTrak downloads during the whole 5-minute run | 2 (one per group; then served from the 2-hour cache) |
+| JS heap before → after 20 operation switches | 15.2 → 15.2 MB (no leak); one Leaflet map throughout |
+| Server memory | 140 MB (unchanged from 6.5) |
+
+No optimisation was made because nothing measured needed it. Very large satellite groups are limited to 1,500
+objects on the map by design.

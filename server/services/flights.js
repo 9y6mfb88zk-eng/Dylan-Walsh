@@ -21,7 +21,7 @@ import { getKey } from "./globalops-keys.js";
 const ADSB = () => (process.env.ADSB_LOL_URL || "https://api.adsb.lol").replace(/\/$/, "");
 const OPENSKY = () => (process.env.OPENSKY_URL || "https://opensky-network.org/api").replace(/\/$/, "");
 const OPENSKY_AUTH = () => process.env.OPENSKY_AUTH_URL || "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token";
-const UA = "JARVIS-personal-assistant/6.5 (non-commercial; single user)";
+const UA = "JARVIS-personal-assistant/6.6 (non-commercial; single user)";
 export const FIELDS = ["hex", "callsign", "reg", "type", "lat", "lon", "alt", "gs", "track", "vs", "ground", "posAge", "cat", "src"];
 export const ATTRIBUTION = {
   adsb: { name: "ADSB.lol", url: "https://www.adsb.lol/", licence: "ODbL 1.0", text: "Aircraft data © ADSB.lol contributors, ODbL" },

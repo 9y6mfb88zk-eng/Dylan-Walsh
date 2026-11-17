@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { config } from "../config.js";
 
-const UA = "JARVIS-personal-assistant/6.5 (non-commercial; single user; tile cache)";
+const UA = "JARVIS-personal-assistant/6.6 (non-commercial; single user; tile cache)";
 const day = 86400;
 const yesterday = () => new Date(Date.now() - 36 * 3600_000).toISOString().slice(0, 10);   // GIBS daily imagery is complete ~a day later
 export const LAYERS = {

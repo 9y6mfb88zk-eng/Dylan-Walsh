@@ -1,0 +1,58 @@
+{
+  "at": "2026-11-17T15:55:20.209Z",
+  "heapStartMb": 15.2,
+  "orbit": {
+    "satellitesDrawn": 941,
+    "medianDrawMs": 17.6,
+    "longTasks": []
+  },
+  "idlePerMinute": {
+    "op-orbit": {
+      "total": 18,
+      "byPath": {
+        "/api/performance": 12,
+        "/api/diagnostics": 3,
+        "/api/globalops/status": 2,
+        "/api/activity": 1
+      }
+    },
+    "op-blackbox": {
+      "total": 20,
+      "byPath": {
+        "/api/performance": 12,
+        "/api/diagnostics": 3,
+        "/api/globalops/status": 2,
+        "/api/events": 1,
+        "/api/activity": 1,
+        "/api/ops/records": 1
+      }
+    },
+    "op-wayfinder": {
+      "total": 18,
+      "byPath": {
+        "/api/performance": 12,
+        "/api/diagnostics": 3,
+        "/api/globalops/status": 2,
+        "/api/activity": 1
+      }
+    },
+    "op-sentinel": {
+      "total": 20,
+      "byPath": {
+        "/api/performance": 12,
+        "/api/diagnostics": 3,
+        "/api/globalops/status": 2,
+        "/api/events": 1,
+        "/api/activity": 1,
+        "/api/ops/records": 1
+      }
+    }
+  },
+  "celestrakRequests": 2,
+  "heapAfterSwitchesMb": {
+    "before": 15.2,
+    "after": 15.2
+  },
+  "leafletMaps": 1,
+  "serverRssMb": 140
+}

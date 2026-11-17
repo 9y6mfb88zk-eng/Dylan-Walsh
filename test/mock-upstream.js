@@ -314,6 +314,7 @@ export function startMock() {
       log.celestrak = (log.celestrak || 0) + 1;
       const q = Object.fromEntries(url.searchParams);
       if (q.CATNR === "25544" || /ISS/i.test(q.NAME || "") || q.GROUP === "stations") return json(200, [omm(25544, "ISS (ZARYA)"), omm(48274, "CSS (TIANHE)", 15.6, 41.47)]);
+      if (q.GROUP === "starlink") return json(200, Array.from({ length: state.celestrakCount || 3000 }, (_, i) => ({ ...omm(70000 + i, `STARLINK-${i}`, 15.05 + (i % 7) * 0.01, 53), RA_OF_ASC_NODE: (i * 7.3) % 360, MEAN_ANOMALY: (i * 13.1) % 360 })));
       if (q.GROUP) return json(200, [omm(20580, "HST", 15.28, 28.47), omm(25544, "ISS (ZARYA)")]);
       res.writeHead(200, { "content-type": "text/plain" }); return res.end("No GP data found");
     }
