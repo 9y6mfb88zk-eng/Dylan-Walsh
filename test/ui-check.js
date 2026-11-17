@@ -424,7 +424,7 @@ try {
   const allowed = ["operational", "connected", "degraded", "not_configured", "permission_required", "offline", "failed", "initialising"];
   check("every check has a real status from the allowed set", boot.lines.every((l) => allowed.includes(l.status) && l.detail));
   check("the AI is only 'connected' after a real reply", boot.lines.find((l) => l.label === "AI provider")?.status === "connected" && /responded in \d+ ms/.test(boot.lines.find((l) => l.label === "AI provider").detail));
-  check("the database check really queried it", /schema \d+/.test(boot.lines.find((l) => l.label === "Database").detail));
+  check("the database check really queried it", /schema \d+/.test(boot.lines.find((l) => l.label === "Database").detail), `${boot.lines.find((l) => l.label === "Database").status}: ${boot.lines.find((l) => l.label === "Database").detail}`);
   check("the microphone line distinguishes devices from permission", /microphone|permission/i.test(boot.lines.find((l) => l.label === "Microphone").detail));
   check("the neural core is 'operational' only after a frame was drawn", /first frame after \d+ ms/.test(boot.lines.find((l) => l.label === "Neural core rendering").detail) || boot.lines.find((l) => l.label === "Neural core rendering").status !== "operational");
   const initLabels = ["Initialise AI engine", "Load application configuration", "Load persistent memory", "Restore saved preferences", "Restore pending tasks and reminders", "Initialise voice interface", "Initialise neural energy core", "Prepare the Command Centre"];
