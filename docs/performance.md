@@ -144,3 +144,41 @@ The reload time of the Command Centre (2.1 s → 0.5 s in these two runs) is not
 - **Diagnostics → Last startup** (every check with its time)
 - **Diagnostics → Performance · live**
 - **Settings → Performance** (the 3D core's start-up time)
+
+## JARVIS 6.5: Global Operations
+
+Measurement setup:
+
+- Script: `GOC_AIRCRAFT=12000 GOC_MINUTES=4 node scripts/perf-goc.mjs`.
+- Stand-in providers: 12,000 synthetic aircraft, so the real services take no load.
+- Same container as above: software rendering, 1600×960.
+- Raw data: `docs/perf-6.5-goc-before-fix.json` (first run) and `docs/perf-6.5-goc.json` (after the polling fix).
+
+| Measurement | Result |
+|---|---|
+| Map redraw, worldwide (9,704 aircraft loaded, drawn as about 190 clusters) | 14.7 / 12.9 ms median in two runs (max 34 ms) |
+| Map redraw, Europe (individual aircraft, about 550 drawn) | 1.9 / 1.7 ms median |
+| Map redraw, Cyprus (12 aircraft, labels) | 8 ms median |
+| JS heap over a 4-minute session with flights polling | 10 MB at every 30 s sample: no growth |
+| Heap after leaving Mission Control / Leaflet maps left alive | 10 MB / 0 |
+| Provider requests during the 4-minute session | OpenSky 2, ADSB.lol 4 (including the 3 privacy lists), one per view change; nothing per aircraft |
+| Window hidden for 90 s | 0 provider requests |
+| Server memory / event-loop lag | 140 MB / 0.2 ms |
+| Mission Control activation to "active" | about 10 s here (software rendering; includes the real checks) |
+
+**Change made from the measurement:** Mission Control kept polling diagnostics for its panel views even while Global
+Operations, which reads diagnostics itself, was on screen. Each `/api/diagnostics` call samples CPU on the server for
+250 ms. After the fix, measured over the same 4 minutes:
+
+| | Before | After |
+|---|---|---|
+| `/api/diagnostics` calls | 24 | 12 |
+| All API requests per minute | 22 | 18.8 |
+| API requests while hidden (90 s) | 5 | 1 |
+
+Not improved, and not claimed:
+
+- **Chromium CPU:** 378 % in both runs, and 375 % with flights switched off. Here the cost is the software-rendered
+  3D core and compositor, not the map or the aircraft (turning flights off changed nothing measurable).
+- **Panning:** 6–8 fps while dragging, for the same reason.
+- Neither number says anything about a real GPU, which this container lacks.

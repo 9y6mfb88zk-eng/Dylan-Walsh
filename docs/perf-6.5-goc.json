@@ -1,43 +1,43 @@
 {
-  "at": "2026-11-17T11:59:10.174Z",
+  "at": "2026-11-17T12:07:48.675Z",
   "aircraftInStandIn": 12000,
   "heapBeforeMb": 10,
-  "activationMs": 10024,
+  "activationMs": 9124,
   "draw": [
     {
       "label": "worldwide (clustered)",
       "aircraftLoaded": 9704,
       "drawn": 193,
       "zoom": 2,
-      "medianDrawMs": 14.7,
-      "maxDrawMs": 34.2
+      "medianDrawMs": 12.9,
+      "maxDrawMs": 28.1
     },
     {
       "label": "Europe (individual aircraft)",
       "aircraftLoaded": 691,
       "drawn": 547,
       "zoom": 4,
-      "medianDrawMs": 1.9,
-      "maxDrawMs": 5.5
+      "medianDrawMs": 1.7,
+      "maxDrawMs": 8.9
     },
     {
       "label": "North America",
       "aircraftLoaded": 1713,
       "drawn": 208,
       "zoom": 3.5,
-      "medianDrawMs": 2.5,
-      "maxDrawMs": 16.6
+      "medianDrawMs": 4.8,
+      "maxDrawMs": 24.4
     },
     {
       "label": "Cyprus",
       "aircraftLoaded": 12,
       "drawn": 12,
       "zoom": 8,
-      "medianDrawMs": 8,
-      "maxDrawMs": 19
+      "medianDrawMs": 8.3,
+      "maxDrawMs": 20.6
     }
   ],
-  "panFps": 8,
+  "panFps": 6.3,
   "longRun": {
     "minutes": 4,
     "heapMbEvery30s": [
@@ -50,8 +50,8 @@
       10,
       10
     ],
-    "chromeCpuPct": 378.2,
-    "apiRequestsPerMinute": 22,
+    "chromeCpuPct": 377.8,
+    "apiRequestsPerMinute": 18.8,
     "byPath": [
       [
         "/api/performance",
@@ -59,7 +59,7 @@
       ],
       [
         "/api/diagnostics",
-        24
+        12
       ],
       [
         "/api/globalops/status",
@@ -75,7 +75,7 @@
       ],
       [
         "/api/flights",
-        2
+        1
       ]
     ]
   },
@@ -85,16 +85,16 @@
     "gdelt": 6
   },
   "hidden90s": {
-    "apiRequests": 5,
+    "apiRequests": 1,
     "providerRequests": 0
   },
   "flightsOff60s": {
-    "apiRequests": 21,
-    "chromeCpuPct": 374.6
+    "apiRequests": 18,
+    "chromeCpuPct": 377.6
   },
   "server": {
-    "rssMb": 140,
-    "eventLoopLagMs": 0.2
+    "rssMb": 141,
+    "eventLoopLagMs": 0.3
   },
   "heapAfterExitMb": 10,
   "leafletMapsAlive": 0

@@ -211,6 +211,26 @@ Full description, data sources, limits and licences: `docs/global-operations.md`
 | 9. Free only | Each provider's pricing, limits, licence and registration was checked. CARTO now needs a key, so it was dropped. Esri was not used (terms unclear). The GDELT GEO API is retired. ReliefWeb and UCDP need free credentials and stay "not configured" without them |
 | 10. Testing | See the results and measurements below |
 
+### Test results (6.5)
+
+- **Backend:** 94/94. New tests: 13 Global Operations tests against stand-in providers, the AI flight tool, and the
+  voice phrases from the brief.
+- **Desktop unit:** 13/13.
+- **UI:** 123/123. New checks cover:
+  - the Global Operations layout and the core panel;
+  - honest activation checks and the announcement;
+  - aircraft on the map, the aircraft card, and "not visible" search;
+  - "Hide flight tracking", and "Show me aircraft around Cyprus" with the real count;
+  - the event detail and its source link;
+  - all 12 sections, the phone layout and exit.
+- **Live smoke test against the real providers, from this container:**
+  - ADSB.lol: 14 aircraft around Cyprus, 2 hidden by privacy rules.
+  - OpenSky: about 2,450 over Europe, about 5,950 worldwide.
+  - GDACS: 87 events. USGS: 107 earthquakes.
+  - All 8 tile layers return images.
+  - The aircraft card showed a real A330 (TC-JDR) with registration and type.
+- **Performance:** see `docs/performance.md` → "JARVIS 6.5".
+
 ### Not verified
 
 - **GDELT live:** this cloud container gets HTTP 429 for every request, even spaced minutes apart. It should work from
