@@ -1,7 +1,7 @@
 {
   "name": "jarvis-desktop",
   "productName": "JARVIS",
-  "version": "5.0.0",
+  "version": "6.4.0",
   "description": "JARVIS for Windows: runs your whole JARVIS on this laptop — local Hey JARVIS wake word, private server, tray app.",
   "author": "JARVIS",
   "license": "UNLICENSED",
@@ -55,7 +55,7 @@
         }
       ],
       "icon": "build/icon.png",
-      "artifactName": "JARVIS-Setup-5.0.exe"
+      "artifactName": "JARVIS-Setup-6.4.exe"
     },
     "nsis": {
       "oneClick": false,

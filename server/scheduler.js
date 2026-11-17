@@ -85,7 +85,9 @@ export async function backup() {
 // ---------------- Registry + loops
 const every = (ms, fn) => { const t = setInterval(() => fn().catch(() => {}), ms); t.unref?.(); return t; };
 
+let stopScheduler = null;
 export function startScheduler() {
+  if (stopScheduler) return stopScheduler;          // never run two copies of the background loops
   const s = () => getSettings();
   seedRoutines();
   import("./services/automations.js").then((a) => a.seedMacros()).catch((e) => console.error("[macros] seed failed", e.message));
@@ -148,5 +150,6 @@ export function startScheduler() {
   }, 5_000).unref?.();
   if (s().ideas.enabled) setTimeout(() => runIdeaJob().catch(() => {}), 20_000).unref?.();
   console.log(`[scheduler] alarms every 5s · reminders every ${config.reminderPollSeconds}s · routines every 30s · ${s().timezone} · ideas ${s().ideas.enabled ? `every ${s().ideas.everyMinutes}m` : "off"}`);
-  return () => timers.forEach(clearInterval);
+  stopScheduler = () => { timers.forEach(clearInterval); stopScheduler = null; };
+  return stopScheduler;
 }

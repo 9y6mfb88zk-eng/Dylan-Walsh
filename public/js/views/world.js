@@ -13,7 +13,7 @@ export async function render(root, ctx) {
   if (ctx.isPhone()) $("#wGrid", root).style.gridTemplateColumns = "minmax(0,1fr)";
   $("#add", root).onclick = addPlace;
   await load();
-  try { globe = await mountGlobe($("#globe", root), $("#labels", root), ctx.settings.appearance?.animation); } catch (e) { $("#globe", root).replaceWith(Object.assign(document.createElement("p"), { className: "empty", textContent: `The 3D globe isn't available on this device (${e.message}).` })); }
+  try { globe = await mountGlobe($("#globe", root), $("#labels", root), ctx.settings.appearance?.animation, ctx.settings.appearance?.mapQuality); } catch (e) { $("#globe", root).replaceWith(Object.assign(document.createElement("p"), { className: "empty", textContent: `The 3D globe isn't available on this device (${e.message}).` })); }
   globe?.setPlaces(places);
   clockT = setInterval(drawClocks, 1000);
   return () => { clearInterval(clockT); globe?.destroy(); globe = null; };
@@ -44,7 +44,8 @@ async function addPlace() {
 }
 
 // ---------------------------------------------------------------- The globe (Three.js)
-async function mountGlobe(canvas, labels, animation) {
+async function mountGlobe(canvas, labels, animation, mapQuality = "auto") {
+  const maxPr = mapQuality === "low" ? 1 : mapQuality === "high" ? 2 : 1.75;
   const THREE = await import("/vendor/three/three.module.min.js");
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, premultipliedAlpha: true });
   renderer.setClearColor(0x000000, 0);
@@ -98,7 +99,7 @@ async function mountGlobe(canvas, labels, animation) {
   canvas.addEventListener("pointermove", (e) => { if (!drag) return; rotY = drag.ry + (e.clientX - drag.x) * 0.006; rotX = Math.max(-1.2, Math.min(1.2, drag.rx + (e.clientY - drag.y) * 0.006)); });
   canvas.addEventListener("pointerup", () => { drag = null; canvas.style.cursor = "grab"; });
   canvas.addEventListener("wheel", (e) => { e.preventDefault(); camera.position.z = Math.max(2.4, Math.min(7, camera.position.z + e.deltaY * 0.002)); }, { passive: false });
-  function resize() { const r = canvas.getBoundingClientRect(); renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.75)); renderer.setSize(r.width, r.height, false); camera.aspect = r.width / Math.max(1, r.height); camera.updateProjectionMatrix(); }
+  function resize() { const r = canvas.getBoundingClientRect(); renderer.setPixelRatio(Math.min(devicePixelRatio || 1, maxPr)); renderer.setSize(r.width, r.height, false); camera.aspect = r.width / Math.max(1, r.height); camera.updateProjectionMatrix(); }
   const ro = new ResizeObserver(resize); ro.observe(canvas); resize();
   let raf = 0, t = 0;
   const tmp = new THREE.Vector3();

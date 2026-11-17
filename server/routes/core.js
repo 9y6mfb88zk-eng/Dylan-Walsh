@@ -69,7 +69,7 @@ router.get("/api/geocode", wrap(async (req, res) => res.json(await geocode(req.q
 router.get("/api/settings", (req, res) => res.json(getSettings()));
 const clamp = (v, lo, hi, d) => (Number.isFinite(Number(v)) ? Math.max(lo, Math.min(hi, Number(v))) : d);
 router.patch("/api/settings", (req, res) => {
-  const allowed = ["home", "units", "briefing", "ideas", "finance", "memory", "computer", "timezone", "profile", "voice", "personality", "appearance", "alarms", "notifications", "focus", "awareness"];
+  const allowed = ["home", "units", "briefing", "ideas", "finance", "memory", "computer", "timezone", "profile", "voice", "personality", "appearance", "alarms", "notifications", "focus", "awareness", "startup"];
   const patch = Object.fromEntries(Object.entries(req.body || {}).filter(([k]) => allowed.includes(k)));
   if (patch.timezone) { try { new Intl.DateTimeFormat("en", { timeZone: patch.timezone }); } catch { return res.status(400).json({ error: "Unknown time zone" }); } }
   if (patch.home && !(Number.isFinite(+patch.home.lat) && Number.isFinite(+patch.home.lon))) return res.status(400).json({ error: "Home needs lat and lon" });
@@ -91,6 +91,18 @@ router.patch("/api/settings", (req, res) => {
   if (patch.focus) for (const k of ["workMinutes", "breakMinutes"]) if (patch.focus[k] !== undefined) patch.focus[k] = clamp(Math.round(patch.focus[k]), 1, 240, k === "workMinutes" ? 25 : 5);
   if (patch.appearance?.animation && !["full", "reduced", "off"].includes(patch.appearance.animation)) return res.status(400).json({ error: "Animation must be full, reduced or off" });
   if (patch.appearance?.startup && !["cinematic", "instant"].includes(patch.appearance.startup)) return res.status(400).json({ error: "Startup must be cinematic or instant" });
+  if (patch.appearance?.quality && !["auto", "high", "medium", "low", "2d"].includes(patch.appearance.quality)) return res.status(400).json({ error: "Graphics quality must be auto, high, medium, low or 2d" });
+  if (patch.appearance?.particles != null) patch.appearance.particles = clamp(patch.appearance.particles, 0.25, 1.5, 1);
+  if (patch.appearance?.bloom != null) patch.appearance.bloom = clamp(patch.appearance.bloom, 0, 1.5, 1);
+  if (patch.appearance?.updates && !["normal", "reduced"].includes(patch.appearance.updates)) return res.status(400).json({ error: "Background updates must be normal or reduced" });
+  if (patch.appearance?.mapQuality && !["auto", "high", "low"].includes(patch.appearance.mapQuality)) return res.status(400).json({ error: "Map quality must be auto, high or low" });
+  if (patch.startup) {
+    const st = patch.startup;
+    if (st.screen && !["cinematic", "minimal", "off"].includes(st.screen)) return res.status(400).json({ error: "Startup screen must be cinematic, minimal or off" });
+    if (st.volume != null) st.volume = clamp(st.volume, 0, 1, 0.6);
+    for (const k of ["skipAnimation", "sound", "silent", "reducedAudio", "autoOpen", "fullDiagnostics"]) if (k in st) st[k] = !!st[k];
+    patch.startup = Object.fromEntries(Object.entries(st).filter(([k]) => ["screen", "volume", "skipAnimation", "sound", "silent", "reducedAudio", "autoOpen", "fullDiagnostics"].includes(k)));
+  }
   if (patch.personality?.mode && !["standard", "cinematic", "concise", "professional", "focus"].includes(patch.personality.mode)) return res.status(400).json({ error: "Unknown voice mode" });
   for (const k of ["formality", "humour", "cinematic"]) if (patch.personality?.[k] != null && typeof patch.personality[k] === "number") patch.personality[k] = clamp(patch.personality[k], 0, 3, 1);
   if (patch.memory?.mode && !["ask", "auto", "off"].includes(patch.memory.mode)) return res.status(400).json({ error: "Memory mode must be ask, auto or off" });
@@ -181,7 +193,7 @@ router.post("/api/push/test", wrap(async (req, res) => res.json({ sent: await no
 router.get("/api/health", (req, res) => {
   const conns = connections.all().map(connections.view);
   res.json({
-    server: { ok: true, uptime: Math.round(process.uptime()), version: process.env.JARVIS_VERSION || process.env.npm_package_version || "5.0.0", env: config.env, node: process.version, hosting: config.hosting },
+    server: { ok: true, uptime: Math.round(process.uptime()), version: process.env.JARVIS_VERSION || process.env.npm_package_version || "6.4.0", env: config.env, node: process.version, hosting: config.hosting },
     services: healthReport(),
     desktops: desktopAgents(),
     connectedDevices: connectedDevices().length,

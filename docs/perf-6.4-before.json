@@ -1,0 +1,55 @@
+{
+  "at": "2026-11-17T08:55:16.355Z",
+  "serverStartMs": 844,
+  "viewport": "1000x640",
+  "quality": "auto",
+  "homeLoadMs": 2102,
+  "active": {
+    "chromeCpuPct": 343.2,
+    "coreFps": 10
+  },
+  "idle": {
+    "chromeCpuPct": 374.1,
+    "coreFps": 13,
+    "idleClass": true
+  },
+  "background": {
+    "chromeCpuPct": 352.3,
+    "coreFps": 10
+  },
+  "jsHeapMb": 11.9,
+  "jsHeapMbAfterNav": 11.9,
+  "webglContextsAlive": 1,
+  "coreTier": "high → high",
+  "idleRequests": {
+    "perMinute": 1,
+    "seconds": 60,
+    "byPath": {
+      "/api/diagnostics": 1
+    }
+  },
+  "startup": {
+    "usableMs": 6883,
+    "checks": [
+      "Secure session:ok:34ms",
+      "Live link to JARVIS server:ok:41ms",
+      "System diagnostics:ok:5241ms",
+      "AI core:warn:5241ms",
+      "Voice systems:ok:31ms",
+      "Personal profile:ok:46ms",
+      "Command centre:ok:129ms"
+    ]
+  },
+  "api": {
+    "home": 8,
+    "diagnostics": 259,
+    "tasks": 3,
+    "memoriesProfile": 3,
+    "performance": 26
+  },
+  "server": {
+    "eventLoopLagMs": 0.2,
+    "dbMs": 0.21,
+    "rssMb": 114
+  }
+}

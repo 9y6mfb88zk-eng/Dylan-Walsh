@@ -332,13 +332,9 @@ Object.assign(SECTIONS, {
     const a = s.appearance || {};
     el.innerHTML = `<article class="panel" style="max-width:760px"><div class="panel-head"><span class="label">Appearance</span></div>
       ${row("Animation", "Reduced slows the core and turns off parallax; Off shows a still core", `<div class="seg" id="anim">${["full", "reduced", "off"].map((k) => `<button data-a="${k}" class="${(a.animation || "full") === k ? "active" : ""}">${k[0].toUpperCase() + k.slice(1)}</button>`).join("")}</div>`)}
-      ${row("3D core quality", "Automatic drops to light mode on slower laptops", `<div class="seg" id="qual">${[["auto", "Auto"], ["high", "High"], ["low", "Light"], ["2d", "2D"]].map(([k, l]) => `<button data-q="${k}" class="${(a.quality || "auto") === k ? "active" : ""}">${l}</button>`).join("")}</div>`)}
-      ${row("Startup sequence", "Cinematic shows JARVIS's real start-up checks as they happen; Instant opens straight away", `<div class="seg" id="boot">${[["cinematic", "Cinematic"], ["instant", "Instant"]].map(([k, l]) => `<button data-boot="${k}" class="${(a.startup || "cinematic") === k ? "active" : ""}">${l}</button>`).join("")}</div>`)}
       ${row("Sidebar", "", `<div class="seg" id="side"><button data-sb="expanded">Expanded</button><button data-sb="collapsed">Collapsed</button></div>`)}
       <p class="faint" style="font-size:12.5px">Your system's “reduce motion” setting is always respected.</p></article>`;
     $$("[data-a]", el).forEach((x) => x.onclick = async () => { await P({ appearance: { animation: x.dataset.a } }); location.reload(); });
-    $$("[data-q]", el).forEach((x) => x.onclick = async () => { await P({ appearance: { quality: x.dataset.q } }); $$("[data-q]", el).forEach((y) => y.classList.toggle("active", y === x)); });
-    $$("[data-boot]", el).forEach((x) => x.onclick = async () => { await P({ appearance: { startup: x.dataset.boot } }); $$("[data-boot]", el).forEach((y) => y.classList.toggle("active", y === x)); });
     $$("[data-sb]", el).forEach((x) => x.onclick = () => { document.getElementById("app").classList.toggle("collapsed", x.dataset.sb === "collapsed"); try { localStorage.setItem("jarvis.sidebar", x.dataset.sb); } catch {} });
   },
   async alarmprefs(el) {
@@ -380,5 +376,65 @@ Object.assign(SECTIONS, {
 });
 TABS.splice(1, 0, ["profile", "Profile & personality"], ["microphone", "Microphone & speech"], ["conversation", "Voice & conversation"]);
 SECTIONS.microphone = (el, ctx) => renderMicSetup(el, ctx);
-TABS.splice(TABS.findIndex((t) => t[0] === "integrations"), 0, ["appearance", "Appearance"], ["alarmprefs", "Alarms & focus"]);
+TABS.splice(TABS.findIndex((t) => t[0] === "integrations"), 0, ["appearance", "Appearance"], ["startup", "Startup"], ["performance", "Performance"], ["alarmprefs", "Alarms & focus"]);
 TABS.splice(TABS.findIndex((t) => t[0] === "health"), 1, ["data", "Your data"]);
+
+
+// ---------------------------------------------------------------- Startup & Performance (JARVIS 6.4)
+const STARTUP_DEFAULTS = { screen: "cinematic", skipAnimation: false, sound: true, volume: 0.6, silent: false, reducedAudio: false, autoOpen: false, fullDiagnostics: true };
+const toggle = (id, on, label) => `<label class="switch" title="${label}"><input type="checkbox" id="${id}" ${on ? "checked" : ""} aria-label="${label}"><span></span></label>`;
+Object.assign(SECTIONS, {
+  async startup(el, ctx) {
+    const s = await api("/api/settings");
+    const st = { ...STARTUP_DEFAULTS, ...(s.startup || {}) };
+    const desk = ctx.desktop ? await ctx.desktop.getSettings().catch(() => null) : null;
+    el.innerHTML = `<article class="panel" style="max-width:820px"><div class="panel-head"><span class="label">Startup</span></div>
+      <p class="muted" style="margin-top:0;font-size:13.5px">When JARVIS opens it runs real checks on every system — the AI, database, voice, microphone, weather, calendar, the 3D core and more — and shows the honest result. These settings change how that looks and sounds; the checks themselves always run.</p>
+      ${row("Startup screen", "Cinematic: the full initialisation screen · Minimal: progress bar and result only · Off: straight to the Command Centre (problems still appear as a banner)", `<div class="seg" id="stScreen">${[["cinematic", "Cinematic"], ["minimal", "Minimal"], ["off", "Off"]].map(([k, l]) => `<button data-v="${k}" class="${st.screen === k ? "active" : ""}">${l}</button>`).join("")}</div>`)}
+      ${row("Skip animation", "No typing effect, particles or scanning — results appear the instant they're ready", toggle("stSkip", st.skipAnimation, "Skip animation"))}
+      ${row("Show full diagnostics during startup", "Off: only problems and the summary are listed", toggle("stFull", st.fullDiagnostics, "Show full diagnostics"))}
+      ${row("Open the Command Centre automatically", "Otherwise JARVIS waits for a tap after “Tap anywhere to wake JARVIS”", toggle("stAuto", st.autoOpen, "Open automatically"))}
+      ${row("Startup sounds", "Generated on this device — no downloads or subscriptions", toggle("stSound", st.sound, "Startup sounds"))}
+      ${row("Silent startup", "Keep sounds enabled elsewhere but start silently", toggle("stSilent", st.silent, "Silent startup"))}
+      ${row("Reduced audio effects", "Only the power-on and activation sounds; no ticks or rising tone", toggle("stReduced", st.reducedAudio, "Reduced audio effects"))}
+      ${row("Startup sound volume", "", `<div class="row" style="gap:8px"><input type="range" id="stVol" min="0" max="1" step="0.05" value="${st.volume}" aria-label="Startup sound volume"><b id="stVolV" style="min-width:42px">${Math.round(st.volume * 100)}%</b><button class="btn small ghost" id="stTest">Test sound</button></div>`)}
+      ${ctx.desktop && desk ? row("Start JARVIS with Windows", "Starts quietly in the tray when you sign in to Windows", toggle("stWin", desk.autoStart, "Start with Windows")) : ""}
+      <div class="row" style="margin-top:12px"><button class="btn small" id="stReplay">Run the startup sequence now</button><span class="faint" id="stLast" style="font-size:12.5px"></span></div></article>`;
+    const P2 = (patch) => api("/api/settings", { method: "PATCH", body: { startup: patch } }).then(() => toast("Saved.")).catch((e) => toast(e.message));
+    $$("#stScreen [data-v]", el).forEach((b) => b.onclick = async () => { await P2({ screen: b.dataset.v }); $$("#stScreen [data-v]", el).forEach((x) => x.classList.toggle("active", x === b)); });
+    for (const [id, key] of [["stSkip", "skipAnimation"], ["stFull", "fullDiagnostics"], ["stAuto", "autoOpen"], ["stSound", "sound"], ["stSilent", "silent"], ["stReduced", "reducedAudio"]]) $(`#${id}`, el).onchange = (e) => P2({ [key]: e.target.checked });
+    $("#stVol", el).oninput = (e) => { $("#stVolV", el).textContent = `${Math.round(e.target.value * 100)}%`; };
+    $("#stVol", el).onchange = (e) => P2({ volume: Number(e.target.value) });
+    $("#stTest", el).onclick = async () => {
+      const { sounds } = await import("../sounds.js");
+      sounds.configure({ volume: Number($("#stVol", el).value), enabled: true, reduced: false });
+      const r = await sounds.unlock();
+      if (r === "playing") { sounds.powerOn(); setTimeout(() => sounds.activate(), 1500); toast("Playing the startup sound."); } else toast(r === "off" ? "Volume is at 0%." : `Sound couldn't play here (${r}).`);
+    };
+    $("#stWin", el)?.addEventListener("change", (e) => ctx.desktop.setSettings({ autoStart: e.target.checked }).then(() => toast(e.target.checked ? "JARVIS will start with Windows." : "JARVIS won't start with Windows.")));
+    $("#stReplay", el).onclick = () => { try { sessionStorage.removeItem("jarvis.booted"); } catch {} location.reload(); };
+    const last = window.__jarvisBoot;
+    if (last?.summary) $("#stLast", el).textContent = `Last startup: ${last.summary.toLowerCase()} in ${(last.durationMs / 1000).toFixed(1)} s · sound ${last.sound}`;
+  },
+  async performance(el, ctx) {
+    const s = await api("/api/settings");
+    const a = { quality: "auto", particles: 1, bloom: 1, animation: "full", updates: "normal", mapQuality: "auto", ...(s.appearance || {}) };
+    const c = window.__jarvisCore || {};
+    const cores = navigator.hardwareConcurrency || "?";
+    el.innerHTML = `<article class="panel" style="max-width:820px"><div class="panel-head"><span class="label">Performance</span></div>
+      <p class="muted" style="margin-top:0;font-size:13.5px">This laptop: ${cores} processor threads${c.tier ? ` · the core is running at <b>${esc(c.tier)}</b> quality, ${c.fps || "—"} fps` : ""}${c.timings ? ` · started in ${c.timings.totalMs} ms` : ""}. Automatic picks a quality from the hardware and drops to Light if frames are slow. Changes apply when the Command Centre next opens.</p>
+      ${row("Graphics quality", "", `<div class="seg" id="pfQ">${[["auto", "Auto"], ["high", "High"], ["medium", "Medium"], ["low", "Low"], ["2d", "2D"]].map(([k, l]) => `<button data-v="${k}" class="${a.quality === k ? "active" : ""}">${l}</button>`).join("")}</div>`)}
+      ${row("Particle density", "How many particles orbit the core", `<div class="row" style="gap:8px"><input type="range" id="pfP" min="0.25" max="1.5" step="0.25" value="${a.particles}" aria-label="Particle density"><b id="pfPV" style="min-width:42px">${Math.round(a.particles * 100)}%</b></div>`)}
+      ${row("Bloom intensity", "The glow around the core (0 turns bloom off and saves the most GPU)", `<div class="row" style="gap:8px"><input type="range" id="pfB" min="0" max="1.5" step="0.25" value="${a.bloom}" aria-label="Bloom intensity"><b id="pfBV" style="min-width:42px">${Math.round(a.bloom * 100)}%</b></div>`)}
+      ${row("Animation quality", "Reduced slows the core and turns off parallax; Off shows a still core", `<div class="seg" id="pfA">${["full", "reduced", "off"].map((k) => `<button data-v="${k}" class="${a.animation === k ? "active" : ""}">${k[0].toUpperCase() + k.slice(1)}</button>`).join("")}</div>`)}
+      ${row("Background updates", "Reduced halves how often the system bar refreshes (diagnostics, weather)", `<div class="seg" id="pfU">${[["normal", "Normal"], ["reduced", "Reduced"]].map(([k, l]) => `<button data-v="${k}" class="${a.updates === k ? "active" : ""}">${l}</button>`).join("")}</div>`)}
+      ${row("Map rendering quality", "World globe and Mission Control map sharpness", `<div class="seg" id="pfM">${[["auto", "Auto"], ["high", "High"], ["low", "Low"]].map(([k, l]) => `<button data-v="${k}" class="${a.mapQuality === k ? "active" : ""}">${l}</button>`).join("")}</div>`)}
+      <p class="faint" style="font-size:12.5px">Reduced motion: your Windows setting (Settings → Accessibility → Visual effects → Animation effects) is always respected.</p></article>`;
+    const P3 = (patch) => api("/api/settings", { method: "PATCH", body: { appearance: patch } }).then(() => toast("Saved.")).catch((e) => toast(e.message));
+    for (const [id, key] of [["pfQ", "quality"], ["pfA", "animation"], ["pfU", "updates"], ["pfM", "mapQuality"]]) $$(`#${id} [data-v]`, el).forEach((b) => b.onclick = async () => { await P3({ [key]: b.dataset.v }); $$(`#${id} [data-v]`, el).forEach((x) => x.classList.toggle("active", x === b)); });
+    $("#pfP", el).oninput = (e) => { $("#pfPV", el).textContent = `${Math.round(e.target.value * 100)}%`; };
+    $("#pfP", el).onchange = (e) => P3({ particles: Number(e.target.value) });
+    $("#pfB", el).oninput = (e) => { $("#pfBV", el).textContent = `${Math.round(e.target.value * 100)}%`; };
+    $("#pfB", el).onchange = (e) => P3({ bloom: Number(e.target.value) });
+  },
+});

@@ -2,7 +2,7 @@
 import { api, send } from "../api.js";
 import { voice } from "../voice.js";
 import { core, STATE_LABEL } from "../corestate.js";
-import { mountBestCore } from "../core.js";
+import { mountBestCore, coreOptions } from "../core.js";
 import { $, $$, esc, gbp, fmtTime, wxIcon, icon, toast, formDialog, confirmDialog, fmtRel, debounce, statusDot } from "../util.js";
 
 let H = null, CTX = null, coreCtl = null, briefingPending = null;
@@ -51,7 +51,7 @@ export async function render(root, ctx, params = {}) {
   // Core: 3D where possible. Clicking it talks (or interrupts).
   const anim = ctx.settings.appearance?.animation || "full";
   const coreCanvas = $("#core", root);
-  mountBestCore(coreCanvas, { quality: ctx.settings.appearance?.quality || "auto", animation: anim }).then((c) => { if (coreCanvas.isConnected) { coreCtl = c; coreCanvas.dataset.core = c.kind; coreCanvas.dataset.tier = c.tier || ""; if (document.documentElement.classList.contains("mc-mode")) c.setPalette?.("mission"); } else c.destroy(); });
+  mountBestCore(coreCanvas, { ...coreOptions(ctx.settings), animation: anim }).then((c) => { if (coreCanvas.isConnected) { coreCtl = c; coreCanvas.dataset.core = c.kind; coreCanvas.dataset.tier = c.tier || ""; if (document.documentElement.classList.contains("mc-mode")) c.setPalette?.("mission"); } else c.destroy(); });
   const offCore = core.on((s) => { const l = $("#coreState", root); if (l) { l.textContent = STATE_LABEL[s] || s; l.className = `core-state ${s}`; } $("#mic", root)?.classList.toggle("live", s === "listening"); });
   const offCap = ctx.onCaption((t, user) => { const c = $("#caption", root); if (!c) return; c.textContent = t || ""; c.classList.toggle("user", !!user); });
 
@@ -100,8 +100,11 @@ function drawDiag(root) {
   const t = CTX.settings.profile?.title || "Sir";
   if (!d) { el.innerHTML = '<p class="empty">Running checks…</p>'; return; }
   const issues = d.checks.filter((c) => c.status === "error" || c.status === "warn");
+  // Device-side problems found at start-up (microphone, voice, graphics) count too, so the two never disagree.
+  const bootIssues = (window.__jarvisBoot?.problems || []).filter((p) => !issues.some((c) => c.label === p.label));
+  const n = issues.length + bootIssues.length;
   if (sub) sub.textContent = !CTX.session?.brain ? "JARVIS is online, but the AI isn't set up yet — add an Anthropic key in API keys."
-    : issues.length ? `JARVIS is online. ${issues.length} system${issues.length === 1 ? " needs" : "s need"} attention.` : "JARVIS is online. All available systems are ready.";
+    : n ? `JARVIS is online. ${n} item${n === 1 ? " needs" : "s need"} attention.` : "JARVIS is online. All available systems are ready.";
   $("#diagAll", root).innerHTML = `<span class="pill ${d.overall === "ok" ? "ok" : d.overall === "warn" ? "warn" : "bad"}">${d.overall === "ok" ? "nominal" : d.overall === "warn" ? "check" : "fault"}</span>`;
   const pick = ["ai", "stt", "mic", "database", "network", "cpu", "ram", "storage"].map((n) => d.checks.find((c) => c.name === n)).filter(Boolean);
   el.innerHTML = `<div class="diag-mini">${pick.map((c) => `<div title="${esc(c.detail)}">${statusDot(c.status)}<span>${esc(c.label.replace(" (Anthropic)", ""))}${c.value != null ? ` · ${c.value}%` : ""}</span></div>`).join("")}</div>

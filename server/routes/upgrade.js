@@ -299,6 +299,12 @@ router.post("/api/diagnostics/test/:check", rateLimit({ name: "diagtest", limit:
   if (!diagnostics.TESTABLE.includes(req.params.check)) return res.status(404).json({ error: "No test for that" });
   res.json(await diagnostics.testCheck(req.params.check, { client }));
 }));
+// Start-up checks for the boot screen: the list, then each real check on its own so results appear as they finish.
+router.get("/api/boot", wrap(async (req, res) => { const b = await import("../services/boot.js"); res.json({ version: b.appVersion(), checks: b.BOOT_ORDER.map((n) => ({ name: n, label: b.BOOT_CHECKS[n].label, critical: !!b.BOOT_CHECKS[n].critical })) }); }));
+router.get("/api/boot/check/:name", rateLimit({ name: "bootcheck", limit: 120, windowMs: 60_000 }), wrap(async (req, res) => {
+  const r = await (await import("../services/boot.js")).runBootCheck(req.params.name, { client });
+  r ? res.json(r) : notFound(res);
+}));
 // Narrated diagnostic levels (quick, full, voice, ai, network, security, performance, hardware, integrations) and their history.
 router.post("/api/diagnostics/run", rateLimit({ name: "diagrun", limit: 10, windowMs: 60_000 }), wrap(async (req, res) => {
   const { runLevel, LEVELS } = await import("../services/narrator.js");

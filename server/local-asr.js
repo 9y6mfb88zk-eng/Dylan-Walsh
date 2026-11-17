@@ -11,7 +11,9 @@ const require = createRequire(import.meta.url);
 const DIR = process.env.JARVIS_ASR_DIR || "";
 const PARAKEET = ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"];
 const WHISPER = ["base.en-encoder.int8.onnx", "base.en-decoder.int8.onnx", "base.en-tokens.txt"];
-let recognizerPromise = null, sherpa = null, loadError = null;
+let recognizerPromise = null, sherpa = null, loadError = null, ready = false;
+/** "none" (no model) · "idle" (not loaded yet) · "loading" · "ready" · "error" — for the start-up checks. */
+export function localAsrReadiness() { return !localAsrModel() ? "none" : loadError ? "error" : ready ? "ready" : recognizerPromise ? "loading" : "idle"; }
 
 const has = (files) => DIR && files.every((f) => fs.existsSync(path.join(DIR, f)));
 export function localAsrModel() { return has(PARAKEET) ? "parakeet" : has(WHISPER) ? "whisper" : null; }
@@ -29,7 +31,9 @@ function recognizer() {
       const modelConfig = localAsrModel() === "parakeet"
         ? { transducer: { encoder: path.join(DIR, "encoder.int8.onnx"), decoder: path.join(DIR, "decoder.int8.onnx"), joiner: path.join(DIR, "joiner.int8.onnx") }, tokens: path.join(DIR, "tokens.txt"), modelType: "nemo_transducer" }
         : { whisper: { encoder: path.join(DIR, WHISPER[0]), decoder: path.join(DIR, WHISPER[1]), language: "en", task: "transcribe" }, tokens: path.join(DIR, WHISPER[2]) };
-      return sherpa.OfflineRecognizer.createAsync({ featConfig: { sampleRate: 16000, featureDim: 80 }, modelConfig: { ...modelConfig, numThreads: threads, provider: "cpu", debug: 0 } });
+      const rec = await sherpa.OfflineRecognizer.createAsync({ featConfig: { sampleRate: 16000, featureDim: 80 }, modelConfig: { ...modelConfig, numThreads: threads, provider: "cpu", debug: 0 } });
+      ready = true;
+      return rec;
     })().catch((e) => { loadError = e.message; recognizerPromise = null; throw e; });
   }
   return recognizerPromise;

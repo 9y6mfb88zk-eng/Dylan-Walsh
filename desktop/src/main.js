@@ -120,7 +120,7 @@ function createMain() {
     icon: iconPath(), autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(here, "preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false,
-      backgroundThrottling: false, additionalArguments: [`--jarvis-origin=${serverOrigin()}`, `--jarvis-version=${VERSION}`, `--jarvis-mode=${isLocal() ? "local" : "remote"}`],
+      backgroundThrottling: false, autoplayPolicy: "no-user-gesture-required", additionalArguments: [`--jarvis-origin=${serverOrigin()}`, `--jarvis-version=${VERSION}`, `--jarvis-mode=${isLocal() ? "local" : "remote"}`],
     },
   });
   win.webContents.setUserAgent(`${win.webContents.getUserAgent()} JARVIS-Desktop/${VERSION}`);

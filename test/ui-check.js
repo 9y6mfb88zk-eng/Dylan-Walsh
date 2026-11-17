@@ -26,6 +26,16 @@ const SECTIONS = ["home", "talk", "briefings", "notifications", "alarms", "calen
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required", "--use-fake-ui-for-media-stream", "--enable-unsafe-swiftshader", "--use-angle=swiftshader", "--ignore-gpu-blocklist"] });
 const errors = [];
 const watch = (page, tag) => { page.on("pageerror", (e) => errors.push(`${tag}: ${e.message}`)); page.on("console", (m) => m.type() === "error" && !/Failed to load resource|WebGL|GPU stall|GL Driver/.test(m.text()) && errors.push(`${tag}: ${m.text()}`)); };
+/** New windows start with the initialisation screen: wait for its real checks, then tap anywhere to enter. */
+async function enterJarvis(page) {
+  const shown = await page.waitForSelector(".boot2", { timeout: 25000 }).then(() => true, () => false);
+  if (!shown) return false;
+  await page.waitForFunction(() => window.__jarvisBootReady, null, { timeout: 120000 });
+  await page.waitForSelector(".boot2.ready", { timeout: 10000 });
+  await page.locator(".boot2").click({ position: { x: 20, y: 20 } });
+  await page.waitForSelector(".boot2", { state: "detached", timeout: 10000 });
+  return true;
+}
 const post = (page, p, data) => page.request.post(`${base}${p}`, { headers: { "x-jarvis": "1" }, data });
 
 try {
@@ -36,6 +46,7 @@ try {
   check("first run shows setup", await L.isVisible("#codeField"));
   await L.fill("#authCode", "SETUP-1234"); await L.fill("#authPw", "correct horse battery"); await L.fill("#authPw2", "correct horse battery"); await L.fill("#authDevice", "Windows laptop");
   await L.click("#authSubmit");
+  check("first launch shows the initialisation screen", await enterJarvis(L));
   await L.waitForSelector("#core", { timeout: 8000 });
   await post(L, "/api/finance/demo");
   await post(L, "/api/tasks", { title: "Call the accountant about VAT", due: new Date().toISOString().slice(0, 10), priority: 1 });
@@ -46,7 +57,7 @@ try {
   await L.waitForSelector(".wx-days");
   check("greeting addresses the user as Sir", /^Good (morning|afternoon|evening), Sir\.$/.test(await L.textContent("#greet")));
   await L.waitForFunction(() => !/Checking systems/.test(document.querySelector("#subline")?.textContent || ""), null, { timeout: 15000 }).catch(() => {});
-  check("status line comes from real diagnostics", /^JARVIS is online\. (All available systems are ready\.|\d+ systems? needs? attention\.)$/.test(await L.textContent("#subline")), await L.textContent("#subline"));
+  check("status line comes from real diagnostics", /^JARVIS is online\. (All available systems are ready\.|\d+ items? needs? attention\.)$/.test(await L.textContent("#subline")), await L.textContent("#subline"));
   await L.waitForFunction(() => document.querySelector("#core")?.dataset.core, null, { timeout: 10000 }).catch(() => {});
   const coreKind = await L.getAttribute("#core", "data-core");
   check("Command Centre core is the 3D (WebGL) core", coreKind === "3d", `core ${coreKind}`);
@@ -123,6 +134,7 @@ try {
   if (pairErr) await P.screenshot({ path: path.join(out, "iphone-pair-error.png") });
   check("iPhone paired into the same account", !pairErr && !(await P.evaluate(() => document.querySelector("#app").hidden)), pairErr || "");
   await P.waitForSelector("#core", { timeout: 15000 });
+  check("phone shows the initialisation screen and enters JARVIS", await enterJarvis(P));
   // iPhone in Safari (not yet on the Home Screen): JARVIS explains how to install it, with the real buttons.
   const guide = await P.waitForSelector("#iosInstall.in", { timeout: 12000 }).then(() => true, () => false);
   check("iPhone Safari shows the Add to Home Screen guide", guide && /Add to Home Screen/.test(await P.textContent("#iosInstall")) && /Share/.test(await P.textContent("#iosInstall")));
@@ -222,7 +234,7 @@ try {
   const rm = await browser.newContext({ viewport: { width: 1280, height: 800 }, reducedMotion: "reduce", storageState: await lap.storageState() });
   const R = await rm.newPage(); watch(R, "reduced-motion");
   await R.goto(base); await R.waitForSelector("#core");
-  await R.waitForSelector(".boot", { state: "detached", timeout: 15000 }).catch(() => {});
+  check("reduced motion: start-up runs its checks with no animation", await enterJarvis(R) && await R.evaluate(() => window.__jarvisBoot.lines.length >= 20));
   await R.evaluate(() => { window.__mcTimeline = []; });
   await R.click("#mcBtn");
   await R.waitForFunction(() => document.documentElement.classList.contains("mc-active"), null, { timeout: 30000 }).catch(() => {});
@@ -237,16 +249,53 @@ try {
   check("report's spoken lines name the real checks", /Primary database/.test(spoken) && /Spoken/.test(spoken), spoken.slice(0, 160));
   await L.screenshot({ path: path.join(out, "laptop-diagnostics-narrated.png") });
   check("performance panel shows live measurements", await L.waitForFunction(() => /ms/.test(document.querySelector("#perf")?.textContent || ""), null, { timeout: 8000 }).then(() => true, () => false));
-  // Cinematic start-up on a fresh window: real steps with timings, then it gets out of the way by itself.
+  // ---- Start-up: dedicated initialisation screen with real checks (fresh window = new launch)
   const fresh = await browser.newContext({ viewport: { width: 1600, height: 960 }, storageState: await lap.storageState() });
   const F = await fresh.newPage(); watch(F, "startup");
   await F.goto(base);
-  check("cinematic start-up shows real steps", await F.waitForSelector(".boot .boot-steps li", { timeout: 15000 }).then(() => true, () => false));
-  await F.screenshot({ path: path.join(out, "laptop-startup.png") }).catch(() => {});
-  const labels = await F.waitForFunction(() => { const l = window.__jarvisBoot || []; return l.length >= 6 && l.every((x) => x.ok !== null) && l.map((x) => `${x.label}=${x.ok ? "ok" : "bad"} ${x.detail}${x.ms != null ? ` · ${x.ms} ms` : ""}`); }, null, { timeout: 12000 }).then((h) => h.jsonValue(), () => []);
-  check("start-up steps report real results", labels.some((l) => /Live link.*ok/.test(l)) && labels.some((l) => /System diagnostics.*ok/.test(l)), labels.join(" | "));
-  check("start-up closes by itself", await F.waitForSelector(".boot", { state: "detached", timeout: 8000 }).then(() => true, () => false));
+  check("launch opens the initialisation screen, not the Command Centre", await F.waitForSelector(".boot2", { timeout: 8000 }).then(() => true, () => false));
+  check("Stage 1: J.A.R.V.I.S. branding and POWER ON", /J\.A\.R\.V\.I\.S\./.test(await F.textContent(".b2-title")) && await F.waitForFunction(() => /POWER ON/.test(document.querySelector(".b2-log")?.textContent || ""), null, { timeout: 8000 }).then(() => true, () => false));
+  await F.waitForFunction(() => window.__jarvisBootReady, null, { timeout: 120000 });
+  const boot = await F.evaluate(() => window.__jarvisBoot);
+  const want = ["Application runtime", "Operating system", "Hardware", "Database", "Local storage", "AI provider", "Voice input", "Speech synthesis", "Microphone", "Background scheduler", "Notification service", "Weather integration", "Calendar integration", "World Explorer", "3D rendering", "Neural core rendering"];
+  check("Stage 2: every required system check ran", want.every((w) => boot.lines.some((l) => l.label.startsWith(w))), boot.lines.map((l) => l.label).join(", "));
+  const allowed = ["operational", "connected", "degraded", "not_configured", "permission_required", "offline", "failed", "initialising"];
+  check("every check has a real status from the allowed set", boot.lines.every((l) => allowed.includes(l.status) && l.detail));
+  check("the AI is only 'connected' after a real reply", boot.lines.find((l) => l.label === "AI provider")?.status === "connected" && /responded in \d+ ms/.test(boot.lines.find((l) => l.label === "AI provider").detail));
+  check("the database check really queried it", /schema \d+/.test(boot.lines.find((l) => l.label === "Database").detail));
+  check("the microphone line distinguishes devices from permission", /microphone|permission/i.test(boot.lines.find((l) => l.label === "Microphone").detail));
+  check("the neural core is 'operational' only after a frame was drawn", /first frame after \d+ ms/.test(boot.lines.find((l) => l.label === "Neural core rendering").detail) || boot.lines.find((l) => l.label === "Neural core rendering").status !== "operational");
+  const initLabels = ["Initialise AI engine", "Load application configuration", "Load persistent memory", "Restore saved preferences", "Restore pending tasks and reminders", "Initialise voice interface", "Initialise neural energy core", "Prepare the Command Centre"];
+  check("Stage 3: AI initialisation restores real state", initLabels.every((w) => boot.lines.some((l) => l.label === w)) && /\d+ facts restored/.test(boot.lines.find((l) => l.label === "Load persistent memory").detail));
+  const crit = boot.lines.filter((l) => l.critical && ["failed", "offline"].includes(l.status)).length, bad = boot.lines.filter((l) => !l.critical && ["failed", "offline"].includes(l.status)).length, lim = boot.lines.filter((l) => ["degraded", "permission_required", "initialising"].includes(l.status)).length;
+  const expected = crit ? "SYSTEM INITIALISATION FAILED" : bad ? "SYSTEM INITIALISED — ATTENTION REQUIRED" : lim ? "SYSTEM OPERATIONAL — LIMITED SERVICES" : "SYSTEM OPERATIONAL";
+  check("Stage 4: the summary matches the actual results", boot.summary === expected && (await F.textContent(".b2-summary")) === expected, `${boot.summary} (expected ${expected})`);
+  check("problems are listed in plain language with a diagnostics action", bad + lim + crit === 0 || ((await F.locator(".b2-problems li").count()) > 0 && await F.isVisible("#b2Diag")));
+  check("Stage 5: greeting uses the real time of day and asks for a tap", /ALL AVAILABLE SYSTEMS INITIALISED\./.test(await F.textContent(".b2-enter")) && /GOOD (MORNING|AFTERNOON|EVENING), SIR\./.test(await F.textContent(".b2-greet")) && /TAP ANYWHERE TO WAKE JARVIS/.test(await F.textContent(".b2-tap")));
+  check("sound is reported honestly (played only with a measured signal)", ["playing", "blocked", "no signal", "unavailable", "off", "deferred"].includes(boot.sound) && (boot.sound !== "playing" || boot.soundLevel > 0), `${boot.sound} · level ${boot.soundLevel}`);
+  await F.screenshot({ path: path.join(out, "laptop-startup.png") });
+  const navBefore = await F.evaluate(() => performance.getEntriesByType("navigation").length);
+  await F.locator(".boot2").click({ position: { x: 30, y: 30 } });
+  check("tap enters the Command Centre without reloading", await F.waitForSelector(".boot2", { state: "detached", timeout: 8000 }).then(() => true, () => false) && navBefore === await F.evaluate(() => performance.getEntriesByType("navigation").length) && await F.evaluate(() => !!document.querySelector("#view canvas#core")?.__core));
+  check("the Command Centre agrees with the start-up result", /JARVIS is online\./.test(await F.textContent("#subline")) && (boot.problems.length === 0) === /All available systems are ready/.test(await F.textContent("#subline")), await F.textContent("#subline"));
+  await F.click('[data-tab="diagnostics"]');
+  check("Diagnostics shows the last start-up report", await F.waitForSelector("text=Last startup", { timeout: 8000 }).then(() => true, () => false));
   await fresh.close();
+  // Settings → Startup: skip animation + open automatically still runs every check.
+  await L.request.patch(`${base}/api/settings`, { headers: { "x-jarvis": "1" }, data: { startup: { skipAnimation: true, autoOpen: true } } });
+  const fresh2 = await browser.newContext({ viewport: { width: 1280, height: 800 }, storageState: await lap.storageState() });
+  const F2 = await fresh2.newPage(); watch(F2, "startup-skip");
+  await F2.goto(base);
+  check("skip animation + auto-open: enters by itself after the real checks", await F2.waitForSelector(".boot2", { timeout: 8000 }).then(() => true, () => false) && await F2.waitForSelector(".boot2", { state: "detached", timeout: 120000 }).then(() => true, () => false) && await F2.evaluate(() => window.__jarvisBoot.lines.length >= 24));
+  await fresh2.close();
+  await L.request.patch(`${base}/api/settings`, { headers: { "x-jarvis": "1" }, data: { startup: { skipAnimation: false, autoOpen: false } } });
+  await L.click('[data-tab="settings"]');
+  await L.click('[data-s="startup"]');
+  check("Settings has a Startup section with every option", await L.waitForSelector("#stScreen", { timeout: 5000 }).then(() => true, () => false) && (await Promise.all(["#stSkip", "#stFull", "#stAuto", "#stSound", "#stSilent", "#stReduced", "#stVol", "#stTest"].map((x) => L.$(x)))).every(Boolean));
+  await L.click('[data-s="performance"]');
+  check("Settings has a Performance section (quality, particles, bloom, animation, updates, map)", await L.waitForSelector("#pfQ", { timeout: 5000 }).then(() => true, () => false) && !!(await L.$("#pfP")) && !!(await L.$("#pfB")) && !!(await L.$("#pfU")) && !!(await L.$("#pfM")));
+  await L.screenshot({ path: path.join(out, "laptop-settings-performance.png") });
+  await L.click('[data-tab="home"]'); await L.waitForSelector("#core");
 
   // ---------------- Mission Control on the phone
   await P.click("#mcBtn");

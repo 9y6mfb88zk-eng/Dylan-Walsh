@@ -45,8 +45,11 @@ for (const ev of ["pointermove", "pointerdown", "keydown", "wheel", "touchstart"
 addEventListener("focus", () => { windowFocused = true; touch(); });
 addEventListener("blur", () => { windowFocused = false; });
 
-export async function mountCore3D(canvas, { quality = "auto", animation = "full" } = {}) {
+// quality: auto | high | medium | low. density: particle count multiplier (0.25–1.5). bloom: glow intensity (0 = off).
+export async function mountCore3D(canvas, { quality = "auto", animation = "full", density = 1, bloom: bloomLevel = 1 } = {}) {
+  const T0 = performance.now(), timings = {};
   const THREE = await import("/vendor/three/three.module.min.js");
+  timings.importMs = Math.round(performance.now() - T0);
   const test = document.createElement("canvas");
   if (!(test.getContext("webgl2") || test.getContext("webgl"))) throw new Error("WebGL unavailable");
 
@@ -60,7 +63,11 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
   scene.add(root);
 
   const mobile = matchMedia("(max-width: 900px)").matches || /iPhone|iPad|Android/.test(navigator.userAgent);
-  let tier = quality === "auto" ? (mobile || (navigator.hardwareConcurrency || 4) < 4 ? "low" : "high") : quality;
+  let tier = quality === "auto" ? (mobile || (navigator.hardwareConcurrency || 4) < 4 ? "low" : "high") : quality === "medium" ? "medium" : quality;
+  density = Math.max(0.25, Math.min(1.5, Number(density) || 1));
+  bloomLevel = Math.max(0, Math.min(1.5, Number(bloomLevel ?? 1)));
+  const mountAt = performance.now();
+  let firstFrameResolve; const firstFrame = new Promise((r) => (firstFrameResolve = r));
   const reduced = animation === "reduced" || matchMedia("(prefers-reduced-motion: reduce)").matches;
   const still = animation === "off";
   const disposables = [];
@@ -80,7 +87,7 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
         float bands = 0.5 + 0.5*sin(vNoise*7.0 + uTime*2.2); vec3 c = mix(uC2, uC1, f)*(0.22 + f*1.7) + uC1*bands*0.16 + vec3(1.0)*pow(f,7.0)*0.55;
         gl_FragColor = vec4(c*uIntensity*(1.0 + uLevel*0.9), clamp(0.16 + f, 0.0, 1.0)); }`,
   }));
-  const coreMesh = new THREE.Mesh(keep(new THREE.IcosahedronGeometry(1, tier === "high" ? 40 : 20)), coreMat);
+  const coreMesh = new THREE.Mesh(keep(new THREE.IcosahedronGeometry(1, tier === "high" ? 40 : tier === "medium" ? 30 : 20)), coreMat);
   root.add(coreMesh);
   const nucleusMat = keep(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
   const nucleus = new THREE.Mesh(keep(new THREE.SphereGeometry(0.2, 24, 24)), nucleusMat);
@@ -112,7 +119,7 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
   root.add(ticks);
 
   // ---------------- Audio spectrum ring (instanced bars)
-  const BARS = tier === "high" ? 120 : 72;
+  const BARS = tier === "low" ? 72 : 120;
   const barGeo = keep(new THREE.BoxGeometry(0.014, 1, 0.014)); barGeo.translate(0, 0.5, 0);
   const barMat = keep(new THREE.MeshBasicMaterial({ color: STATES.idle[0], transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
   const bars = new THREE.InstancedMesh(barGeo, barMat, BARS);
@@ -121,7 +128,7 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
   root.add(bars);
 
   // ---------------- Particles
-  const N = tier === "high" ? 2400 : 900;
+  const N = Math.round((tier === "high" ? 2400 : tier === "medium" ? 1500 : 900) * density);
   const pp = new Float32Array(N * 3), ps = new Float32Array(N), seed = new Float32Array(N);
   for (let i = 0; i < N; i++) {
     const r = 1.9 + Math.pow(Math.random(), 0.7) * 1.9, th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
@@ -159,7 +166,7 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
   // ---------------- Post-processing (bloom) for the high tier
   let composer = null, bloom = null;
   async function setupBloom() {
-    if (tier !== "high" || composer) return;
+    if (tier === "low" || composer || bloomLevel === 0) return;
     try {
       const [{ EffectComposer }, { RenderPass }, { UnrealBloomPass }, { OutputPass }] = await Promise.all([
         import("/vendor/three/postprocessing/EffectComposer.js"), import("/vendor/three/postprocessing/RenderPass.js"),
@@ -173,13 +180,14 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
     } catch (e) { console.warn("[core] bloom unavailable:", e.message); composer = null; }
   }
   await setupBloom();
+  timings.sceneMs = Math.round(performance.now() - T0);
 
   // ---------------- Sizing / visibility
   let W = 1, H = 1, visible = true;
   function resize() {
     const r = canvas.getBoundingClientRect();
     W = Math.max(1, r.width); H = Math.max(1, r.height);
-    const pr = Math.min(devicePixelRatio || 1, tier === "high" ? 1.75 : 1);
+    const pr = Math.min(devicePixelRatio || 1, tier === "high" ? 1.75 : tier === "medium" ? 1.25 : 1);
     renderer.setPixelRatio(pr);
     renderer.setSize(W, H, false);
     camera.aspect = W / H;
@@ -199,6 +207,7 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
   const WHITE = new THREE.Color(1, 1, 1);
   const cur = { c1: new THREE.Color(STATES.idle[0]), c2: new THREE.Color(STATES.idle[1]), intensity: 0.85, spin: 0.25, agit: 0, pspeed: 0.35, scan: 0, sats: 0, spec: 0.25 };
   const tgt = { c1: new THREE.Color(), c2: new THREE.Color() };
+  let drawnOnce = false;
   let gone = false, palette = null, boost = 1, boostTarget = 1;
   let state = core.state, level = 0, prevLevel = 0, t = 0, lastFrame = performance.now(), raf = 0, slow = 0, frames = 0;
   const offState = core.on((s, _d, same) => {
@@ -295,7 +304,7 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
     // Dimensional parallax: the core leans gently towards the pointer.
     root.rotation.y += ((ptrX * 0.22) - root.rotation.y) * 0.04;
     root.rotation.x += ((ptrY * 0.14) - root.rotation.x) * 0.04;
-    if (bloom) bloom.strength = (0.75 + cur.intensity * 0.45 + level * 0.5) * (0.6 + 0.4 * boost);
+    if (bloom) bloom.strength = (0.75 + cur.intensity * 0.45 + level * 0.5) * (0.6 + 0.4 * boost) * bloomLevel;
     if (composer) composer.render(); else renderer.render(scene, camera);
   }
 
@@ -319,6 +328,7 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
     drawn++;
     if (now - fpsAt >= 1000) { stats.fps = Math.round((drawn * 1000) / (now - fpsAt)); drawn = 0; fpsAt = now; stats.tier = tier; }
     // Adaptive quality: sustained slow frames on "auto" drop to the light tier (no bloom, fewer particles).
+    if (!drawnOnce) { drawnOnce = true; timings.firstDrawMs = Math.round(performance.now() - now); timings.totalMs = Math.round(performance.now() - T0); stats.timings = timings; firstFrameResolve({ ms: Math.round(performance.now() - mountAt), tier, timings }); }
     if (quality === "auto" && tier === "high" && !minGap) {
       frames++; if (ft > 34) slow++;
       if (frames >= 180 || (frames >= 20 && now - (evalAt ||= now) > 6000)) { evalAt = 0; if (slow / frames > 0.5) { tier = "low"; composer = null; bloom = null; resize(); console.info("[core] switched to the light quality tier"); } frames = 0; slow = 0; }
@@ -326,11 +336,17 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
   }
   resize();
   stats.alive++;
-  if (still) draw(performance.now()); else raf = requestAnimationFrame(loop);
+  const tc = performance.now();
+  try { if (renderer.compileAsync) await Promise.race([renderer.compileAsync(scene, camera), new Promise((r) => setTimeout(r, 4000))]); } catch {}
+  timings.compileMs = Math.round(performance.now() - tc);
+  if (gone) return { kind: "3d", tier, firstFrame, pulse() {}, setPalette() {}, setBoost() {}, destroy() {} };
+  if (still) { draw(performance.now()); drawnOnce = true; firstFrameResolve({ ms: Math.round(performance.now() - mountAt), tier }); } else raf = requestAnimationFrame(loop);
 
   return {
     kind: "3d",
     get tier() { return tier; },
+    /** Resolves when the first frame has actually been drawn. */
+    firstFrame,
     pulse: (strength = 1.2) => emitWave(strength),
     /** "mission" (violet) or null (normal colours); colours blend over about a second. */
     setPalette(name) { palette = PALETTES[name] || null; if (still) draw(performance.now()); },

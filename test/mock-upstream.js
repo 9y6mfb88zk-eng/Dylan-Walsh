@@ -135,6 +135,7 @@ export function startMock() {
       const reply = anthropicReply(body);
       return body.stream ? writeSSE(res, reply) : json(200, reply);
     }
+    if (p.startsWith("/v1/models/") && state.anthropicDown) return json(500, { type: "error", error: { type: "api_error", message: "Internal server error" } });
     if (p.startsWith("/v1/models/")) return json(200, { type: "model", id: decodeURIComponent(p.slice(11)), display_name: "Mock model", created_at: "2026-01-01T00:00:00Z" });
 
     if (p === "/v1/forecast") {

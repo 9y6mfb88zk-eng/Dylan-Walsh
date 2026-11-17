@@ -1,4 +1,4 @@
-# JARVIS 5.0
+# JARVIS 6.4
 
 JARVIS is your personal AI system. It runs **entirely on your Windows laptop**, with no cloud server and no hosting bill.
 - **On the laptop** it listens for **"Hey JARVIS"** (or just **"JARVIS"**), keeps the conversation going without the wake word, rings alarms even with the window closed, and sits in the system tray.
@@ -40,8 +40,8 @@ JARVIS is your personal AI system. It runs **entirely on your Windows laptop**, 
 
 ## The 15 things to know
 
-### 1. Install or update to 5.0
-Download **`JARVIS-Setup-5.0.exe`** from **[Releases → "JARVIS for Windows (latest)"](https://github.com/9y6mfb88zk-eng/Dylan-Walsh/releases/tag/desktop-latest)** and run it.
+### 1. Install or update to 6.4
+Download **`JARVIS-Setup-6.4.exe`** from **[Releases → "JARVIS for Windows (latest)"](https://github.com/9y6mfb88zk-eng/Dylan-Walsh/releases/tag/desktop-latest)** and run it.
 - **Updating from 3.x:** your data, keys and settings are kept.
   - Before the database is upgraded, JARVIS saves a full copy to `%APPDATA%\JARVIS\data\backups\pre-migration-007-….db`.
 - **SmartScreen or Smart App Control** may block the unsigned installer:
@@ -125,6 +125,45 @@ You can say "show system architecture" (or any section name) while Mission Contr
 **Switching off:** say **"JARVIS, deactivate Mission Control"**, press the button or Esc, or use **Exit** in the sidebar. The transformation runs in reverse back to the Command Centre.
 
 With "reduce motion" on (Windows setting or Settings → Appearance), the same stages and checks run without the movement.
+
+### 5c. Startup (initialisation screen)
+Every time you launch JARVIS, it opens on a black initialisation screen that shows its real start-up:
+
+1. **Power on:** branding, a purple energy pulse and the start-up sound.
+2. **System check:** 16 checks, each shown with a status light as its result arrives:
+   - application runtime, operating system, hardware (CPU and memory), database, local storage
+   - AI provider (a real call to Anthropic), voice input, speech synthesis, microphone (device and permission shown separately)
+   - background scheduler, notifications, weather (a real request), calendar
+   - World Explorer, 3D rendering (your graphics card), neural core (ready only once it has drawn)
+3. **AI initialisation:** memory, preferences, tasks and reminders are restored, the voice interface and core start, and the Command Centre is prepared underneath.
+4. **System status:** one of four results, worked out from the actual checks:
+   - SYSTEM OPERATIONAL
+   - … LIMITED SERVICES
+   - … ATTENTION REQUIRED
+   - … INITIALISATION FAILED
+
+   Any problem is listed in plain words, with an **Open diagnostics** button.
+5. **"Tap anywhere to wake JARVIS"** fades straight into the Command Centre, with no reload.
+
+How long it takes depends only on the real work; nothing is padded. The sounds are generated on your laptop, with nothing downloaded or paid for. JARVIS says "playing" only when it has measured real sound leaving it; if sound was blocked or silent, it says so.
+
+Change any of this in **Settings → Startup**:
+- Cinematic, Minimal or Off
+- Skip animation (the checks still run)
+- Show full diagnostics
+- Open automatically
+- Startup sounds, silent startup, reduced audio and volume, with a Test sound button
+- Start with Windows
+
+**Settings → Diagnostics** shows the last startup report.
+
+**Performance** settings (**Settings → Performance**):
+- graphics quality: Auto, High, Medium, Low or 2D
+- particle density
+- bloom intensity (0 turns it off)
+- animation quality
+- background update frequency
+- map quality
 
 ### 6. Talking and typing
 - **Typing:** use the box under the core, or the **Conversation** section (history follows you between laptop and phone).

@@ -74,7 +74,8 @@ export const DEFAULT_SETTINGS = {
   // `timeoutSec` of silence; "Stay with me" extends that to `stayWithMeSec`.
   voice: { continuous: true, timeoutSec: 8, stayWithMeSec: 120, bargeIn: true, rate: 1, voiceName: "", speakReplies: true, speakBriefings: true, speakNotifications: true, chime: true },
   personality: { style: "jarvis", humour: "dry", verbosity: "brief" },
-  appearance: { animation: "full", quality: "auto", reduceMotion: false, accent: "cyan", sidebar: "expanded" },
+  appearance: { animation: "full", quality: "auto", reduceMotion: false, accent: "cyan", sidebar: "expanded", particles: 1, bloom: 1, updates: "normal", mapQuality: "auto" },
+  startup: { screen: "cinematic", skipAnimation: false, sound: true, volume: 0.6, silent: false, reducedAudio: false, autoOpen: false, fullDiagnostics: true },
   alarms: { defaultSound: "chime", defaultVolume: 80, gradual: true, snoozeMinutes: 10, speak: true, wakeComputer: true },
   notifications: { alarm: true, reminder: true, event: true, task: true, automation: true, project: true, system: true, research: true, idea: true, focus: true, habit: true, briefing: true, finance: true },
   focus: { workMinutes: 25, breakMinutes: 5 },

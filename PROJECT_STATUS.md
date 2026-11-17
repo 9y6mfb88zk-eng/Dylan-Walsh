@@ -1,6 +1,6 @@
 # JARVIS — Project status
 
-_Last updated: 2026-11-17 — JARVIS 5.0 (4.0 + Personal Intelligence, Voice Enhancement & Performance + Mission Control)_
+_Last updated: 2026-11-17 — JARVIS 6.4 (startup sequence, performance pass; includes every earlier upgrade)_
 
 This file is the hand-over document for the "JARVIS — Ultimate Upgrade & Redesign" specification. It lists what is done,
 what remains, known problems, technical decisions and exactly how to continue.
@@ -130,6 +130,50 @@ Measured here (software WebGL, no GPU):
 - JavaScript work during the transformation is small: the longest main-thread task was 64 ms.
 - The animation itself is designed to take ~2.3 s, but here frames come at 1–2 fps, so stages 1–4 took 7–8 s, mostly waiting for frames.
 - On a real GPU the animations run at display rate. That could not be measured here.
+
+## JARVIS 6.4: startup sequence and performance pass (Parts 9–11)
+
+Only Parts 9–11 of this specification were received. "World Explorer" is treated as the existing World section (3D globe, your places, live times and weather); no map-tile explorer was built.
+
+### Part 9: startup (implemented and tested)
+
+| Requirement | Done |
+|---|---|
+| Dedicated initialisation screen before the Command Centre | `public/js/startup.js`: black screen, white J.A.R.V.I.S., violet monospace log, scan line, drifting particles (30 fps canvas), purple energy pulse, status lights, progress bar, blinking cursor |
+| Stage 1, power on | Fade from black, branding, energy pulse, start-up sound |
+| Stage 2, system check | 12 server checks (`server/services/boot.js`, `/api/boot/check/:name`) plus 4 device checks, all started together and shown as each result arrives. Server: runtime, OS, hardware (CPU and memory sampled), database (real query), storage (real write), AI (real Anthropic call), speech recognition (model readiness, then a real test decode), cloud voice (account check), scheduler, notifications, weather (real request), calendar. Device: microphone (device count and permission shown separately; on Windows, the wake-word agent), speech synthesis (system voices plus the cloud result), World Explorer (local map data plus live place data), 3D rendering (WebGL and the real GPU name; software rendering flagged), neural core (ready only after a frame is drawn) |
+| Statuses | operational, connected, degraded, not configured, permission required, offline, failed, initialising. "Initialising" is re-checked until ready (up to 45 s) and is never turned into a pass |
+| Stage 3, AI initialisation | 8 items, each restoring something real: engine, configuration, memory (fact count), preferences, tasks, reminders and alarms, voice interface, neural core, and the Command Centre (panels loaded underneath) |
+| Stage 4, summary | Worked out from the results: a critical failure (runtime, database, storage) gives FAILED; another failure or offline gives ATTENTION REQUIRED; degraded, permission or initialising gives LIMITED SERVICES; otherwise OPERATIONAL. Optional integrations that aren't set up are listed but don't lower the status |
+| Stage 5, enter | "ALL AVAILABLE SYSTEMS INITIALISED.", a greeting from the real time of day, "TAP ANYWHERE TO WAKE JARVIS". A tap fades into the already-built Command Centre with no reload (verified: one navigation), and the core pulses |
+| Sound | Web Audio synthesis (`public/js/sounds.js`): power-on sweep, check ticks, rising energy tone, activation chord. Original, no files, no paid services. Reported as "playing" only when a real signal is measured leaving JARVIS. Blocked autoplay is reported as blocked and plays on the tap. Launching hidden at Windows sign-in defers sound. The Electron main window allows autoplay. Each sound was rendered offline and measured |
+| Failure handling | Each failed component is listed with a plain explanation and an Open diagnostics button. Tested with the server unreachable: SYSTEM INITIALISATION FAILED, runtime marked critical |
+| Returning sessions | State is restored by reading only (the server is the single source of truth), so nothing is duplicated. The scheduler cannot be started twice |
+| Settings → Startup | Cinematic, Minimal or Off; skip animation (checks still run); full diagnostics; open automatically; sounds; silent startup; reduced audio; volume; Test sound; Start with Windows; run the startup again |
+| Consistency | The Command Centre status line counts startup problems. Diagnostics shows the last startup report |
+
+### Part 10: performance (measured first)
+
+See `docs/performance.md` → "JARVIS 6.4" for every number.
+
+- **Baseline:**
+  - idle traffic was already 1 request a minute;
+  - memory was stable after 10 page switches;
+  - server-side diagnostics take 0.27 s even on a cold start.
+- **The real startup problem:** a single 2.2–4.2 s main-thread freeze when the 3D core first renders. Most of it is creating the WebGL context under this container's software renderer.
+- **Changes, each measured where possible:**
+  - Speech audio conversion moved to a background worker. Interface freeze during a 5-second recording dropped from 380–463 ms to 8–16 ms.
+  - Core shaders compile asynchronously (`renderer.compileAsync`). There's no benefit under software rendering; it's the standard fix on real GPUs, but not verified on one.
+  - Startup checks run in parallel, with per-check timeouts.
+  - Per-stage core timings (`window.__jarvisCore.timings`) appear in Diagnostics and Settings → Performance.
+  - The scheduler can't run twice.
+  - New performance settings: quality (adding Medium), particle density, bloom intensity (0 turns it off), background update frequency, map quality.
+- **Not changed:** the app has no React, so React render work doesn't apply; DB queries are already 0.1–0.3 ms, with indexes from migration 008.
+
+### Not done or not verified
+
+- **Real hardware:** the startup sound on real speakers; real-GPU frame rates and the async-compile benefit; Windows-only checks (wake-word agent status, the Windows 11 name and build, the GPU name on your laptop).
+- **Map-tile World Explorer:** not part of the parts received.
 
 ## iPhone
 

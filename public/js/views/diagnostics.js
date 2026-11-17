@@ -15,6 +15,8 @@ export async function render(root, ctx, params = {}) {
       <div class="row wrap" id="levels">${LEVELS.map(([k, l]) => `<button class="btn small" data-level="${k}">${l}</button>`).join("")}</div>
       <div id="report" style="margin-top:12px"></div>
       <details style="margin-top:10px"><summary class="faint" style="cursor:pointer">Previous runs</summary><ul class="list" id="runs" style="margin-top:8px"></ul></details></article>
+    ${window.__jarvisBoot?.lines?.length ? `<article class="panel" style="margin-bottom:14px"><div class="panel-head"><span class="label">Last startup · ${esc(window.__jarvisBoot.summary || "in progress")}</span><span class="faint" style="font-size:12px">${window.__jarvisBoot.durationMs ? `${(window.__jarvisBoot.durationMs / 1000).toFixed(1)} s · ` : ""}sound ${esc(window.__jarvisBoot.sound || "—")}</span></div>
+      <div class="diag-grid">${window.__jarvisBoot.lines.map((l) => `<div class="check-card ${({ operational: "ok", connected: "ok", not_configured: "off", failed: "error", offline: "error" })[l.status] || "warn"}"><div class="row">${statusDot(({ operational: "ok", connected: "ok", not_configured: "off", failed: "error", offline: "error" })[l.status] || "warn")}<b>${esc(l.label)}</b><span class="pill">${esc(l.status.replace("_", " "))}</span></div><div class="detail">${esc(l.detail)}</div></div>`).join("")}</div></article>` : ""}
     <article class="panel" style="margin-bottom:14px"><div class="panel-head"><span class="label">Performance · live</span><span class="faint" id="perfAt" style="font-size:12px"></span></div><div class="grid cols-4" id="perf"></div></article>
     <div class="grid cols-4" id="gauges" style="margin-bottom:14px"></div>
     <div id="groups" class="stack"></div>

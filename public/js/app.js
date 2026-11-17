@@ -8,7 +8,8 @@ import { conversation, cleanCommand } from "./conversation.js";
 import { mountCore } from "./core.js";
 import { mission } from "./mission.js";
 import { handleUi, tryMacro } from "./commands.js";
-import { beginStartup } from "./startup.js";
+import { runStartup } from "./startup.js";
+import { mountBestCore, coreOptions } from "./core.js";
 import { showInstallGuide, offerNotifications, isIOS } from "./iphone.js";
 import { $, $$, esc, toast, icon, fmtWhen, debounce, setDisplayTz } from "./util.js";
 
@@ -466,38 +467,68 @@ async function start() {
   await reloadSession();
   if (!ctx.session?.signedIn) return boot();
   authCore?.destroy?.(); authCore = null;
-  // Cinematic start-up (once per window): each line is a real step finishing, with its real timing or error.
+  // Start-up (once per app launch / window): a dedicated initialisation screen driven by real checks, while the
+  // Command Centre is built underneath. Settings → Startup controls it; "Off" still runs every check.
   let firstBoot = false;
   try { firstBoot = !sessionStorage.getItem("jarvis.booted"); sessionStorage.setItem("jarvis.booted", "1"); } catch {}
-  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const boot = firstBoot && !reduce && (ctx.settings.appearance?.startup || "cinematic") === "cinematic" ? beginStartup({ greeting: `All systems online. Good ${partOfDayLocal()}, ${ctx.settings.profile?.title || "Sir"}.` }) : null;
-  boot?.step("Secure session", Promise.resolve(ctx.session.device?.name || "signed in"));
+  let viewDone; const viewReady = new Promise((r) => (viewDone = r));
+  const startup = firstBoot ? runStartup(ctx, { view: viewReady, core: () => coreReady() }) : null;
   $("#auth").hidden = true; $("#app").hidden = false;
   buildNav();
   core.set("offline", false);
   sync.connect();
-  boot?.step("Live link to JARVIS server", new Promise((res, rej) => { if (sync.status.online) return res("connected"); const off = sync.on("status", (st) => { if (st.online) { off(); res("connected"); } }); setTimeout(() => { off(); rej(new Error("not connected yet — working offline")); }, 6000); }));
   wireDesktop();
   tickClock(); setInterval(tickClock, 1000);
   ensurePushSubscription().catch(() => {});
-  const diagP = loadDiag();
-  boot?.step("System diagnostics", diagP.then((d) => { if (!d) throw new Error("couldn't run checks"); const n = (d.counts.error || 0) + (d.counts.warn || 0); return n ? `${d.checks.length} checks · ${n} need${n === 1 ? "s" : ""} attention` : `${d.checks.length} checks · all operational`; }));
-  boot?.step("AI core", diagP.then((d) => { const a = d?.checks.find((c) => c.name === "ai"); if (!a || a.status === "off") throw new Error(a?.detail || "not set up"); if (a.status === "error") throw new Error(a.detail); return a.status === "ok" ? "online" : { warn: a.status === "unknown" ? "configured · not verified yet" : a.detail }; }));
-  boot?.step("Voice systems", desktop ? desktop.getStatus().then((st) => { if (st.muted) return "microphone muted"; return st.wakeWord === "listening" ? "“Hey JARVIS” ready" : `wake word ${st.wakeWord || "starting"}`; }) : Promise.resolve(voice.cfg.stt ? "tap the core to talk" : "typing only on this device"));
-  if ((ctx.settings.memory?.mode || "ask") !== "off") boot?.step("Personal profile", api("/api/memories/profile").then((p) => `${Object.values(p).flat().length} facts`));
+  loadDiag();
   loadHomeCache(); refreshBadges();
-  setInterval(loadHomeCache, 10 * 60_000);
-  setInterval(loadDiag, 60_000);
+  // Background refresh of the system bar (Settings → Performance → background updates: reduced halves the rate).
+  const slow = ctx.settings.appearance?.updates === "reduced" ? 2 : 1;
+  setInterval(loadHomeCache, 10 * 60_000 * slow);
+  setInterval(loadDiag, 60_000 * slow);
   const u = new URL(location.href);
   const tab = u.searchParams.get("tab") || "home";
   const params = Object.fromEntries(u.searchParams);
   history.replaceState({ tab }, "", tab === "home" ? "/" : `/?tab=${ALIASES[tab] || tab}`);
   const view = go(tab, params, { push: false });
-  boot?.step("Command centre", view.then(() => ""));
-  boot?.finish();
+  view.then(viewDone, viewDone);
   await view;
+  if (startup) {
+    const r = await startup;
+    if (r?.goTo) go(r.goTo);
+    afterStartup(r);
+  }
   // iPhone: guide the Home Screen install in Safari; once installed, offer notifications (a tap is required).
-  if (!desktop && isIOS()) setTimeout(() => { showInstallGuide() || offerNotifications(ctx); }, boot ? 2600 : 900);
+  if (!desktop && isIOS()) setTimeout(() => { showInstallGuide() || offerNotifications(ctx); }, 900);
+}
+/** The neural core is "ready" only once it has drawn a frame: the Command Centre's own core, or a test mount. */
+async function coreReady() {
+  for (let i = 0; i < 100; i++) {
+    const c = document.querySelector("#view canvas#core")?.__core;
+    if (c) return { kind: c.kind, tier: c.tier || "2d", ...(await c.firstFrame) };
+    if (current && current !== "home" && i > 10) break;            // another page opened first: test the core off-screen
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  const cv = Object.assign(document.createElement("canvas"), { width: 64, height: 64 });
+  cv.style.cssText = "position:fixed;left:-200px;top:0;width:64px;height:64px;pointer-events:none";
+  document.body.append(cv);
+  try { const c = await mountBestCore(cv, coreOptions(ctx.settings)); const f = await c.firstFrame; c.destroy(); return { kind: c.kind, tier: c.tier || "2d", ...f }; }
+  finally { cv.remove(); }
+}
+/** Entering JARVIS: wake the core, say hello, and surface problems the start-up found. */
+function afterStartup(r) {
+  const c = document.querySelector("#core")?.__core;
+  c?.pulse?.(1.4);
+  const t = ctx.settings.profile?.title || "Sir";
+  const issues = r?.problems?.length || 0;
+  ctx.caption(r?.summary === "SYSTEM OPERATIONAL" ? `All available systems are online, ${t}.` : `${r?.summary ? r.summary.charAt(0) + r.summary.slice(1).toLowerCase() : "Started"} — ${issues} item${issues === 1 ? "" : "s"} listed in Diagnostics.`);
+  if (r && r.summary !== "SYSTEM OPERATIONAL" && (ctx.settings.startup?.screen === "off")) {
+    const b = $("#banner");
+    b.innerHTML = `${esc(r.summary)} — ${esc(r.problems.map((p) => p.label).join(", "))}. <button class="btn tiny" id="bannerDiag">Diagnostics</button> <button class="x" id="bannerX" aria-label="Dismiss">×</button>`;
+    b.hidden = false;
+    $("#bannerDiag").onclick = () => { b.hidden = true; go("diagnostics"); };
+    $("#bannerX").onclick = () => { b.hidden = true; };
+  }
 }
 function partOfDayLocal() { const h = Number(new Date().toLocaleString("en-GB", { timeZone: ctx.settings.timezone, hour: "2-digit", hour12: false })); return h < 12 ? "morning" : h < 18 ? "afternoon" : "evening"; }
 

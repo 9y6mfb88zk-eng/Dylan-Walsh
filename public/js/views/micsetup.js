@@ -120,7 +120,7 @@ export async function renderMicSetup(el, ctx) {
     const loud = levels.filter((l) => l > thr).sort((a, b) => a - b); speechRms = loud[Math.floor(loud.length * 0.5)] || 0;
     $("#recOut", el).textContent = "Transcribing…";
     try {
-      const r = await api("/api/transcribe", { method: "POST", raw: encodeWav16k(chunks, ac.sampleRate), headers: { "content-type": "audio/wav" } });
+      const r = await api("/api/transcribe", { method: "POST", raw: await encodeWav16k(chunks, ac.sampleRate), headers: { "content-type": "audio/wav" } });
       const acc = accuracy(SENTENCE, r.text || "");
       $("#recOut", el).textContent = "";
       const suggested = Math.min(Math.max((noiseRms ?? 0.004) * 3, 0.006), Math.max(0.006, speechRms * 0.45));

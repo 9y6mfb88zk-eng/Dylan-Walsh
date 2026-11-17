@@ -63,6 +63,24 @@ try {
   r.jsHeapMbAfterNav = await P.evaluate(() => performance.memory ? +(performance.memory.usedJSHeapSize / 1e6).toFixed(1) : null);
   r.webglContextsAlive = await P.evaluate(() => window.__jarvisCore?.alive ?? null);
   r.coreTier = await P.evaluate(() => document.querySelector("#core")?.dataset.tier + " → " + (window.__jarvisCore?.tier ?? "?"));
+  // Idle network traffic on the Command Centre: what the app requests on its own, per minute.
+  await P.click('[data-tab="home"]').catch(() => {}); await P.waitForSelector("#core"); await sleep(3000);
+  const reqs = [];
+  const onReq = (q) => { const u = new URL(q.url()); if (u.origin === new URL(base).origin) reqs.push(u.pathname); };
+  P.on("request", onReq);
+  const idleSec = +(process.env.PERF_IDLE_SEC || 60);
+  await sleep(idleSec * 1000);
+  P.off("request", onReq);
+  const byPath = {}; for (const x of reqs) byPath[x] = (byPath[x] || 0) + 1;
+  r.idleRequests = { perMinute: +((reqs.length * 60) / idleSec).toFixed(1), seconds: idleSec, byPath };
+  // Startup in a fresh window (new launch): sign-in state kept, time until the Command Centre is usable.
+  const fresh = await browser.newContext({ viewport: { width: 1600, height: 960 }, storageState: await ctx.storageState() });
+  const F = await fresh.newPage();
+  const ts = performance.now();
+  await F.goto(base);
+  await F.waitForFunction(() => window.__jarvisBootReady || (document.querySelector(".wx-days") && !document.querySelector(".boot")), null, { timeout: 60000, polling: 50 }).catch(() => {});
+  r.startup = { usableMs: Math.round(performance.now() - ts), checks: await F.evaluate(() => (window.__jarvisBoot || []).map((x) => `${x.label}:${x.ok === false ? "bad" : x.warn ? "warn" : "ok"}:${x.ms ?? "?"}ms`)) };
+  await fresh.close();
   // API latency (median of 15).
   const lat = async (path) => { const a = []; for (let i = 0; i < 15; i++) { const s = performance.now(); await P.request.get(`${base}${path}`); a.push(performance.now() - s); } a.sort((x, y) => x - y); return Math.round(a[7]); };
   r.api = { home: await lat("/api/home"), diagnostics: await lat("/api/diagnostics"), tasks: await lat("/api/tasks"), memoriesProfile: await lat("/api/memories/profile"), performance: await lat("/api/performance") };

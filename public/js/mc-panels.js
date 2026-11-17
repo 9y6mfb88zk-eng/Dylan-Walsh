@@ -134,7 +134,7 @@ export const RENDER = {
   map(el, D, o) {
     if (!el.__map) {
       el.innerHTML = `<div class="mc-map"><canvas aria-label="World map with your places and the live day/night line"></canvas><div class="mc-map-tip" hidden></div></div><div class="mc-map-info faint"></div><div class="mc-places"></div>`;
-      el.__map = createMap($("canvas", el), $(".mc-map-tip", el), (p) => { el.__sel = p; info(); });
+      el.__map = createMap($("canvas", el), $(".mc-map-tip", el), (p) => { el.__sel = p; info(); }, o.ctx.settings.appearance?.mapQuality);
     }
     const places = D.world || [];
     el.__map.setPlaces(places, el.__sel);
@@ -262,7 +262,7 @@ export function spark(values, fixedMax) {
 
 // ---------------------------------------------------------------- World map: coastlines, your places, the real day/night line
 let LINES = null;
-export function createMap(canvas, tip, onSelect) {
+export function createMap(canvas, tip, onSelect, mapQuality = "auto") {
   let places = [], sel = null, W = 0, H = 0, dpr = 1;
   const g = canvas.getContext("2d");
   const night = document.createElement("canvas"); night.width = 180; night.height = 90;
@@ -313,7 +313,7 @@ export function createMap(canvas, tip, onSelect) {
     }
   }
   function resize() {
-    const r = canvas.getBoundingClientRect(); dpr = Math.min(devicePixelRatio || 1, 2);
+    const r = canvas.getBoundingClientRect(); dpr = Math.min(devicePixelRatio || 1, mapQuality === "low" ? 1 : 2);
     W = r.width; H = r.height; canvas.width = Math.max(1, Math.round(W * dpr)); canvas.height = Math.max(1, Math.round(H * dpr)); draw();
   }
   const ro = new ResizeObserver(resize); ro.observe(canvas);

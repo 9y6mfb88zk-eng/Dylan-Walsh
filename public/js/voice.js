@@ -241,7 +241,7 @@ export const voice = {
         if (discarded || !spoke) return resolve("");
         this.setState("thinking");
         try {
-          const wav = encodeWav16k(chunks, rate);
+          const wav = await encodeWav16k(chunks, rate);
           const r = await api("/api/transcribe", { method: "POST", raw: wav, headers: { "content-type": "audio/wav" } });
           this.lastResult = r;                    // text + confidence estimate, for "could you say that again?"
           resolve(r.text || "");
@@ -263,11 +263,27 @@ export const voice = {
 if ("speechSynthesis" in window) speechSynthesis.onvoiceschanged = () => {};
 core.setLevelSource(() => voice.sample());
 
-/** Concatenate Float32 chunks, convert to 16 kHz (anti-aliased) and encode as 16-bit mono WAV. */
-export function encodeWav16k(chunks, rate) {
+// The conversion runs in a background worker where possible (main thread only as a fallback).
+let worker = null, workerFailed = false, seq = 0;
+const waiting = new Map();
+function resampleOffThread(samples, rate) {
+  if (!workerFailed && typeof Worker !== "undefined") {
+    try {
+      if (!worker) {
+        worker = new Worker("/js/resample-worker.js", { type: "module" });
+        worker.onmessage = (e) => { const w = waiting.get(e.data.id); waiting.delete(e.data.id); if (!w) return; e.data.error ? w.reject(new Error(e.data.error)) : w.resolve(e.data.out); };
+        worker.onerror = () => { workerFailed = true; for (const w of waiting.values()) w.fallback(); waiting.clear(); worker = null; };
+      }
+      return new Promise((resolve, reject) => { const id = ++seq; waiting.set(id, { resolve, reject, fallback: () => resolve(resampleTo16k(samples, rate)) }); worker.postMessage({ id, samples, rate }, [samples.buffer]); });
+    } catch { workerFailed = true; }
+  }
+  return Promise.resolve(resampleTo16k(samples, rate));
+}
+/** Concatenate Float32 chunks, convert to 16 kHz (anti-aliased, off the main thread) and encode as 16-bit mono WAV. */
+export async function encodeWav16k(chunks, rate) {
   const n = chunks.reduce((a, c) => a + c.length, 0);
   const all = new Float32Array(n); let o = 0; for (const c of chunks) { all.set(c, o); o += c.length; }
-  const s16 = resampleTo16k(all, rate);
+  const s16 = await resampleOffThread(all, rate);
   const pcm = new Int16Array(s16.length);
   for (let i = 0; i < s16.length; i++) pcm[i] = Math.max(-32768, Math.min(32767, Math.round(s16[i] * 32767)));
   const buf = new ArrayBuffer(44 + pcm.length * 2), dv = new DataView(buf);

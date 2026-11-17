@@ -10,7 +10,7 @@
 import { api } from "./api.js";
 import * as sync from "./sync.js";
 import { core, STATE_LABEL } from "./corestate.js";
-import { mountBestCore } from "./core.js";
+import { mountBestCore, coreOptions } from "./core.js";
 import { $, $$, esc, icon } from "./util.js";
 import { PANELS, RENDER, SERIES_MAX } from "./mc-panels.js";
 
@@ -168,7 +168,7 @@ async function activate() {
   } else {
     coreCanvas = Object.assign(document.createElement("canvas"), { id: "mcCore" });
     coreCanvas.setAttribute("aria-label", "JARVIS core"); slot.append(coreCanvas);
-    ownCore = await mountBestCore(coreCanvas, { quality: ctx.settings.appearance?.quality || "auto", animation: ctx.settings.appearance?.animation });
+    ownCore = await mountBestCore(coreCanvas, coreOptions(ctx.settings));
     ownCore.setPalette("mission"); ownCore.setBoost(1.8);
   }
   mark("core moved");

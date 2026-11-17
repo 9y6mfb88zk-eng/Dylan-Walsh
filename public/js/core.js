@@ -93,9 +93,11 @@ export function mountCore(canvas, { animation = "full" } = {}) {
   }
   const off = still ? core.on(() => frame(performance.now())) : () => {};
   if (!still) raf = requestAnimationFrame(frame);
-  return { kind: "2d", pulse() {}, setPalette() {}, setBoost() {}, destroy() { gone = true; cancelAnimationFrame(raf); ro.disconnect(); off(); } };
+  return { kind: "2d", firstFrame: new Promise((r) => requestAnimationFrame(() => r({ ms: 0, tier: "2d" }))), pulse() {}, setPalette() {}, setBoost() {}, destroy() { gone = true; cancelAnimationFrame(raf); ro.disconnect(); off(); } };
 }
 
+/** Core options from settings (Settings → Performance): quality, particle density, bloom, animation. */
+export const coreOptions = (settings = {}) => { const a = settings.appearance || {}; return { quality: a.quality || "auto", animation: a.animation || "full", density: a.particles ?? 1, bloom: a.bloom ?? 1 }; };
 /** The best core this device can show: 3D with a 2D fallback. */
 export async function mountBestCore(canvas, opts = {}) {
   if (opts.animation !== "off" && opts.quality !== "2d") {
