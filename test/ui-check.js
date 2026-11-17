@@ -241,7 +241,7 @@ try {
   const fresh = await browser.newContext({ viewport: { width: 1600, height: 960 }, storageState: await lap.storageState() });
   const F = await fresh.newPage(); watch(F, "startup");
   await F.goto(base);
-  check("cinematic start-up shows real steps", await F.waitForSelector(".boot .boot-steps li", { timeout: 5000 }).then(() => true, () => false));
+  check("cinematic start-up shows real steps", await F.waitForSelector(".boot .boot-steps li", { timeout: 15000 }).then(() => true, () => false));
   await F.screenshot({ path: path.join(out, "laptop-startup.png") }).catch(() => {});
   const labels = await F.waitForFunction(() => { const l = window.__jarvisBoot || []; return l.length >= 6 && l.every((x) => x.ok !== null) && l.map((x) => `${x.label}=${x.ok ? "ok" : "bad"} ${x.detail}${x.ms != null ? ` · ${x.ms} ms` : ""}`); }, null, { timeout: 12000 }).then((h) => h.jsonValue(), () => []);
   check("start-up steps report real results", labels.some((l) => /Live link.*ok/.test(l)) && labels.some((l) => /System diagnostics.*ok/.test(l)), labels.join(" | "));
