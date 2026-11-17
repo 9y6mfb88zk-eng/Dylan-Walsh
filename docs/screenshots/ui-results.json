@@ -47,7 +47,7 @@
   {
     "name": "core speaks with a level driven by the real voice audio",
     "ok": true,
-    "detail": "level 0.32"
+    "detail": "level 0.35"
   },
   {
     "name": "caption shows the streamed reply",
@@ -282,7 +282,7 @@
   {
     "name": "initialisation shows the real service checks",
     "ok": true,
-    "detail": "warn: Initialising system architecture — 33 components mapped · 2 need attention | ok: Checking AI core — responding · 20 ms | ok: Verifying voice interface — recognition ready, voice output ready · tap or type on this device | ok: Establishing local system connections — live link up · browser session · 2 devices online | ok: Connecting public flight data — 2,424 aircraft visible · OpenSky Network | ok: Retrieving global events — 5 reports · 3 of 3 sources live | ok: Loading operational overview — 0 events · 0 overdue · 1 due today · 0 unread | warn: Mission Control active — 1 of 7 checks need attention"
+    "detail": "warn: Initialising system architecture — 33 components mapped · 2 need attention | ok: Checking AI core — responding · 5 ms | ok: Verifying voice interface — recognition ready, voice output ready · tap or type on this device | ok: Establishing local system connections — live link up · browser session · 2 devices online | ok: Connecting public flight data — 2,424 aircraft visible · OpenSky Network | ok: Retrieving global events — 5 reports · 3 of 3 sources live | ok: Loading operational overview — 0 events · 0 overdue · 1 due today · 0 unread | warn: Mission Control active — 1 of 7 checks need attention"
   },
   {
     "name": "the flight and events checks report what was actually retrieved",
@@ -411,7 +411,7 @@
   },
   {
     "name": "“Hide flight tracking” works by voice/text",
-    "ok": false,
+    "ok": true,
     "detail": ""
   },
   {
@@ -467,7 +467,7 @@
   {
     "name": "reduced motion: the same stages and checks, with no movement",
     "ok": true,
-    "detail": "3846 ms · 1@0 2@72 outs done@79 core moved@1406 rendered@1406 enters done@1411 nav done@1416 3@1416 4@3846 · moving: "
+    "detail": "2246 ms · 1@0 2@66 outs done@74 core moved@187 rendered@191 enters done@206 nav done@207 3@207 4@2246 · moving: "
   },
   {
     "name": "“Run a quick diagnostic” shows the narrated report",
@@ -477,7 +477,7 @@
   {
     "name": "report's spoken lines name the real checks",
     "ok": true,
-    "detail": " Quick diagnostics6 checks · 0.3 s · Tue 17 Nov, 13:42\n    Artificial intelligence coreclaude-opus-5-5 · last success 4s agoVoice recognitionOpenAI Whisper (clo"
+    "detail": " Quick diagnostics6 checks · 0.3 s · Tue 17 Nov, 13:56\n    Artificial intelligence coreclaude-opus-5-5 · last success 4s agoVoice recognitionOpenAI Whisper (clo"
   },
   {
     "name": "performance panel shows live measurements",
@@ -547,7 +547,7 @@
   {
     "name": "sound is reported honestly (played only with a measured signal)",
     "ok": true,
-    "detail": "playing · level 0.0403"
+    "detail": "playing · level 0.0542"
   },
   {
     "name": "tap enters the Command Centre without reloading",
@@ -596,7 +596,7 @@
   },
   {
     "name": "phone: Mission Control exits",
-    "ok": false,
+    "ok": true,
     "detail": ""
   },
   {
