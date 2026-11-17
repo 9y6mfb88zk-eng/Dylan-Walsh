@@ -44,6 +44,32 @@ if (target === "win32") { fs.mkdirSync(nodeDir, { recursive: true }); fs.copyFil
 else { fs.mkdirSync(path.join(nodeDir, "bin"), { recursive: true }); fs.copyFileSync(path.join(extracted, "bin", "node"), path.join(nodeDir, "bin", "node")); fs.chmodSync(path.join(nodeDir, "bin", "node"), 0o755); }
 fs.rmSync(tmp, { recursive: true, force: true });
 
+/**
+ * Download to a file while hashing, retrying up to 4 times. After a large download GitHub may have closed the kept-alive
+ * connection that the next request would reuse ("other side closed"); a retry opens a fresh one.
+ */
+async function downloadVerified(url, dest, sha256, what) {
+  let last;
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`${what} download failed: HTTP ${r.status}`);
+      const hash = (await import("node:crypto")).createHash("sha256");
+      const out = fs.createWriteStream(dest);
+      for await (const chunk of r.body) { hash.update(chunk); if (!out.write(chunk)) await new Promise((res) => out.once("drain", res)); }
+      await new Promise((res, j) => out.end((e) => (e ? j(e) : res())));
+      if (hash.digest("hex") !== sha256) throw new Error(`Checksum mismatch for ${what}`);
+      return;
+    } catch (e) {
+      last = e;
+      if (/Checksum mismatch/.test(e.message) || attempt === 4) break;
+      console.warn(`${what}: attempt ${attempt} failed (${e.cause?.message || e.message}); retrying`);
+      await new Promise((res) => setTimeout(res, 2000 * attempt));
+    }
+  }
+  throw last;
+}
+
 // Local speech recognition model: NVIDIA Parakeet TDT 0.6B v2 (int8) from the sherpa-onnx releases, checksum-pinned.
 // Chosen by measurement (scripts/asr-bench.mjs → docs/asr-benchmark.json): far fewer word errors than Whisper base.en.
 const ASR = { file: "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2", dir: "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8", sha256: "6fc4426b54aa549a0019b8a75b8dea59164e71790a37ac56a045ad57f915f714", files: ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"] };
@@ -55,14 +81,8 @@ if (ASR.files.every((f) => fs.existsSync(path.join(asrDir, f))) && fs.existsSync
   console.log(`Downloading ${asrUrl}`);
   const atmp = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-asr-"));
   const archivePath = path.join(atmp, ASR.file);
-  const ar = await fetch(asrUrl);
-  if (!ar.ok) throw new Error(`ASR model download failed: ${ar.status}`);
-  // Stream to disk while hashing (the archive is ~480 MB).
-  const hash = (await import("node:crypto")).createHash("sha256");
-  const out = fs.createWriteStream(archivePath);
-  for await (const chunk of ar.body) { hash.update(chunk); if (!out.write(chunk)) await new Promise((r) => out.once("drain", r)); }
-  await new Promise((r, j) => out.end((e) => (e ? j(e) : r())));
-  if (hash.digest("hex") !== ASR.sha256) throw new Error(`Checksum mismatch for ${ASR.file}`);
+  // Streamed to disk while hashing (the archive is ~480 MB).
+  await downloadVerified(asrUrl, archivePath, ASR.sha256, ASR.file);
   // Windows' built-in tar may lack bzip2; Git for Windows' tar (present on GitHub runners) has it.
   const tars = process.platform === "win32" ? ["C:\\Program Files\\Git\\usr\\bin\\tar.exe", "tar"] : ["tar"];
   const gitPath = (p) => p.replace(/\\/g, "/").replace(/^([A-Za-z]):/, "/$1");
@@ -91,13 +111,7 @@ if (TTS.files.every((f) => fs.existsSync(path.join(ttsDir, f))) && fs.existsSync
   console.log(`Downloading ${url}`);
   const ttmp = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-tts-"));
   const archivePath = path.join(ttmp, TTS.file);
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`Voice model download failed: ${r.status}`);
-  const hash = (await import("node:crypto")).createHash("sha256");
-  const out = fs.createWriteStream(archivePath);
-  for await (const chunk of r.body) { hash.update(chunk); if (!out.write(chunk)) await new Promise((res) => out.once("drain", res)); }
-  await new Promise((res, j) => out.end((e) => (e ? j(e) : res())));
-  if (hash.digest("hex") !== TTS.sha256) throw new Error(`Checksum mismatch for ${TTS.file}`);
+  await downloadVerified(url, archivePath, TTS.sha256, TTS.file);
   const tars = process.platform === "win32" ? ["C:\\Program Files\\Git\\usr\\bin\\tar.exe", "tar"] : ["tar"];
   const gitPath = (p) => p.replace(/\\/g, "/").replace(/^([A-Za-z]):/, "/$1");
   let ok = false;
