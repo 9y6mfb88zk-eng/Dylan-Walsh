@@ -285,6 +285,8 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
   async function pollFlights(force = false) {
     if (!st.layers.flights || st.destroyed || flightBusy) return;
     if (document.visibilityState === "hidden" && !force) return scheduleFlights(15000);
+    const sz = map.getSize();
+    if (sz.x < 20 || sz.y < 20) return scheduleFlights(2000);   // map not laid out yet (hidden or zero height)
     flightBusy = true;
     const b = map.getBounds().pad(0.08);
     const q = new URLSearchParams({ limit: map.getZoom() < 4 ? "12000" : "6000", lamin: Math.max(-85, b.getSouth()).toFixed(2), lomin: Math.max(-180, b.getWest()).toFixed(2), lamax: Math.min(85, b.getNorth()).toFixed(2), lomax: Math.min(180, b.getEast()).toFixed(2) });
