@@ -12,6 +12,8 @@ const DIR = process.env.JARVIS_ASR_DIR || "";
 const PARAKEET = ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"];
 const WHISPER = ["base.en-encoder.int8.onnx", "base.en-decoder.int8.onnx", "base.en-tokens.txt"];
 let recognizerPromise = null, sherpa = null, loadError = null, ready = false;
+// Foreground gate threshold in dB below the speaker's level (0 turns it off). Default chosen by measurement.
+const GATE_DB = process.env.JARVIS_ASR_GATE_DB != null ? Number(process.env.JARVIS_ASR_GATE_DB) : -12;
 /** "none" (no model) · "idle" (not loaded yet) · "loading" · "ready" · "error" — for the start-up checks. */
 export function localAsrReadiness() { return !localAsrModel() ? "none" : loadError ? "error" : ready ? "ready" : recognizerPromise ? "loading" : "idle"; }
 
@@ -80,7 +82,24 @@ export function prepareAudio(samples, rate) {
   for (let i = 0; i < n; i++) { const v = samples[i]; py = a * (py + v - px); px = v; x[i] = py; }
   // 2. Frame energies (20 ms) → noise floor and speech frames.
   const F = Math.max(1, Math.round(rate * 0.02)), frames = Math.ceil(n / F), e = new Float32Array(frames);
-  for (let f = 0; f < frames; f++) { let s = 0; const end = Math.min(n, (f + 1) * F); for (let i = f * F; i < end; i++) s += x[i] * x[i]; e[f] = Math.sqrt(s / Math.max(1, end - f * F)); }
+  const energies = () => { for (let f = 0; f < frames; f++) { let s = 0; const end = Math.min(n, (f + 1) * F); for (let i = f * F; i < end; i++) s += x[i] * x[i]; e[f] = Math.sqrt(s / Math.max(1, end - f * F)); } };
+  energies();
+  // 2b. Foreground gate (6.8): audio well below the speaker's own level — a TV or other people talking further away —
+  // is turned down, so the recogniser doesn't transcribe it as part of the command. Margins either side of every loud
+  // frame keep the start and end of words intact. Measured in docs/performance.md → "JARVIS 6.8".
+  const gateDb = GATE_DB;
+  if (gateDb < 0 && frames > 10) {
+    const level = Array.from(e).sort((p, q) => p - q)[Math.floor(frames * 0.9)] || 0;
+    const open = new Uint8Array(frames), thrG = level * Math.pow(10, gateDb / 20);
+    for (let f = 0; f < frames; f++) if (e[f] > thrG) for (let k = Math.max(0, f - 4); k <= Math.min(frames - 1, f + 12); k++) open[k] = 1;
+    const closed = Math.pow(10, -24 / 20);
+    let g = 1;
+    for (let f = 0; f < frames; f++) {
+      const target = open[f] ? 1 : closed, end = Math.min(n, (f + 1) * F);
+      for (let i = f * F; i < end; i++) { g += (target - g) * (target > g ? 0.02 : 0.004); x[i] *= g; }
+    }
+    energies();
+  }
   const sorted = Array.from(e).sort((p, q) => p - q);
   const floor = sorted[Math.floor(sorted.length * 0.15)] || 0;
   const thr = Math.max(floor * 3, 0.004);

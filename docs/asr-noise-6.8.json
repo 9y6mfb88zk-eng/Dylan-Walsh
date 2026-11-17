@@ -1,0 +1,136 @@
+{
+ "what": "Word error rate of JARVIS's local recogniser (Parakeet TDT 0.6B v2) on 20 spoken commands (Piper northern_english_male voice), with steady hiss or a second talker mixed in at the given signal-to-noise ratio. Synthetic speech: a relative comparison, not a measure of your voice.",
+ "script": "scripts/asr-noise.mjs",
+ "gateOff": {
+  "clean": {
+   "wer": 3.2,
+   "msPerCommand": 426,
+   "mistakes": [
+    "What's the weather like tomorrow in Larnaca? \u2192 What's the weather like tomorrow in Lanaka?",
+    "Plan me something for Saturday. \u2192 Plan Miss Something for Saturday.",
+    "Start a focus session for twenty five minutes. \u2192 Start a focus session for 25 minutes."
+   ]
+  },
+  "hiss 20 dB": {
+   "wer": 7.3,
+   "msPerCommand": 298,
+   "mistakes": [
+    "What's the weather like tomorrow in Larnaca? \u2192 What's the weather like tomorrow in Lanaca?",
+    "Set an alarm for half past six on weekdays. \u2192 setting along for half past six on weekdays.",
+    "Show me aircraft around Cyprus. \u2192 Germany aircraft around Cyprus."
+   ]
+  },
+  "hiss 10 dB": {
+   "wer": 11.3,
+   "msPerCommand": 265,
+   "mistakes": [
+    "What's the weather like tomorrow in Larnaca? \u2192 What's the weather like tomorrow in Lanafa?",
+    "Remind me to call the accountant at four. \u2192 Remind me to call the accountant.",
+    "Wait, explain that again. \u2192 Wake explained that again."
+   ]
+  },
+  "hiss 5 dB": {
+   "wer": 32.3,
+   "msPerCommand": 208,
+   "mistakes": [
+    "What's the weather like tomorrow in Larnaca? \u2192 What's the weather like tomorrow in London?",
+    "Set an alarm for half past six on weekdays. \u2192 Second along for half past six.",
+    "Remind me to call the accountant at four. \u2192 remind me to"
+   ]
+  },
+  "talker 15 dB": {
+   "wer": 50.8,
+   "msPerCommand": 284,
+   "mistakes": [
+    "What's the weather like tomorrow in Larnaca? \u2192 What's the weather like tomorrow in Lanaka",
+    "Set an alarm for half past six on weekdays. \u2192 Setting along for half past six on weekdays.",
+    "Remind me to call the accountant at four. \u2192 The committee remind me to call the accountant for"
+   ]
+  },
+  "talker 10 dB": {
+   "wer": 79,
+   "msPerCommand": 318,
+   "mistakes": [
+    "What's the weather like tomorrow in Larnaca? \u2192 The committee wants the weather like tomorrow's budget.",
+    "Set an alarm for half past six on weekdays. \u2192 The committee is setting along for half past six on weekdays.",
+    "Remind me to call the accountant at four. \u2192 The committee remind me to call the accountant for"
+   ]
+  },
+  "talker 5 dB": {
+   "wer": 104,
+   "msPerCommand": 301,
+   "mistakes": [
+    "What's the weather like tomorrow in Larnaca? \u2192 The committee met",
+    "Set an alarm for half past six on weekdays. \u2192 The committee set an alarm for half past six on the new library.",
+    "Remind me to call the accountant at four. \u2192 The committee remind me to call the accountant and the new"
+   ]
+  }
+ },
+ "gateMinus12dB": {
+  "clean": {
+   "wer": 1.6,
+   "msPerCommand": 423,
+   "mistakes": [
+    "What's the weather like tomorrow in Larnaca? \u2192 What's the weather like tomorrow in Lanaka?",
+    "How long would it take to drive to Limassol? \u2192 How long would it take to drive to Limersol?"
+   ]
+  },
+  "hiss 20 dB": {
+   "wer": 2.4,
+   "msPerCommand": 271,
+   "mistakes": [
+    "What's the weather like tomorrow in Larnaca? \u2192 What's the weather like tomorrow in Lanaka?",
+    "Start a focus session for twenty five minutes. \u2192 Start a focus session for 25 minutes."
+   ]
+  },
+  "hiss 10 dB": {
+   "wer": 7.3,
+   "msPerCommand": 284,
+   "mistakes": [
+    "What's the weather like tomorrow in Larnaca? \u2192 What's the weather like tomorrow in Lanaka?",
+    "Plan me something for Saturday. \u2192 Find me something for Saturday.",
+    "Start a focus session for twenty five minutes. \u2192 Saw it a focus session for 25 minutes."
+   ]
+  },
+  "hiss 5 dB": {
+   "wer": 37.1,
+   "msPerCommand": 219,
+   "mistakes": [
+    "What's the weather like tomorrow in Larnaca? \u2192 What's the weather like tomorrow in London?",
+    "Set an alarm for half past six on weekdays. \u2192 Set an alarm for half past.",
+    "Remind me to call the accountant at four. \u2192 Remind me to call the accountant"
+   ]
+  },
+  "talker 15 dB": {
+   "wer": 36.3,
+   "msPerCommand": 287,
+   "mistakes": [
+    "What's the weather like tomorrow in Larnaca? \u2192 What's the weather like tomorrow in Lanaka?",
+    "Remind me to call the accountant at four. \u2192 Remind me to call the accountant before",
+    "Wait, explain that again. \u2192 Wait, explain that again to discuss the"
+   ]
+  },
+  "talker 10 dB": {
+   "wer": 74.2,
+   "msPerCommand": 300,
+   "mistakes": [
+    "What's the weather like tomorrow in Larnaca? \u2192 What's the weather like tomorrow in Lanaka and",
+    "Set an alarm for half past six on weekdays. \u2192 The committee is set an alarm for half past six on weekdays and the new law",
+    "Remind me to call the accountant at four. \u2192 The committee remind me to call the accountant before"
+   ]
+  },
+  "talker 5 dB": {
+   "wer": 96,
+   "msPerCommand": 279,
+   "mistakes": [
+    "What's the weather like tomorrow in Larnaca? \u2192 The committee tomorrow and",
+    "Set an alarm for half past six on weekdays. \u2192 The committee set an alarm for half past six days and the new law",
+    "Remind me to call the accountant at four. \u2192 The committee remind me to call the accountants."
+   ]
+  }
+ },
+ "earlierBenchmarkParakeetByCondition": {
+  "gateOff": 2.6,
+  "gateMinus12dB": 2.6
+ }
+}
