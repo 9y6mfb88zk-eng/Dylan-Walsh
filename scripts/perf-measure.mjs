@@ -79,7 +79,7 @@ try {
   const ts = performance.now();
   await F.goto(base);
   // Usable = start-up checks finished and the Command Centre loaded (6.4: behind the tap prompt; before: boot closed).
-  await F.waitForFunction(() => document.querySelector(".wx-days") && (window.__jarvisBootReady || !document.querySelector(".boot")), null, { timeout: 120000, polling: 50 }).catch(() => {});
+  await F.waitForFunction(() => document.querySelector(".wx-days") && !document.querySelector(".boot") && (window.__jarvisBootReady || !document.querySelector(".boot2")), null, { timeout: 120000, polling: 50 }).catch(() => {});
   // 6.4 reports {lines, summary}; earlier versions an array of steps.
   r.startup = { usableMs: Math.round(performance.now() - ts), checks: await F.evaluate(() => { const b = window.__jarvisBoot; const l = Array.isArray(b) ? b : b?.lines || []; return l.map((x) => `${x.label}:${x.status || (x.ok === false ? "bad" : x.warn ? "warn" : "ok")}:${x.ms ?? "?"}ms`); }), summary: await F.evaluate(() => window.__jarvisBoot?.summary || null) };
   await fresh.close();

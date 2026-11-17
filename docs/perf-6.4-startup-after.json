@@ -1,20 +1,20 @@
 [
   {
-    "usableMs": 431,
-    "longestTaskMs": 222,
-    "longTasksTotalMs": 326,
-    "longTasks": 2
+    "usableMs": 8344,
+    "longestTaskMs": 4623,
+    "longTasksTotalMs": 5687,
+    "longTasks": 4
   },
   {
-    "usableMs": 4985,
-    "longestTaskMs": 4547,
-    "longTasksTotalMs": 4646,
-    "longTasks": 2
+    "usableMs": 6470,
+    "longestTaskMs": 3152,
+    "longTasksTotalMs": 4035,
+    "longTasks": 4
   },
   {
-    "usableMs": 375,
-    "longestTaskMs": 84,
-    "longTasksTotalMs": 84,
-    "longTasks": 1
+    "usableMs": 5269,
+    "longestTaskMs": 3717,
+    "longTasksTotalMs": 4070,
+    "longTasks": 4
   }
 ]

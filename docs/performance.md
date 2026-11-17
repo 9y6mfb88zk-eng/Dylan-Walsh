@@ -120,3 +120,27 @@ Median of 15 calls; the "Before" and "After" columns are both auto quality.
 - Database query time and event-loop lag
 - Server memory, CPU and RAM
 - The 3D core's real frame rate, quality tier and idle state
+
+## JARVIS 6.4: startup sequence and performance pass
+
+Same machine and method as above: a 1000×640 viewport, software WebGL. Raw data:
+- `docs/perf-6.4-before.json` and `docs/perf-6.4-after.json`
+- `docs/perf-6.4-startup-before.json` and `docs/perf-6.4-startup-after.json`
+
+| Measurement | Before (5.0) | After (6.4) | Verdict |
+|---|---|---|---|
+| Freeze while converting 5 s of speech (phone/browser) | 380 / 463 / 400 ms | 8 / 16 / 11 ms | **Fixed:** moved to a background worker |
+| Launch to usable (checks done, Command Centre loaded), 3 runs | 7.2 / 6.9 / 6.5 s | 8.3 / 6.5 / 5.3 s | About the same, while running 16 real checks plus 8 restore steps instead of 7 |
+| Longest main-thread freeze during launch | 3.6 / 3.7 / 2.2 s | 4.6 / 3.2 / 3.7 s | Unchanged: WebGL context creation under software rendering. The async shader compile can't help here; untested on a real GPU |
+| Network requests per idle minute | 1 | 1 | Already minimal |
+| JS heap before → after 10 page switches | 11.9 → 11.9 MB | 11.2 → 11.2 MB | No leak |
+| Server memory | 114 MB | 119 MB | +5 MB for the new routes and checks |
+| API latency (median): home / tasks / diagnostics | 8 / 3 / 259 ms | 11 / 3 / 261 ms | Unchanged (diagnostics samples CPU for 250 ms on purpose) |
+| Chromium CPU with JARVIS behind another window | 352 % | 315 % | Within run-to-run noise here |
+
+The reload time of the Command Centre (2.1 s → 0.5 s in these two runs) is not claimed. Earlier runs of the same code ranged from 0.8 to 3.5 s.
+
+**On your laptop**, see the real numbers in:
+- **Diagnostics → Last startup** (every check with its time)
+- **Diagnostics → Performance · live**
+- **Settings → Performance** (the 3D core's start-up time)

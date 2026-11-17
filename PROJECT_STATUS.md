@@ -170,6 +170,14 @@ See `docs/performance.md` → "JARVIS 6.4" for every number.
   - New performance settings: quality (adding Medium), particle density, bloom intensity (0 turns it off), background update frequency, map quality.
 - **Not changed:** the app has no React, so React render work doesn't apply; DB queries are already 0.1–0.3 ms, with indexes from migration 008.
 
+### Test results (6.4)
+
+- Backend: 80/80, including 4 new start-up tests (AI outage reported as failed; settings validated).
+- Desktop unit: 13/13.
+- UI: 111/111. Covers the start-up stages and real statuses, a summary that matches the results, a tap into the Command Centre with no reload, skip plus auto-open, reduced motion, the phone, and the Startup and Performance settings.
+- Electron end-to-end: 28/28.
+- Sound: each of the four sounds was rendered offline and produced a real signal (peaks −21 to −40 dBFS at 60 % volume before the level increase).
+
 ### Not done or not verified
 
 - **Real hardware:** the startup sound on real speakers; real-GPU frame rates and the async-compile benefit; Windows-only checks (wake-word agent status, the Windows 11 name and build, the GPU name on your laptop).
@@ -192,9 +200,9 @@ See `docs/performance.md` → "JARVIS 6.4" for every number.
 
 | Suite | Result |
 |---|---|
-| `npm test` — backend end-to-end (stand-in services), finance engine, on-device speech recognition, upgrade services, personal intelligence (profile, ask-before-remember, memory off, narrated diagnostics, awareness, macros, history, personality), voice + interface commands | 74 / 74 pass |
+| `npm test` — backend end-to-end (stand-in services), finance engine, on-device speech recognition, upgrade services, personal intelligence (profile, ask-before-remember, memory off, narrated diagnostics, awareness, macros, history, personality), voice + interface commands | 80 / 80 pass |
 | `cd desktop && npm test` — wake word accuracy/false triggers, laptop actions (incl. new ones) | 13 / 13 pass |
-| `npm run test:ui` — Chromium at laptop and iPhone size: setup, Command Centre, 3D core, streamed reply + speaking core, palette, all 21 sections, alarm dialog + ringing, notification centre, QR pairing, cross-device sync, mobile nav, offline queue, personal profile page, session history, Mission Control transformation (4 stages in order, real checks, the same core moved, 10 areas, all 9 sections with real data, voice section switching, conversation and an alarm during Mission Control, reverse transition, button, Esc, reduced motion, phone layout), narrated diagnostics, live performance panel, cinematic start-up with real steps | 90 / 90 pass |
+| `npm run test:ui` — Chromium at laptop and iPhone size: setup, Command Centre, 3D core, streamed reply + speaking core, palette, all 21 sections, alarm dialog + ringing, notification centre, QR pairing, cross-device sync, mobile nav, offline queue, personal profile page, session history, Mission Control transformation (4 stages in order, real checks, the same core moved, 10 areas, all 9 sections with real data, voice section switching, conversation and an alarm during Mission Control, reverse transition, button, Esc, reduced motion, phone layout), narrated diagnostics, live performance panel, cinematic start-up with real steps | 111 / 111 pass |
 | `xvfb-run node desktop/test/electron-e2e.js` — Windows app under Electron with a recorded microphone (new audio pipeline) | 28 / 28 pass (4 of 5 runs; see known limitations) |
 | `desktop/test/electron-local-e2e.js` — packaged app running its own server | 16 / 16 pass |
 | `desktop/scripts/schtasks-smoke.js` — Windows Task Scheduler accepts the WakeToRun alarm task | passes in CI on Windows |
