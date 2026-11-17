@@ -5,6 +5,11 @@
     "detail": ""
   },
   {
+    "name": "first launch shows the initialisation screen",
+    "ok": true,
+    "detail": ""
+  },
+  {
     "name": "greeting addresses the user as Sir",
     "ok": true,
     "detail": ""
@@ -12,7 +17,7 @@
   {
     "name": "status line comes from real diagnostics",
     "ok": true,
-    "detail": "JARVIS is online. 1 system needs attention."
+    "detail": "JARVIS is online. 2 items need attention."
   },
   {
     "name": "Command Centre core is the 3D (WebGL) core",
@@ -42,7 +47,7 @@
   {
     "name": "core speaks with a level driven by the real voice audio",
     "ok": true,
-    "detail": "level 0.54"
+    "detail": "level 0.32"
   },
   {
     "name": "caption shows the streamed reply",
@@ -200,6 +205,21 @@
     "detail": ""
   },
   {
+    "name": "phone shows the initialisation screen and enters JARVIS",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "iPhone Safari shows the Add to Home Screen guide",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the install guide can be dismissed and stays dismissed",
+    "ok": true,
+    "detail": ""
+  },
+  {
     "name": "iPhone shows the mobile navigation",
     "ok": true,
     "detail": ""
@@ -227,6 +247,356 @@
   {
     "name": "phone shows the reminder created by voice",
     "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "memory shows the personal profile grouped by category",
+    "ok": true,
+    "detail": "Personal profile, Career, Ambitions, Interests, Hobbies, Businesses, Creative projects, Preferences"
+  },
+  {
+    "name": "profile has the website agency idea and KILL HOUSE",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "session history timeline lists real events",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Stage 1: dims the interface and shows “ACTIVATING MISSION CONTROL”",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Mission Control becomes active",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the four stages run in order: activating, transformation, initialisation, active",
+    "ok": true,
+    "detail": "[1,2,3,4]"
+  },
+  {
+    "name": "initialisation shows the real service checks",
+    "ok": true,
+    "detail": "warn: Initialising system architecture — 33 components mapped · 2 need attention | ok: Checking AI core — responding · 20 ms | ok: Verifying voice interface — recognition ready, voice output ready · tap or type on this device | ok: Establishing local system connections — live link up · browser session · 2 devices online | ok: Connecting public flight data — 2,424 aircraft visible · OpenSky Network | ok: Retrieving global events — 5 reports · 3 of 3 sources live | ok: Loading operational overview — 0 events · 0 overdue · 1 due today · 0 unread | warn: Mission Control active — 1 of 7 checks need attention"
+  },
+  {
+    "name": "the flight and events checks report what was actually retrieved",
+    "ok": true,
+    "detail": "ok: Connecting public flight data — 2,424 aircraft visible · OpenSky Network | ok: Retrieving global events — 5 reports · 3 of 3 sources live"
+  },
+  {
+    "name": "no check is shown as passed without a result",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the same living core moved into Mission Control (no second 3D scene)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "sidebar became Mission Control navigation",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Global Operations opens first: core on the left, map in the centre, events on the right, six status panels below",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the core panel is prominent (not a logo)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Mission Control announces only what initialised",
+    "ok": true,
+    "detail": "Mission Control is online, Sir. One service needs attention: system architecture."
+  },
+  {
+    "name": "aircraft from the flight provider are on the map, privacy-flagged ones excluded",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the events feed lists real items with their source and verification",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "system readings are measured values",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "GPU usage is not invented",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "an event opens with dates, location accuracy and a link to the original report",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Mission Control section “world” shows real data",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Mission Control section “events” shows real data",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Mission Control section “flights” shows real data",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Mission Control section “overview” shows real data",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Mission Control section “architecture” shows real data",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Mission Control section “diagnostics” shows real data",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Mission Control section “processes” shows real data",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Mission Control section “intelligence” shows real data",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Mission Control section “comms” shows real data",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Mission Control section “projects” shows real data",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Mission Control section “personal” shows real data",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "selecting an aircraft opens its card with ICAO24, freshness and source",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "a flight that can't be found is reported as not visible",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "“Hide flight tracking” works by voice/text",
+    "ok": false,
+    "detail": ""
+  },
+  {
+    "name": "“Show me aircraft around Cyprus” answers with the real count",
+    "ok": true,
+    "detail": "12 aircraft visible over Cyprus, Sir, from OpenSky Network."
+  },
+  {
+    "name": "“Show system architecture” switches section by voice/text",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "conversation works inside Mission Control",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "an alarm still rings over Mission Control",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Mission Control is still active after the alarm",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "“Deactivate Mission Control” reverses the transformation",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Command Centre is back with its core, normal colours and sidebar",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the Mission Control button activates it",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Esc leaves Mission Control",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "reduced motion: start-up runs its checks with no animation",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "reduced motion: the same stages and checks, with no movement",
+    "ok": true,
+    "detail": "3846 ms · 1@0 2@72 outs done@79 core moved@1406 rendered@1406 enters done@1411 nav done@1416 3@1416 4@3846 · moving: "
+  },
+  {
+    "name": "“Run a quick diagnostic” shows the narrated report",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "report's spoken lines name the real checks",
+    "ok": true,
+    "detail": " Quick diagnostics6 checks · 0.3 s · Tue 17 Nov, 13:42\n    Artificial intelligence coreclaude-opus-5-5 · last success 4s agoVoice recognitionOpenAI Whisper (clo"
+  },
+  {
+    "name": "performance panel shows live measurements",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "launch opens the initialisation screen, not the Command Centre",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Stage 1: J.A.R.V.I.S. branding and POWER ON",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Stage 2: every required system check ran",
+    "ok": true,
+    "detail": "Application runtime, Operating system, Hardware, Database, Local storage, AI provider, Voice input (speech recognition), Speech synthesis, Microphone, Background scheduler, Notification service, Weather integration, Calendar integration, World Explorer, 3D rendering, Neural core rendering, Initialise AI engine, Load application configuration, Load persistent memory, Restore saved preferences, Restore pending tasks and reminders, Initialise voice interface, Initialise neural energy core, Prepare the Command Centre"
+  },
+  {
+    "name": "every check has a real status from the allowed set",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the AI is only 'connected' after a real reply",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the database check really queried it",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the microphone line distinguishes devices from permission",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the neural core is 'operational' only after a frame was drawn",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Stage 3: AI initialisation restores real state",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Stage 4: the summary matches the actual results",
+    "ok": true,
+    "detail": "SYSTEM INITIALISED — ATTENTION REQUIRED (expected SYSTEM INITIALISED — ATTENTION REQUIRED)"
+  },
+  {
+    "name": "problems are listed in plain language with a diagnostics action",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Stage 5: greeting uses the real time of day and asks for a tap",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "sound is reported honestly (played only with a measured signal)",
+    "ok": true,
+    "detail": "playing · level 0.0403"
+  },
+  {
+    "name": "tap enters the Command Centre without reloading",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the Command Centre agrees with the start-up result",
+    "ok": true,
+    "detail": "JARVIS is online. 8 items need attention."
+  },
+  {
+    "name": "Diagnostics shows the last start-up report",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "skip animation + auto-open: enters by itself after the real checks",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Settings has a Startup section with every option",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Settings has a Performance section (quality, particles, bloom, animation, updates, map)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "phone: Mission Control activates",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "phone: no sideways scrolling in Mission Control",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "phone: sections are reachable from the tab bar",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "phone: Mission Control exits",
+    "ok": false,
     "detail": ""
   },
   {
