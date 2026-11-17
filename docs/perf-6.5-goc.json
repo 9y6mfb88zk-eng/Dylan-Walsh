@@ -1,0 +1,101 @@
+{
+  "at": "2026-11-17T11:59:10.174Z",
+  "aircraftInStandIn": 12000,
+  "heapBeforeMb": 10,
+  "activationMs": 10024,
+  "draw": [
+    {
+      "label": "worldwide (clustered)",
+      "aircraftLoaded": 9704,
+      "drawn": 193,
+      "zoom": 2,
+      "medianDrawMs": 14.7,
+      "maxDrawMs": 34.2
+    },
+    {
+      "label": "Europe (individual aircraft)",
+      "aircraftLoaded": 691,
+      "drawn": 547,
+      "zoom": 4,
+      "medianDrawMs": 1.9,
+      "maxDrawMs": 5.5
+    },
+    {
+      "label": "North America",
+      "aircraftLoaded": 1713,
+      "drawn": 208,
+      "zoom": 3.5,
+      "medianDrawMs": 2.5,
+      "maxDrawMs": 16.6
+    },
+    {
+      "label": "Cyprus",
+      "aircraftLoaded": 12,
+      "drawn": 12,
+      "zoom": 8,
+      "medianDrawMs": 8,
+      "maxDrawMs": 19
+    }
+  ],
+  "panFps": 8,
+  "longRun": {
+    "minutes": 4,
+    "heapMbEvery30s": [
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10
+    ],
+    "chromeCpuPct": 378.2,
+    "apiRequestsPerMinute": 22,
+    "byPath": [
+      [
+        "/api/performance",
+        48
+      ],
+      [
+        "/api/diagnostics",
+        24
+      ],
+      [
+        "/api/globalops/status",
+        8
+      ],
+      [
+        "/api/activity",
+        4
+      ],
+      [
+        "/api/events",
+        2
+      ],
+      [
+        "/api/flights",
+        2
+      ]
+    ]
+  },
+  "providerRequests": {
+    "opensky": 2,
+    "adsb": 4,
+    "gdelt": 6
+  },
+  "hidden90s": {
+    "apiRequests": 5,
+    "providerRequests": 0
+  },
+  "flightsOff60s": {
+    "apiRequests": 21,
+    "chromeCpuPct": 374.6
+  },
+  "server": {
+    "rssMb": 140,
+    "eventLoopLagMs": 0.2
+  },
+  "heapAfterExitMb": 10,
+  "leafletMapsAlive": 0
+}

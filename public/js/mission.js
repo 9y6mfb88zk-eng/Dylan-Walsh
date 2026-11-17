@@ -550,9 +550,10 @@ function startLive() {
   stopLive();
   timers.push(
     setInterval(() => { if (visibleIds().includes("res")) load(["perf"]).then(() => renderPanel("res")); }, 3000),
-    setInterval(() => load(["diag"]).then(() => ["overview", "arch", "diag", "procs"].forEach(renderPanel)), 20_000),
+    // Global Operations reads diagnostics itself; the panel views only need them when they're on screen.
+    setInterval(() => { if (!isGoc(section)) load(["diag"]).then(() => ["overview", "arch", "diag", "procs"].forEach(renderPanel)); }, 20_000),
     setInterval(() => { if (CTX?.desktop && visibleIds().includes("procs")) load(["awareness"]).then(() => renderPanel("procs")); }, 15_000),
-    setInterval(() => load(neededKeys().filter((k) => !["perf", "diag", "awareness"].includes(k))).then(renderAll), 60_000),
+    setInterval(() => { if (!isGoc(section)) load(neededKeys().filter((k) => !["perf", "diag", "awareness"].includes(k))).then(renderAll); }, 60_000),
     setInterval(() => { renderPanel("overview"); renderPanel("ops"); renderPanel("personal"); if (coreCanvas?.__core && !ownCore) coreCanvas.__core.setPalette("mission"); }, 30_000),
   );
   let opsT = 0;
