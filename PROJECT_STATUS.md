@@ -246,7 +246,7 @@ Full description: `docs/mission-control.md`. Rollback point: commit `6be51e2` (l
   full by default, invalid values rejected, saved alongside the other interface settings.
 - **Desktop:** `cd desktop && npm test`, 13/13.
 - **Conversation:** `test/conversation.test.js`, 14 passed.
-- **UI (`test/ui-check.js`, Playwright):**
+- **UI (`test/ui-check.js`, Playwright):** 164/164 checks passed, including:
   - the full sequence takes over the screen and Core 808 assembles in the centre;
   - each real check appears with its actual result;
   - the confirmation is honest about anything unavailable;
