@@ -75,7 +75,7 @@ export const DEFAULT_SETTINGS = {
   voice: { continuous: true, timeoutSec: 8, stayWithMeSec: 120, bargeIn: true, rate: 1, voiceName: "", speakReplies: true, speakBriefings: true, speakNotifications: true, chime: true, provider: "auto", speed: 1, volume: 1, pronunciations: [], interruptWords: true },
   personality: { style: "jarvis", humour: "dry", verbosity: "brief", sir: "occasionally" },
   appearance: { animation: "full", quality: "auto", reduceMotion: false, accent: "cyan", sidebar: "expanded", particles: 1, bloom: 1, updates: "normal", mapQuality: "auto" },
-  interface: { transitions: true, transitionSpeed: "normal", sound: true, soundVolume: 0.5, silent: false, reducedSound: false, reducedEffects: false, mapAutoResize: true, mapAnimate: true },
+  interface: { transitions: true, transitionSpeed: "normal", sound: true, soundVolume: 0.5, silent: false, reducedSound: false, reducedEffects: false, mapAutoResize: true, mapAnimate: true, activation: "full" },
   startup: { screen: "cinematic", skipAnimation: false, sound: true, volume: 0.6, silent: false, reducedAudio: false, autoOpen: false, fullDiagnostics: true },
   alarms: { defaultSound: "chime", defaultVolume: 80, gradual: true, snoozeMinutes: 10, speak: true, wakeComputer: true },
   notifications: { sentinel: true, alarm: true, reminder: true, event: true, task: true, automation: true, project: true, system: true, research: true, idea: true, focus: true, habit: true, briefing: true, finance: true },

@@ -41,6 +41,15 @@ function utone(type, f, t, dur, peak, { a = 0.01, to = null, filter = null } = {
   if (filter) { const fl = ctx.createBiquadFilter(); fl.type = "lowpass"; fl.frequency.setValueAtTime(filter[0], t); fl.frequency.exponentialRampToValueAtTime(filter[1], t + a + dur); fl.Q.value = 3; o.connect(fl); node = fl; }
   node.connect(g); uiOut(g); env(g, t, a, peak, dur); o.start(t); o.stop(t + a + dur + 0.05);
 }
+/** Filtered noise on the interface bus (whooshes, hiss): band-pass swept from f0 to f1. */
+function unoise(t, dur, peak, { f0 = 400, f1 = 3000, q = 0.8, a = 0.05 } = {}) {
+  const n = Math.max(1, Math.round(ctx.sampleRate * (dur + a + 0.1)));
+  const buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+  const src = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), g = ctx.createGain();
+  src.buffer = buf; bp.type = "bandpass"; bp.Q.value = q; bp.frequency.setValueAtTime(f0, t); bp.frequency.exponentialRampToValueAtTime(f1, t + a + dur);
+  src.connect(bp); bp.connect(g); uiOut(g); env(g, t, a, peak, dur); src.start(t); src.stop(t + a + dur + 0.08);
+}
 function uiLive() { if (liveOverride) return true; return ui.enabled && ui.volume > 0 && ctx && ctx.state === "running"; }
 function env(g, t, a, peak, d) { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + a + d); }
 function osc(type, f, t, dur, peak, a = 0.01, wet = true) {
@@ -130,6 +139,65 @@ export const sounds = {
     utone("triangle", 330, t, 0.14, 0.04, { a: 0.01 });
     utone("triangle", 262, t + 0.15, 0.22, 0.04, { a: 0.01 });
   },
+  // ---------------- Mission Control activation sequence (6.9). Restrained, original, all synthesised.
+  /** Stage 1: the system powers up — a sub swell under a slow noise breath. */
+  seqPower() {
+    if (!uiLive()) return;
+    const t = ctx.currentTime + 0.02;
+    utone("sine", 41, t, 1.6, 0.16, { a: 0.5, to: 62 });
+    utone("triangle", 82, t + 0.1, 1.2, 0.035, { a: 0.4, to: 124 });
+    if (!ui.reduced) unoise(t, 1.4, 0.02, { f0: 180, f1: 900, q: 0.6, a: 0.6 });
+  },
+  /** Typing / readout tick. */
+  seqTick() { if (!uiLive() || ui.reduced) return; utone("square", 2637, ctx.currentTime + 0.005, 0.012, 0.006, { a: 0.002 }); },
+  /** A ring of Core 808 locking into place: a metallic click and a short rising blip, higher for each ring. */
+  seqRing(i = 0) {
+    if (!uiLive()) return;
+    const t = ctx.currentTime + 0.01, f = [880, 1046.5, 1318.5][i % 3];
+    if (!ui.reduced) unoise(t, 0.035, 0.03, { f0: 4200, f1: 2600, q: 4, a: 0.002 });
+    utone("triangle", f, t + 0.02, 0.12, 0.03, { a: 0.006, to: f * 1.5 });
+  },
+  /** The core powering up: a rising, filtered sweep. */
+  seqAssemble() {
+    if (!uiLive()) return;
+    const t = ctx.currentTime + 0.02;
+    utone("sawtooth", 110, t, 1.3, 0.026, { a: 0.5, to: 440, filter: [300, 2400] });
+    if (!ui.reduced) utone("sine", 220, t + 0.2, 1.1, 0.02, { a: 0.5, to: 660 });
+  },
+  /** Core 808 online: a two-note chord with a soft attack. */
+  seqCoreOnline() {
+    if (!uiLive()) return;
+    const t = ctx.currentTime + 0.02;
+    utone("sine", 440, t, 0.9, 0.05, { a: 0.02 });
+    utone("sine", 659.3, t + 0.04, 0.85, 0.035, { a: 0.02 });
+    if (!ui.reduced) utone("triangle", 1318.5, t + 0.08, 0.5, 0.012, { a: 0.01 });
+  },
+  /** A system check settling: two quick chirps (online), one lower (degraded), a low buzz (unavailable). */
+  seqCheck(state = "ok") {
+    if (!uiLive()) return;
+    const t = ctx.currentTime + 0.005;
+    if (state === "ok") { utone("square", 1760, t, 0.025, 0.008, { a: 0.003 }); if (!ui.reduced) utone("square", 2349.3, t + 0.05, 0.025, 0.007, { a: 0.003 }); }
+    else if (state === "warn") utone("triangle", 587.3, t, 0.12, 0.03, { a: 0.006 });
+    else utone("sawtooth", 146.8, t, 0.18, 0.025, { a: 0.006, filter: [900, 500] });
+  },
+  /** Operational confirmation: a rising three-note figure over a held tone (a lower, minor ending if anything is down). */
+  seqConfirm(state = "ok") {
+    if (!uiLive()) return;
+    const t = ctx.currentTime + 0.02, notes = state === "ok" ? [523.3, 659.3, 784] : [523.3, 622.3, 698.5];
+    notes.forEach((f, i) => utone("sine", f, t + i * 0.11, 0.55 - i * 0.08, 0.04, { a: 0.012 }));
+    utone("sine", 130.8, t, 1.2, 0.05, { a: 0.08 });
+  },
+  /** The command centre deploys: a filtered whoosh and a soft low thump. */
+  seqReveal() {
+    if (!uiLive()) return;
+    const t = ctx.currentTime + 0.01;
+    if (!ui.reduced) unoise(t, 0.7, 0.05, { f0: 300, f1: 4800, q: 0.7, a: 0.25 });
+    utone("sine", 70, t + 0.18, 0.5, 0.12, { a: 0.02, to: 48 });
+  },
+  /** Moving between Mission Control sections: one quiet tick. */
+  navTick() { if (!uiLive() || ui.reduced) return; const t = ctx.currentTime + 0.005; utone("triangle", 1567.98, t, 0.04, 0.014, { a: 0.003 }); utone("triangle", 2093, t + 0.03, 0.03, 0.008, { a: 0.003 }); },
+  /** A genuine warning (amber): two alternating mid tones. */
+  warning() { if (!uiLive()) return; const t = ctx.currentTime + 0.01; [0, 0.18].forEach((d, i) => utone("triangle", i ? 659.3 : 830.6, t + d, 0.14, 0.04, { a: 0.008 })); },
   /** Low electronic power-on: a sub sweep with a filtered noise swell. */
   powerOn() {
     if (!live()) return;

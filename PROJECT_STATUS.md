@@ -183,6 +183,34 @@ See `docs/performance.md` → "JARVIS 6.4" for every number.
 - **Real hardware:** the startup sound on real speakers; real-GPU frame rates and the async-compile benefit; Windows-only checks (wake-word agent status, the Windows 11 name and build, the GPU name on your laptop).
 - **Map-tile World Explorer:** not part of the parts received.
 
+## JARVIS 6.9: Mission Control military command centre transformation
+
+Full description: `docs/mission-control.md`. Rollback point: commit `6be51e2` (local tag `pre-mc-military-redesign`).
+
+### Inspected before changing anything
+
+- **Mission Control controller:** `public/js/mission.js` (sections, layout, activation, checks, navigation).
+- **Global Operations display:** `public/js/goc.js` (the shared map, layers, Global Events, flight tracking, the four
+  operations, World Explorer, situation report, status panels).
+- **Other views:** `public/js/mc-panels.js` (the non-map views).
+- **Core:** the single persistent core (`public/js/corehost.js`, `public/js/core3d.js` Three.js, `public/js/core.js` 2D fallback).
+- **Sounds:** `public/js/sounds.js`.
+- **Voice routing:** `public/js/conversation.js`.
+- **Data:** every Mission Control source (diagnostics, performance, flights, events, tiles, orbit, activity) was kept.
+
+### What changed
+
+| Area | 6.9 |
+|---|---|
+| Layout | Command bar (identity, date-time group, local time, active operation, status, situation report). Core 808 column (core panel, system readiness, mission log). Framed tactical map (corner references, cursor coordinates, radar sweep, scan line). Full-height intelligence feed. Status strip of five cells under the map and core column that open into full panels. World Explorer, the operations and Expand map keep their own arrangements |
+| Navigation | Coded and grouped (Command, Operations, Systems), every destination kept, plus Exit |
+| Theme | Military aerospace palette and type across every Mission Control section; colour used for status |
+| Core 808 | A second design of the same core instance (rings, bezel, data arcs, brackets, beam, cage), with state colours and an assembly animation; switches back on exit |
+| Activation | The cinematic sequence (system activation → Core 808 assembly → real checks → confirmation → reveal), about 7 s. Short (about 2.5 s) and Off settings; skip with Esc. Only on deliberate activation |
+| Checks | Two real checks added: global mapping (map engine and tile cache) and satellite systems (ISS position calculated from CelesTrak elements) |
+| Sounds | Original synthesised sequence sounds and a navigation tick, through the interface sound settings |
+| Live detail | New intelligence reports highlighted; cell values live; radar sweep and scan line (pause when idle, off with reduced motion or effects) |
+
 ## JARVIS 6.8: natural conversation, living personality and visual refinement
 
 No new AI provider, no model change and no paid service. Claude, the app and its layout are unchanged; the

@@ -509,13 +509,14 @@ Object.assign(SECTIONS, {
 
 // ---------------------------------------------------------------- Interface: transitions, their sounds and the map (6.7)
 TABS.splice(TABS.findIndex((t) => t[0] === "startup"), 0, ["interface", "Interface"]);
-const IFACE_DEFAULTS = { transitions: true, transitionSpeed: "normal", sound: true, soundVolume: 0.5, silent: false, reducedSound: false, reducedEffects: false, mapAutoResize: true, mapAnimate: true };
+const IFACE_DEFAULTS = { activation: "full", transitions: true, transitionSpeed: "normal", sound: true, soundVolume: 0.5, silent: false, reducedSound: false, reducedEffects: false, mapAutoResize: true, mapAnimate: true };
 Object.assign(SECTIONS, {
   async interface(el, ctx) {
     const s = await api("/api/settings");
     const it = { ...IFACE_DEFAULTS, ...(s.interface || {}) }, ap = s.appearance || {};
     el.innerHTML = `<article class="panel" style="max-width:820px"><div class="panel-head"><span class="label">Interface</span></div>
       <p class="muted" style="margin-top:0;font-size:13.5px">How the Command Centre changes into Mission Control and back, the sounds it makes, and how the map behaves. Changes apply straight away.</p>
+      ${row("Mission Control activation", "Full: the activation sequence (about 7 s; skip any time with Esc). Short: about 2.5 s. Off: the quick transition. The real checks run either way", `<div class="seg" id="ifAct">${[["full", "Full sequence"], ["short", "Short"], ["off", "Off"]].map(([k, l]) => `<button data-v="${k}" class="${(it.activation || "full") === k ? "active" : ""}">${l}</button>`).join("")}</div>`)}
       ${row("Transition animation", "The coordinated change between the Command Centre and Mission Control. Off: an instant switch (the same checks still run)", toggle("ifTrans", it.transitions, "Transition animation"))}
       ${row("Transition speed", "Normal is about 1.5 seconds", `<div class="seg" id="ifSpeed">${[["fast", "Fast"], ["normal", "Normal"], ["slow", "Slow"]].map(([k, l]) => `<button data-v="${k}" class="${it.transitionSpeed === k ? "active" : ""}">${l}</button>`).join("")}</div>`)}
       ${row("Transition sounds", "Original sounds made on this device — no files, no downloads", toggle("ifSound", it.sound, "Transition sounds"))}
@@ -533,6 +534,7 @@ Object.assign(SECTIONS, {
     tg("ifTrans", "transitions"); tg("ifSound", "sound"); tg("ifRedSnd", "reducedSound"); tg("ifSilent", "silent"); tg("ifRedFx", "reducedEffects"); tg("ifMapRs", "mapAutoResize"); tg("ifMapAn", "mapAnimate");
     $("#ifRedMo", el).onchange = (e) => api("/api/settings", { method: "PATCH", body: { appearance: { reduceMotion: e.target.checked } } }).then(() => { document.documentElement.classList.toggle("reduce-motion", e.target.checked || ap.animation === "off" || ap.animation === "reduced"); toast("Saved."); });
     $$("#ifSpeed [data-v]", el).forEach((b) => b.onclick = async () => { await P({ transitionSpeed: b.dataset.v }); $$("#ifSpeed [data-v]", el).forEach((x) => x.classList.toggle("active", x === b)); });
+    $$("#ifAct [data-v]", el).forEach((b) => b.onclick = async () => { await P({ activation: b.dataset.v }); $$("#ifAct [data-v]", el).forEach((x) => x.classList.toggle("active", x === b)); });
     $("#ifVol", el).oninput = (e) => { $("#ifVolV", el).textContent = `${Math.round(e.target.value * 100)}%`; };
     $("#ifVol", el).onchange = (e) => P({ soundVolume: Number(e.target.value) });
     const test = async (kind) => {

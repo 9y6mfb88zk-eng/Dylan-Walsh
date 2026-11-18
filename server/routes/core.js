@@ -104,6 +104,7 @@ router.patch("/api/settings", (req, res) => {
     for (const k of ["transitions", "sound", "silent", "reducedSound", "reducedEffects", "mapAutoResize", "mapAnimate"]) if (k in it) out[k] = b(it[k]);
     if ("transitionSpeed" in it) { if (!["fast", "normal", "slow"].includes(it.transitionSpeed)) return res.status(400).json({ error: "Transition speed must be fast, normal or slow" }); out.transitionSpeed = it.transitionSpeed; }
     if ("soundVolume" in it) out.soundVolume = Math.max(0, Math.min(1, Number(it.soundVolume) || 0));
+    if ("activation" in it) { if (!["full", "short", "off"].includes(it.activation)) return res.status(400).json({ error: "Mission Control activation must be full, short or off" }); out.activation = it.activation; }
     patch.interface = out;
   }
   if (patch.startup) {
@@ -216,7 +217,7 @@ router.post("/api/push/test", wrap(async (req, res) => res.json({ sent: await no
 router.get("/api/health", (req, res) => {
   const conns = connections.all().map(connections.view);
   res.json({
-    server: { ok: true, uptime: Math.round(process.uptime()), version: process.env.JARVIS_VERSION || process.env.npm_package_version || "6.8.0", env: config.env, node: process.version, hosting: config.hosting },
+    server: { ok: true, uptime: Math.round(process.uptime()), version: process.env.JARVIS_VERSION || process.env.npm_package_version || "6.9.0", env: config.env, node: process.version, hosting: config.hosting },
     services: healthReport(),
     desktops: desktopAgents(),
     connectedDevices: connectedDevices().length,

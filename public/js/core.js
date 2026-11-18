@@ -93,7 +93,7 @@ export function mountCore(canvas, { animation = "full" } = {}) {
   }
   const off = still ? core.on(() => frame(performance.now())) : () => {};
   if (!still) raf = requestAnimationFrame(frame);
-  return { kind: "2d", firstFrame: new Promise((r) => requestAnimationFrame(() => r({ ms: 0, tier: "2d" }))), pulse() {}, setPalette() {}, setBoost() {}, destroy() { gone = true; cancelAnimationFrame(raf); ro.disconnect(); off(); } };
+  return { kind: "2d", firstFrame: new Promise((r) => requestAnimationFrame(() => r({ ms: 0, tier: "2d" }))), pulse() {}, setPalette() {}, setBoost() {}, setDesign() {}, assemble: () => Promise.resolve(), design: "classic", destroy() { gone = true; cancelAnimationFrame(raf); ro.disconnect(); off(); } };
 }
 
 /** Core options from settings (Settings → Performance): quality, particle density, bloom, animation. */

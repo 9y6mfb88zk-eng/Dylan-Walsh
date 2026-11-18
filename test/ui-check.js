@@ -180,24 +180,39 @@ try {
   await L.evaluate(() => { window.__mcTimeline = []; });
   await L.fill("#say", "JARVIS, activate Mission Control"); await L.press("#say", "Enter");
   check("Stage 1: dims the interface and shows “ACTIVATING MISSION CONTROL”", await L.waitForFunction(() => document.documentElement.classList.contains("mc-activating") && /ACTIVATING MISSION CONTROL/.test(document.querySelector(".mc-banner")?.textContent || ""), null, { timeout: 8000, polling: 30 }).then(() => true, () => false));
-  const active = await L.waitForFunction(() => document.documentElement.classList.contains("mc-active"), null, { timeout: 60000 }).then(() => true, () => false);
+  check("the activation sequence takes over the screen and Core 808 assembles in the centre", await L.waitForFunction(() => !!document.querySelector(".mcb.s2 .mcb-core-slot canvas#core") && /J\.A\.R\.V\.I\.S\./.test(document.querySelector(".mcb-ident")?.textContent || ""), null, { timeout: 20000, polling: 50 }).then(() => true, () => false));
+  check("each real check appears in the sequence with its actual result", await L.waitForFunction(() => document.querySelectorAll(".mcb-checks li[data-state]").length >= 6 && [...document.querySelectorAll(".mcb-checks li[data-state]")].every((li) => /^(ONLINE|DEGRADED|UNAVAILABLE)$/.test(li.querySelector(".mcb-ck-tag").textContent) && li.querySelector("small").textContent.length > 3), null, { timeout: 20000, polling: 50 }).then(() => true, () => false));
+  const confirmText = await L.waitForFunction(() => document.querySelector(".mcb.confirm-on .mcb-confirm")?.textContent || null, null, { timeout: 20000, polling: 50 }).then((h) => h.jsonValue(), () => "");
+  const seqStates = await L.evaluate(() => [...document.querySelectorAll(".mcb-checks li")].map((li) => li.dataset.state || "pending"));
+  check("the confirmation is honest about anything unavailable", /CORE 808 ONLINE/.test(confirmText) && (seqStates.every((x) => x === "ok") || /UNAVAILABLE OR DEGRADED|STILL RUNNING/.test(confirmText)), `${confirmText} · ${seqStates.join(",")}`);
+  const active = await L.waitForFunction(() => document.documentElement.classList.contains("mc-active") && !document.querySelector(".mcb"), null, { timeout: 60000 }).then(() => true, () => false);
   check("Mission Control becomes active", active);
+  const seqMs = await L.evaluate(() => { const t = window.__mcTimeline || [], a = t.find((x) => x.label === "start"), b = t.find((x) => x.label === "interactive"); return a && b ? b.t - a.t : null; });
+  check("the full activation sequence lasts about 5–8 seconds (allowing for this slower test machine)", seqMs != null && seqMs >= 4000 && seqMs < 12000, `${seqMs} ms`);
   // Mission Control is interactive straight away; the real checks finish in the core panel just after.
   await L.waitForFunction(() => (window.__mcTimeline || []).some((x) => x.stage === 4), null, { timeout: 60000 }).catch(() => {});
   const stages = await L.evaluate(() => (window.__mcTimeline || []).filter((x) => x.stage).map((x) => x.stage));
   check("the four stages run in order: activating, transformation, initialisation, active", JSON.stringify(stages) === "[1,2,3,4]", JSON.stringify(stages));
   const init = await L.$$eval(".mc-init li", (l) => l.map((x) => `${x.dataset.state}: ${x.querySelector("b").textContent} — ${x.querySelector(".faint").textContent}`));
-  check("initialisation shows the real service checks", init.length === 8 && /Checking AI core/.test(init[1]) && /Verifying voice interface/.test(init[2]) && /Connecting public flight data/.test(init[4]) && /Retrieving global events/.test(init[5]) && /Mission Control (ready|active)/.test(init[7]), init.join(" | "));
+  check("initialisation shows the real service checks", init.length === 10 && /Checking AI core/.test(init[1]) && /Verifying voice interface/.test(init[2]) && /Connecting public flight data/.test(init[4]) && /Retrieving global events/.test(init[5]) && /Initialising global mapping/.test(init[6]) && /Initialising satellite systems/.test(init[7]) && /Mission Control (ready|active)/.test(init[9]), init.join(" | "));
+  check("the mapping and satellite checks report real results", /map engine ready/.test(init[6]) && /^(ok: Initialising satellite systems — orbital elements loaded · ISS calculated|warn: Initialising satellite systems — orbital elements unavailable)/.test(init[7]), `${init[6]} | ${init[7]}`);
   check("the flight and events checks report what was actually retrieved", /^ok: Connecting public flight data — [\d,]+ aircraft visible · (ADSB\.lol|OpenSky Network)$/.test(init[4]) && /^(ok|warn): Retrieving global events — \d+ reports · \d of \d sources live$/.test(init[5]), `${init[4]} | ${init[5]}`);
   check("no check is shown as passed without a result", init.every((l) => /^(ok|warn|bad): /.test(l)));
   check("the same living core moved into Mission Control (no second 3D scene)", await L.evaluate(() => !!document.querySelector("#mcView canvas#core") && !document.querySelector("#view canvas#core") && (window.__jarvisCore?.alive ?? 1) === 1));
   check("sidebar became Mission Control navigation", await L.evaluate(() => document.querySelector("#nav").hidden && !document.querySelector("#mcNav").hidden && document.querySelectorAll("#mcNav [data-mc]").length === 16 && [...document.querySelectorAll("#mcNav .nav-group")].some((g) => g.textContent === "Operations")));
   // Global Operations: the default Mission Control layout
-  check("Global Operations opens first: core on the left, map in the centre, events on the right, six status panels below", await L.evaluate(() => {
+  check("the command-centre layout: command bar, Core 808 column, tactical map, full-height intelligence feed, status strip under the map", await L.evaluate(() => {
     const g = document.querySelector("#mcView .goc"); if (!g || document.querySelector("#mcView").dataset.section !== "globalops") return false;
-    const left = g.querySelector(".goc-left").getBoundingClientRect(), centre = g.querySelector(".goc-centre").getBoundingClientRect(), right = g.querySelector(".goc-right").getBoundingClientRect();
-    return !!g.querySelector(".goc-core-host canvas#core") && left.right <= centre.left + 1 && centre.right <= right.left + 1 && centre.width > left.width && g.querySelectorAll(".goc-bottom > .goc-box").length === 6 && !!g.querySelector(".leaflet-container");
+    const r = (s) => g.querySelector(s).getBoundingClientRect();
+    const bar = r(".goc-cmdbar"), left = r(".goc-left"), centre = r(".goc-centre"), right = r(".goc-right"), strip = r(".goc-bottom");
+    return !!g.querySelector(".goc-core-host canvas#core") && left.right <= centre.left + 1 && centre.right <= right.left + 1 && centre.width > left.width * 1.5
+      && bar.bottom <= centre.top + 1 && strip.top >= centre.bottom - 1 && right.bottom >= strip.bottom - 2 && strip.right <= right.left + 1
+      && g.querySelectorAll(".goc-bottom > .goc-cell").length === 5 && !!g.querySelector(".goc-log[data-b=\"ops\"]") && !!g.querySelector(".leaflet-container")
+      && /^\d{6}Z [A-Z]{3} \d{2}$/.test(document.querySelector("#gocDtg").textContent) && /Global operations/i.test(document.querySelector("#gocOpInd").textContent);
   }));
+  check("Mission Control navigation is coded and grouped (Command, Operations, Systems)", await L.evaluate(() => ["Command", "Operations", "Systems"].every((t) => [...document.querySelectorAll("#mcNav .nav-group")].some((g) => g.textContent === t)) && document.querySelectorAll("#mcNav .mcn-code").length === 17));
+  await L.click('.goc-cell[data-b="flights"] .goc-cell-head');
+  check("a status cell expands into its full panel and closes again", await L.evaluate(() => { const c = document.querySelector('.goc-cell[data-b="flights"]'); const b = c.querySelector(".goc-cell-body"); return c.classList.contains("open") && b.getBoundingClientRect().height > 40 && /In view/.test(b.textContent); }) && await L.keyboard.press("Escape").then(() => L.evaluate(() => !document.querySelector(".goc-cell.open"))));
   check("the core panel is prominent (not a logo)", await L.evaluate(() => document.querySelector(".goc-core-host canvas#core").getBoundingClientRect().width >= 150));
   check("Mission Control announces only what initialised", await L.waitForFunction(() => /^Mission Control is online, Sir\. (Global operations interface ready\.|(One service needs|\d services need) attention: .+\.)$/.test(document.querySelector("#mcCaption")?.textContent || ""), null, { timeout: 8000 }).then(() => true, () => false), await L.textContent("#mcCaption"));
   check("aircraft from the flight provider are on the map, privacy-flagged ones excluded", await L.waitForFunction(() => (window.__jarvisGoc?.aircraft || 0) > 0, null, { timeout: 15000 }).then(() => true, () => false));
@@ -288,6 +303,8 @@ try {
     ["the command palette", async () => { await L.keyboard.press("Control+k"); await L.fill("#palInput", "Command Centre"); await sleep(250); await L.keyboard.press("Enter"); }],
     ["the Exit button (again)", async () => L.click("#mcNav [data-mcexit]")],
   ];
+  await L.evaluate(async () => { const { api } = await import("/js/api.js"); await api("/api/settings", { method: "PATCH", body: { interface: { activation: "short" } } }); });
+  await L.reload(); await L.waitForSelector("#view canvas#core", { timeout: 20000 });
   const coreRuns = [];
   for (const [name, leave] of exitRoutes) {
     await L.evaluate(() => { window.__mcTimeline = []; });
@@ -302,7 +319,20 @@ try {
     coreRuns.push({ name, enterMs, exitMs, inMc, ...(await coreState()) });
   }
   check("the same single core moves into Mission Control and back on every route, with no second click", coreRuns.every((r) => r.inMc && r.n === 1 && r.home && r.shown && r.alive === 1 && r.drew > 0), JSON.stringify(coreRuns));
-  check("entering Mission Control is interactive within about 1–2 seconds", coreRuns.every((r) => r.enterMs != null && r.enterMs < 3000), coreRuns.map((r) => `${r.enterMs} ms`).join(", "));
+  check("the short activation is interactive within about 2.5 seconds (allowing for this slower test machine)", coreRuns.every((r) => r.enterMs != null && r.enterMs < 4500), coreRuns.map((r) => `${r.enterMs} ms`).join(", "));
+  // Skipping the full sequence: Esc goes straight to the reveal; the checks carry on in the background.
+  await L.evaluate(async () => { const { api } = await import("/js/api.js"); await api("/api/settings", { method: "PATCH", body: { interface: { activation: "full" } } }); });
+  await L.reload(); await L.waitForSelector("#view canvas#core", { timeout: 20000 });
+  await L.evaluate(() => { window.__mcTimeline = []; });
+  await L.click("#mcBtn");
+  await L.waitForSelector(".mcb.title-on", { timeout: 15000 });
+  const skipAt = await L.evaluate(() => performance.now());
+  await L.keyboard.press("Escape");
+  await L.waitForFunction(() => document.documentElement.classList.contains("mc-active") && !document.querySelector(".mcb"), null, { timeout: 30000 });
+  const skipMs = await L.evaluate((t) => Math.round(performance.now() - t), skipAt);
+  check("Esc skips the activation sequence (Mission Control stays open, the core lands in its panel)", skipMs < 4500 && await L.evaluate(() => !!document.querySelector(".goc-core-host canvas#core") && document.querySelectorAll("canvas#core").length === 1 && document.documentElement.classList.contains("mc-mode")), `${skipMs} ms after Esc`);
+  await L.click("#mcNav [data-mcexit]");
+  await L.waitForFunction(() => !document.documentElement.classList.contains("mc-mode") && !document.querySelector("#mcView"), null, { timeout: 30000 });
   check("leaving returns the core to the Command Centre within about a second", coreRuns.every((r) => r.exitMs != null && r.exitMs < 1500), coreRuns.map((r) => `${r.exitMs} ms`).join(", "));
   const snd = await L.evaluate(async () => { const m = await import("/js/sounds.js"); return { enter: await m.renderSound("mcEnter", 2.6), exit: await m.renderSound("mcExit", 2), quiet: await m.renderSound("mcEnter", 2.6, { uiVolume: 0.1 }), loud: await m.renderSound("mcEnter", 2.6, { uiVolume: 1 }), reduced: await m.renderSound("mcEnter", 2.6, { reduced: true }) }; });
   check("Mission Control enter and exit sounds are generated on the device and audible", snd.enter.peak > 0.02 && snd.exit.peak > 0.02, JSON.stringify(snd));

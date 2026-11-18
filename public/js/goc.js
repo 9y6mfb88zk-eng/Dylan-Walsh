@@ -9,6 +9,7 @@ import * as sync from "./sync.js";
 import { core, STATE_LABEL } from "./corestate.js";
 import { $, $$, esc, ago, toast } from "./util.js";
 import { spark, SERIES_MAX } from "./mc-panels.js";
+import { dtg } from "./mc-boot.js";
 
 const SVG = {
   expand: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>',
@@ -75,16 +76,19 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
   };
   const timers = [], offs = [];
   el.innerHTML = `<div class="goc" data-mode="${mode}">
-    <header class="goc-strip" aria-label="Operations status">
-      <div class="goc-brand"><b>J.A.R.V.I.S.</b><span>Global Operations</span></div>
+    <header class="goc-strip goc-cmdbar" aria-label="Command bar">
+      <div class="goc-brand"><b>J.A.R.V.I.S.</b><span>Mission Control · Core 808</span></div>
+      <div class="goc-dtg" title="Date-time group (UTC)"><span>DTG</span><b id="gocDtg">—</b></div>
       <div class="goc-clocks" id="gocClocks"></div>
+      <div class="goc-opind" id="gocOpInd" aria-live="polite"></div>
       <div class="goc-pills" id="gocPills"></div>
       <button class="goc-tb" id="gocSitrep" title="Compile a Global Situation Report from every operation">Situation report</button>
     </header>
     <div class="goc-sitrep" id="gocSitrepPanel" hidden></div>
-    <aside class="goc-left" aria-label="JARVIS core and systems">
+    <aside class="goc-left" aria-label="JARVIS core, system readiness and mission log">
       <div class="goc-core-host"></div>
-      <section class="goc-box"><h3>Systems</h3><dl class="goc-sys" id="gocSys"><div class="goc-muted">Reading live status…</div></dl></section>
+      <section class="goc-box goc-ready"><h3>System readiness</h3><dl class="goc-sys" id="gocSys"><div class="goc-muted">Reading live status…</div></dl></section>
+      <section class="goc-box goc-log" data-b="ops"><h3>Mission log</h3><div class="goc-cell-body"></div></section>
     </aside>
     <main class="goc-centre">
       <div class="goc-maptools" role="toolbar" aria-label="Map controls">
@@ -101,24 +105,24 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
         <p class="goc-muted goc-layer-note" id="gocLayerNote"></p>
       </div>
       <div class="goc-map" id="gocMap" aria-label="World map"></div>
+      <div class="goc-tac" aria-hidden="true"><div class="goc-sweep"></div><div class="goc-scanline"></div>
+        <i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
+        <span class="goc-tac-label">Tactical overview</span><span class="goc-tac-ref ne" id="gocRefNE"></span><span class="goc-tac-ref sw" id="gocRefSW"></span></div>
       <canvas class="goc-overlay" id="gocOverlay" aria-hidden="true"></canvas>
       <div class="goc-globe" id="gocGlobe" hidden><canvas aria-label="3D globe"></canvas><div class="goc-globe-labels"></div></div>
       <div class="goc-tip" id="gocTip" hidden></div>
       <div class="goc-card" id="gocCard" hidden aria-live="polite"></div>
       <div class="goc-legend" id="gocLegend"></div>
+      <div class="goc-coords" id="gocCoords" aria-live="off"></div>
     </main>
-    <aside class="goc-right" id="gocRight" aria-label="Global events"></aside>
-    <footer class="goc-bottom">
-      <section class="goc-box" data-b="flights"><h3>Flight tracking</h3><div></div></section>
-      <section class="goc-box" data-b="imagery"><h3>Satellite & imagery</h3><div></div></section>
-      <section class="goc-box" data-b="events"><h3>Global event activity</h3><div></div></section>
-      <section class="goc-box" data-b="timeline"><h3>System activity</h3><div></div></section>
-      <section class="goc-box" data-b="network"><h3>Network</h3><div></div></section>
-      <section class="goc-box" data-b="ops"><h3>Recent JARVIS operations</h3><div></div></section>
+    <aside class="goc-right" id="gocRight" aria-label="Intelligence feed"></aside>
+    <footer class="goc-bottom" aria-label="Operational status">
+      ${[["flights", "Flight tracking"], ["imagery", "Sat · imagery", "Satellite & imagery"], ["events", "Event activity", "Global event activity"], ["timeline", "System activity"], ["network", "Network"]].map(([k, n, full = n]) =>
+        `<section class="goc-box goc-cell" data-b="${k}"><button class="goc-cell-head" type="button" aria-expanded="false" title="${full}" aria-label="${full}"><h3>${n}</h3><b class="goc-cell-sum">—</b><i class="goc-cell-viz"></i></button><div class="goc-cell-body"></div></section>`).join("")}
     </footer>
   </div>`;
   const root = $(".goc", el);
-  const box = (k) => $(`[data-b="${k}"] > div`, root);
+  const box = (k) => $(`[data-b="${k}"] .goc-cell-body`, root);
 
   // ------------------------------------------------------------ Map
   const Lf = await leaflet();
@@ -432,7 +436,7 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
     if (st.mode === "flights") return renderFlightPanel();
     if (st.mode === "world") return renderWorld();
     const E = st.events, f = st.evFilter;
-    if (!E) { right.innerHTML = `<section class="goc-box goc-feed"><h3>Global events</h3><p class="goc-muted">${st.eventsErr ? `Global events unavailable — ${esc(st.eventsErr)}` : "Retrieving published reports…"}</p></section>`; return; }
+    if (!E) { right.innerHTML = `<section class="goc-box goc-feed"><h3>Intelligence feed</h3><p class="goc-muted">${st.eventsErr ? `Global events unavailable — ${esc(st.eventsErr)}` : "Retrieving published reports…"}</p></section>`; return; }
     const items = filteredEvents();
     const regions = [...new Set(E.items.map((e) => e.region).filter(Boolean))].sort();
     const provs = Object.entries(E.providers), live = provs.filter(([, p]) => p.configured && p.state === "operational").length, conf = provs.filter(([, p]) => p.configured).length;
@@ -441,7 +445,7 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
     // Header and filters stay put; only the list scrolls, through every result (rendered in batches as you scroll).
     right.innerHTML = `<section class="goc-box goc-feed">
       <div class="goc-feed-head">
-        <h3>Global events <span class="goc-count">${items.length}</span></h3>
+        <h3>Intelligence feed <span class="goc-feed-sub">Global situation</span><span class="goc-count">${items.length}</span></h3>
         <div class="goc-feed-tools"><button class="goc-tb" id="gocEvFilt" aria-expanded="${st.evFiltersOpen}">Filters${nFilters ? ` · ${nFilters}` : ""}</button><button class="goc-tb" id="gocEvSrc" aria-expanded="${!!st.evSrcOpen}">${live}/${conf} sources</button></div>
         <div class="goc-feed-filters" ${st.evFiltersOpen ? "" : "hidden"}>
           <div class="goc-chips" role="group" aria-label="Event categories">${Object.entries(E.categories).map(([k, n]) => `<button class="goc-chip ${f.cats.has(k) ? "on" : ""}" data-cat="${k}" style="--c:${CAT_COLOR[k]}" aria-pressed="${f.cats.has(k)}">${esc(n)}</button>`).join("")}</div>
@@ -464,11 +468,16 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
       const next = items.slice(shown, shown + 60); if (!next.length) return;
       listEl.querySelector(".goc-ev-sentinel")?.remove();
       listEl.insertAdjacentHTML("beforeend", next.map((e) => evItem(e)).join(""));
+      // Reports that arrived since the feed was last drawn are briefly highlighted (not on the first load).
+      const seen = (st.seenEv ||= new Set()), first = !st.feedPrimed;
+      for (const e of next) { if (!seen.has(e.id)) { if (!first) listEl.querySelector(`[data-ev="${CSS.escape(e.id)}"]`)?.classList.add("fresh"); seen.add(e.id); } }
       shown += next.length;
       if (shown < items.length) { listEl.insertAdjacentHTML("beforeend", `<li class="goc-ev-sentinel goc-muted goc-small">Showing ${shown} of ${items.length} — scroll for more</li>`); evIO.observe(listEl.lastElementChild); }
       else if (items.length > 60) listEl.insertAdjacentHTML("beforeend", `<li class="goc-muted goc-small goc-ev-end">All ${items.length} reports shown.</li>`);
     };
     st.evIO?.disconnect();
+    // After drawing, every report held so far counts as seen; later fetches highlight only what's genuinely new.
+    queueMicrotask(() => { const seen = (st.seenEv ||= new Set()); E.items.forEach((x) => seen.add(x.id)); st.feedPrimed = true; });
     st.evReveal = (id) => { while (shown < items.length && !listEl.querySelector(`[data-ev="${CSS.escape(id)}"]`)) more(); };
     const evIO = st.evIO = new IntersectionObserver((en) => { if (en.some((x) => x.isIntersecting)) more(); }, { root: listEl, rootMargin: "300px" });
     more();
@@ -684,13 +693,61 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
     ].join("");
   }
   function renderClocks() {
-    const places = (st.world || []).filter((p) => !p.home).slice(0, 4);
-    $("#gocClocks", root).innerHTML = [[`Local`, tz, true], ["UTC", "UTC"], ...places.map((p) => [p.name.split(",")[0], p.timezone])].map(([n, z, loc]) =>
+    const d = $("#gocDtg", root); if (d) d.textContent = dtg();
+    const places = (st.world || []).filter((p) => !p.home).slice(0, 2);
+    // UTC is the date-time group beside it, so the command bar shows local time and one saved place.
+    $("#gocClocks", root).innerHTML = [[`Local`, tz, true], ...places.slice(0, 1).map((p) => [p.name.split(",")[0], p.timezone])].map(([n, z, loc]) =>
       `<div class="goc-clock"><span>${esc(n)}</span><b>${esc(nowIn(z, { hour: "2-digit", minute: "2-digit", second: loc ? "2-digit" : undefined }))}</b>${loc ? `<i>${esc(nowIn(z, { weekday: "short", day: "numeric", month: "short" }))}</i>` : ""}</div>`).join("");
   }
 
+  // ------------------------------------------------------------ 6.9 command-centre details: status strip cells, map readouts
+  /** The one-line state of each status cell (the full panel opens when the cell is expanded). */
+  function cellSummary(k) {
+    const sec = $(`[data-b="${k}"]`, root); const sum = sec && $(".goc-cell-sum", sec); if (!sum) return;
+    const viz = $(".goc-cell-viz", sec);
+    let text = "—", state = "", vizHtml = "";
+    if (k === "flights") { const F = st.flights; text = !st.layers.flights ? "Layer hidden" : st.flightErr ? "Unavailable" : F ? `${fmtN(filteredAircraft().length)} aircraft` : "Retrieving…"; state = !st.layers.flights ? "off" : st.flightErr ? "warn" : F ? "ok" : ""; }
+    else if (k === "imagery") { text = layerInfo[st.base]?.name || BASES.find((b) => b[0] === st.base)?.[1] || st.base; state = tileErrors.n > 5 ? "warn" : st.status ? "ok" : ""; }
+    else if (k === "events") {
+      const items = filteredEvents(), by = {}; items.forEach((e) => { by[e.category] = (by[e.category] || 0) + 1; });
+      text = st.events ? `${fmtN(items.length)} reports` : st.eventsErr ? "Unavailable" : "Retrieving…"; state = st.events ? "ok" : st.eventsErr ? "warn" : "";
+      const max = Math.max(1, ...Object.values(by));
+      vizHtml = st.events ? Object.keys(st.events.categories).map((c) => `<i style="--h:${Math.round(((by[c] || 0) / max) * 100)}%;--c:${CAT_COLOR[c]}"></i>`).join("") : "";
+    } else if (k === "timeline") {
+      const c = st.series.cpu.at(-1), r = st.series.ram.at(-1);
+      text = c == null ? "Measuring…" : `CPU ${Math.round(c)}% · RAM ${Math.round(r)}%`; state = c == null ? "" : c > 90 || r > 92 ? "warn" : "ok";
+
+    } else if (k === "network") { const on = sync.status.online; text = on ? "Link up" : "Link down"; state = on ? "ok" : "bad"; }
+    sum.textContent = text; sec.dataset.state = state;
+    if (viz && viz.__v !== vizHtml) { viz.innerHTML = vizHtml; viz.__v = vizHtml; }
+  }
+  // Expandable cells: one open at a time; Esc or a click elsewhere closes it.
+  const bottomEl = $(".goc-bottom", root);
+  const closeCells = (except) => $$(".goc-cell.open", root).forEach((c) => { if (c !== except) { c.classList.remove("open"); $(".goc-cell-head", c).setAttribute("aria-expanded", "false"); } });
+  bottomEl.addEventListener("click", (ev) => {
+    const head = ev.target.closest(".goc-cell-head"); if (!head) return;
+    const cell = head.closest(".goc-cell"), open = !cell.classList.contains("open");
+    closeCells(cell); cell.classList.toggle("open", open); head.setAttribute("aria-expanded", String(open));
+  });
+  const onDocDown = (ev) => { if (!ev.target.closest?.(".goc-cell")) closeCells(); };
+  const onCellKey = (ev) => { if (ev.key === "Escape" && $(".goc-cell.open", root)) { ev.stopPropagation(); closeCells(); } };
+  document.addEventListener("pointerdown", onDocDown);
+  root.addEventListener("keydown", onCellKey);
+  // Map readouts: cursor position and zoom, and the corner references of the area in view.
+  const fmtLL = (lat, lon) => `${Math.abs(lat).toFixed(3)}°${lat >= 0 ? "N" : "S"} ${String(Math.abs(((lon + 540) % 360) - 180).toFixed(3)).padStart(7, "0")}°${((lon + 540) % 360) - 180 >= 0 ? "E" : "W"}`;
+  const coordsEl = $("#gocCoords", root);
+  const showCentre = () => { const c = map.getCenter(); coordsEl.textContent = `CTR ${fmtLL(c.lat, c.lng)} · Z ${map.getZoom().toFixed(1)}`; };
+  map.on("mousemove", (e) => { coordsEl.textContent = `CURSOR ${fmtLL(e.latlng.lat, e.latlng.lng)} · Z ${map.getZoom().toFixed(1)}`; });
+  map.on("mouseout", showCentre);
+  const refs = () => { const b = map.getBounds(); $("#gocRefNE", root).textContent = fmtLL(Math.min(85, b.getNorth()), b.getEast()); $("#gocRefSW", root).textContent = fmtLL(Math.max(-85, b.getSouth()), b.getWest()); if (!coordsEl.textContent.startsWith("CURSOR")) showCentre(); };
+  map.on("moveend zoomend", refs);
+  requestAnimationFrame(refs);
+  const MODE_LABEL = { globalops: "Global operations", world: "World explorer", events: "Global events", flights: "Flight tracking", "op-blackbox": "Operation Blackbox", "op-wayfinder": "Operation Wayfinder", "op-sentinel": "Operation Sentinel", "op-orbit": "Operation Orbit" };
+  const renderOpInd = () => { const o = $("#gocOpInd", root); if (o) o.innerHTML = `<span>Active</span><b>${esc(MODE_LABEL[st.mode] || st.mode)}</b>`; };
+
   // ------------------------------------------------------------ Bottom panels
-  function renderBottom(k) {
+  function renderBottom(k) { renderBottomInner(k); cellSummary(k); }
+  function renderBottomInner(k) {
     const el2 = box(k); if (!el2) return;
     if (k === "flights") {
       const F = st.flights, P = st.status?.flights?.providers;
@@ -838,7 +895,7 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
   // ------------------------------------------------------------ Modes and startup
   function setMode(m) {
     if (!MODE_DEFAULTS[m]) return;
-    st.mode = m; root.dataset.mode = m;
+    st.mode = m; root.dataset.mode = m; renderOpInd();
     for (const [k, v] of Object.entries(MODE_DEFAULTS[m])) if (st.layers[k] !== v) setOverlay(k, v);
     renderRight(); draw(); renderLegend(); wxDraw();
     requestAnimationFrame(() => { map.invalidateSize({ pan: false }); sizeCanvas(); draw(); });
@@ -848,7 +905,7 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
   setBase("dark");
   for (const [k] of OVERLAYS) { const cb = $(`[data-ov="${k}"]`, root); if (cb) cb.checked = !!st.layers[k]; }
   if (st.layers.boundaries) loadBoundaries();
-  renderClocks(); renderSys(); renderRight(); renderLegend();
+  renderClocks(); renderSys(); renderRight(); renderLegend(); renderOpInd();
   const ready = Promise.allSettled([
     api("/api/world").then((w) => { st.world = w; renderClocks(); }),
     loadDiag(), loadPerf(), loadActivity(), loadEvents(),
@@ -893,7 +950,7 @@ export async function mountGoc(el, ctx, { mode = "globalops" } = {}) {
       st.destroyed = true;
       timers.forEach(clearInterval); clearTimeout(flightT); offs.forEach((f) => f?.());
       st.opMod?.unmount?.(); st.opMod = null;
-      ro.disconnect(); removeEventListener("resize", onWinResize); st.globe?.destroy(); map.remove(); el.innerHTML = "";
+      ro.disconnect(); removeEventListener("resize", onWinResize); document.removeEventListener("pointerdown", onDocDown); st.globe?.destroy(); map.remove(); el.innerHTML = "";
       delete window.__jarvisGoc; delete window.__jarvisGocRedraw;
     },
   };

@@ -1,4 +1,7 @@
 import express from "express";
+import fs from "node:fs";
+// The app version, also when the server was started directly with node (not through npm or the Windows app).
+const PKG_VERSION = (() => { try { return JSON.parse(fs.readFileSync(new URL("../../package.json", import.meta.url), "utf8")).version || ""; } catch { return ""; } })();
 import QRCode from "qrcode";
 import { config, publicBase } from "../config.js";
 import { speechProvider, speechProviders } from "../voice.js";
@@ -23,7 +26,7 @@ router.get("/api/session", (req, res) => {
     brain: brainReady(), model: config.model, tts: speechProvider(), ttsProviders: speechProviders(), stt: !!config.openaiKey || localAsrAvailable(), sttLocal: localAsrAvailable(), webSearch: config.webSearch,
     vapidPublicKey, userName: config.userName, settings: getSettings(),
     publicUrl: publicBase(req), env: config.env, hosting: config.hosting,
-    version: process.env.JARVIS_VERSION || process.env.npm_package_version || "",
+    version: process.env.JARVIS_VERSION || process.env.npm_package_version || PKG_VERSION,
   });
 });
 

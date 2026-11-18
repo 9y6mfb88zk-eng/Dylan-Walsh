@@ -16,7 +16,7 @@ const STATUSES = ["operational", "connected", "degraded", "not_configured", "per
 
 test("the start-up list names every server-side check and the real version", async () => {
   const r = (await d.call("/api/boot")).data;
-  assert.equal(r.version, "6.8.0");
+  assert.equal(r.version, "6.9.0");
   assert.deepEqual(r.checks.map((c) => c.name), ["runtime", "os", "hardware", "database", "storage", "ai", "stt", "tts", "scheduler", "notifications", "weather", "calendar"]);
   assert.deepEqual(r.checks.filter((c) => c.critical).map((c) => c.name), ["runtime", "database", "storage"]);
 });
@@ -51,4 +51,14 @@ test("startup and performance settings are validated and saved", async () => {
   assert.equal(s.startup.screen, "minimal"); assert.equal(s.startup.volume, 1, "volume clamped"); assert.equal(s.startup.sound, false); assert.equal(s.startup.evil, undefined);
   assert.equal(s.startup.fullDiagnostics, true, "unchanged defaults kept");
   assert.equal(s.appearance.quality, "medium"); assert.equal(s.appearance.particles, 1.5); assert.equal(s.appearance.bloom, 0); assert.equal(s.appearance.updates, "reduced"); assert.equal(s.appearance.mapQuality, "low");
+});
+
+test("Mission Control activation setting: full by default, validated, saved alongside the other interface settings", async () => {
+  assert.equal((await d.call("/api/settings")).data.interface.activation, "full");
+  assert.equal((await d.call("/api/settings", { method: "PATCH", body: { interface: { activation: "cinematic" } } })).status, 400);
+  for (const v of ["short", "off", "full"]) {
+    await d.call("/api/settings", { method: "PATCH", body: { interface: { activation: v } } });
+    const it = (await d.call("/api/settings")).data.interface;
+    assert.equal(it.activation, v); assert.equal(it.transitions, true, "other interface settings kept");
+  }
 });

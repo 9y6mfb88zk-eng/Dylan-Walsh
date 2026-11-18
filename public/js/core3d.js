@@ -164,6 +164,66 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
   let lastWave = 0;
   const emitWave = (strength = 1) => { const w = waves.find((x) => x.life <= 0); if (!w) return; w.life = 1; w.strength = strength; w.m.visible = true; w.m.scale.setScalar(1.2); };
 
+  // ---------------- Core 808 (Mission Control): a military aerospace build of the same core — gimballed orbital rings
+  // with moving nodes, a degree bezel, segmented data arcs, targeting brackets, a radar beam and a wireframe cage around
+  // the energy core. Built once, shown only in "808" mode; assemble() choreographs it piece by piece.
+  const g808 = new THREE.Group(); g808.visible = false; root.add(g808);
+  const lineMat = (color, op) => keep(new THREE.LineBasicMaterial({ color, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false }));
+  const segGeo = (pts) => { const g = keep(new THREE.BufferGeometry()); g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3)); return g; };
+  const circlePts = (r, n = 180, z = 0) => { const p = []; for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2, b = ((i + 1) / n) * Math.PI * 2; p.push(Math.cos(a) * r, Math.sin(a) * r, z, Math.cos(b) * r, Math.sin(b) * r, z); } return p; };
+  // Inner cage: a dodecahedron wireframe around the energy core
+  const cageMat = lineMat("#7fd6e8", 0.5);
+  const cage = new THREE.LineSegments(keep(new THREE.EdgesGeometry(keep(new THREE.DodecahedronGeometry(1.22, 0)))), cageMat);
+  const cage2 = new THREE.LineSegments(keep(new THREE.EdgesGeometry(keep(new THREE.IcosahedronGeometry(1.5, 0)))), lineMat("#3f7f9e", 0.28));
+  g808.add(cage, cage2);
+  // Three gimballed orbital rings, each carrying small nodes
+  const orbitDefs = [[1.95, [1.2, 0.2, 0]], [2.18, [-0.9, 0.7, 0.3]], [2.42, [0.25, -1.15, 0.6]]];
+  const orbits = orbitDefs.map(([r, rot], i) => {
+    const pivot = new THREE.Group(); pivot.rotation.set(...rot);
+    const ring = new THREE.LineSegments(segGeo(circlePts(r, 200)), lineMat(i === 1 ? "#9fe0ee" : "#5fb8d0", 0.55 - i * 0.1));
+    const nodeMat = keep(new THREE.MeshBasicMaterial({ color: "#d9f3f8", transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const spin = new THREE.Group();
+    for (let k = 0; k < 3; k++) { const n = new THREE.Mesh(keep(new THREE.BoxGeometry(0.07, 0.07, 0.07)), nodeMat); const a = (k / 3) * Math.PI * 2 + i; n.position.set(Math.cos(a) * r, Math.sin(a) * r, 0); spin.add(n); }
+    pivot.add(ring, spin); g808.add(pivot);
+    return { pivot, ring, spin, rest: rot, speed: (i % 2 ? -1 : 1) * (0.35 + i * 0.12), nodeMat };
+  });
+  // Degree bezel: 360 ticks, major every 10°, long every 30°; rotates slowly against the rings
+  const bz = []; for (let i = 0; i < 360; i += 2) { const a = (i / 360) * Math.PI * 2, r0 = 2.86, r1 = r0 + (i % 30 === 0 ? 0.16 : i % 10 === 0 ? 0.09 : 0.04); bz.push(Math.cos(a) * r0, Math.sin(a) * r0, 0, Math.cos(a) * r1, Math.sin(a) * r1, 0); }
+  const bezelMat = lineMat("#8fb3c8", 0.42);
+  const bezelGeo = segGeo(bz);
+  const bezel = new THREE.LineSegments(bezelGeo, bezelMat);
+  const bezelRing = new THREE.LineSegments(segGeo(circlePts(2.84, 240)), lineMat("#4f7f9a", 0.35));
+  g808.add(bezel, bezelRing);
+  // Segmented data arcs: 12 segments that light in sequence (activity), at r 2.62
+  const arcSegs = Array.from({ length: 12 }, (_, i) => {
+    const p = [], a0 = (i / 12) * Math.PI * 2 + 0.04, a1 = a0 + (Math.PI * 2 / 12) * 0.78;
+    for (let k = 0; k < 14; k++) { const a = a0 + (a1 - a0) * (k / 14), b = a0 + (a1 - a0) * ((k + 1) / 14); p.push(Math.cos(a) * 2.62, Math.sin(a) * 2.62, 0, Math.cos(b) * 2.62, Math.sin(b) * 2.62, 0, Math.cos(a) * 2.68, Math.sin(a) * 2.68, 0, Math.cos(b) * 2.68, Math.sin(b) * 2.68, 0); }
+    const m = lineMat("#6fd0e4", 0.3); const s = new THREE.LineSegments(segGeo(p), m); g808.add(s); return { s, m };
+  });
+  // Targeting brackets: four corner marks that close in, then hold
+  const brMat = lineMat("#cfe9f2", 0.7);
+  const brackets = [0, 1, 2, 3].map((i) => {
+    const s = 0.34, R = 3.25, ang = Math.PI / 4 + i * Math.PI / 2, cx = Math.cos(ang) * R, cy = Math.sin(ang) * R;
+    const sx = Math.sign(cx), sy = Math.sign(cy);
+    const m = new THREE.LineSegments(segGeo([cx, cy, 0, cx - sx * s, cy, 0, cx, cy, 0, cx, cy - sy * s, 0]), brMat);
+    g808.add(m); return m;
+  });
+  // Radar beam: a thin sector sweeping the plane
+  const beamMat = keep(new THREE.MeshBasicMaterial({ color: "#7fe0c0", transparent: true, opacity: 0.14, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+  const beam = new THREE.Mesh(keep(new THREE.RingGeometry(1.55, 2.82, 48, 1, 0, 0.42)), beamMat);
+  g808.add(beam);
+  // Status indicators: eight small markers outside the bezel that follow the core's state
+  const indMat = keep(new THREE.MeshBasicMaterial({ color: "#7fd6e8", transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }));
+  const indicators = Array.from({ length: 8 }, (_, i) => { const a = (i / 8) * Math.PI * 2 + Math.PI / 8; const m = new THREE.Mesh(keep(new THREE.PlaneGeometry(0.1, 0.04)), indMat); m.position.set(Math.cos(a) * 3.12, Math.sin(a) * 3.12, 0); m.rotation.z = a; g808.add(m); return m; });
+  const classic = [shell, ringA, ringBPivot, dashes, ticks];
+  let design = "classic";
+  // Assembly: p goes 0 → 1; each element has its own window in the sequence (see assemble()).
+  let asm = 1, asmFrom = 0, asmDur = 0, asmResolve = null;
+  const win = (a, b) => Math.max(0, Math.min(1, (asm - a) / (b - a)));
+  const ease = (x) => 1 - Math.pow(1 - x, 3);
+  // Core 808 colours by state: steel cyan at rest, military green while scanning, amber faults, red alarms.
+  const P808 = { idle: ["#6ec9dc", "#2f5f80"], listening: ["#9fe8f5", "#4fb3c8"], thinking: ["#d6f0f6", "#3f8fae"], speaking: ["#9fe8f5", "#5cc2d6"], researching: ["#8fdcb8", "#3f8f73"], executing: ["#e8f2f6", "#7f9fb4"], error: ["#f0b070", "#9a5a2c"], alarm: ["#ff7a66", "#a8342a"], offline: ["#52687c", "#2d3c4c"] };
+
   // ---------------- Post-processing (bloom) for the high tier
   let composer = null, bloom = null;
   async function setupBloom() {
@@ -209,7 +269,7 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
   const cur = { c1: new THREE.Color(STATES.idle[0]), c2: new THREE.Color(STATES.idle[1]), intensity: 0.85, spin: 0.25, agit: 0, pspeed: 0.35, scan: 0, sats: 0, spec: 0.25 };
   const tgt = { c1: new THREE.Color(), c2: new THREE.Color() };
   let drawnOnce = false;
-  let gone = false, palette = null, boost = 1, boostTarget = 1;
+  let gone = false, palette = null, boost = 1, boostTarget = 1, asmWaved = false;
   let state = core.state, level = 0, prevLevel = 0, t = 0, lastFrame = performance.now(), raf = 0, slow = 0, frames = 0;
   const offState = core.on((s, _d, same) => {
     touch();
@@ -225,7 +285,7 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
     lastFrame = now;
     t += dt;
     const S = STATES[state] || STATES.idle;
-    const P = palette?.[state];
+    const P = design === "808" ? (P808[state] || P808.idle) : palette?.[state];
     boost += (boostTarget - boost) * Math.min(1, dt * 4);
     tgt.c1.set(P ? P[0] : S[0]); tgt.c2.set(P ? P[1] : S[1]);
     const k = 1 - Math.pow(0.0015, dt);              // frame-rate independent easing
@@ -302,6 +362,67 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
       w.m.material.color.copy(cur.c1);
     }
 
+    // ---------------- Core 808 motion (and its assembly)
+    if (design === "808") {
+      if (asmDur) { asm = Math.min(1, (now - asmFrom) / asmDur); if (asm >= 1) { asmDur = 0; asmResolve?.(); asmResolve = null; } }
+      const busy = cur.scan, lv = level;
+      // Nucleus first: a point of light that flares as it forms
+      const wN = ease(win(0, 0.12));
+      nucleus.scale.multiplyScalar(wN * (1 + (1 - win(0.06, 0.2)) * 1.6));
+      // The energy core itself emerges near the end
+      const wCore = ease(win(0.68, 0.94));
+      coreMesh.scale.multiplyScalar(0.82 * Math.max(0.001, wCore));
+      uni.uIntensity.value *= 0.25 + 0.75 * wCore + (asm < 1 ? (1 - Math.abs(asm - 0.9) * 8) * 0.6 * (asm > 0.82 ? 1 : 0) : 0);
+      // Cage
+      const wCage = ease(win(0.08, 0.34));
+      cage.scale.setScalar(Math.max(0.001, wCage)); cage2.scale.setScalar(Math.max(0.001, ease(win(0.14, 0.4))));
+      cage.rotation.y += dt * (0.15 + cur.spin * 0.25 + (1 - wCage) * 6); cage.rotation.x += dt * 0.07;
+      cage2.rotation.y -= dt * (0.08 + cur.spin * 0.12); cage2.rotation.z += dt * 0.04;
+      cageMat.color.copy(cur.c1); cageMat.opacity = (0.3 + cur.intensity * 0.25 + lv * 0.2) * wCage;
+      cage2.material.color.copy(cur.c2); cage2.material.opacity = 0.22 * ease(win(0.14, 0.4));
+      // Orbital rings twist into their gimbal positions, then keep turning; nodes run along them
+      orbits.forEach((o, i) => {
+        const w = ease(win(0.2 + i * 0.08, 0.5 + i * 0.08)), twist = 1 - w;
+        o.ring.scale.setScalar(Math.max(0.001, 0.35 + 0.65 * w)); o.spin.scale.copy(o.ring.scale);
+        o.pivot.rotation.x = o.rest[0] + twist * (2.2 - i * 0.5); o.pivot.rotation.y = o.rest[1] + twist * (1.6 + i * 0.4);
+        o.pivot.rotation.z += dt * o.speed * (0.25 + cur.spin * 0.6);
+        o.spin.rotation.z += dt * o.speed * (0.6 + cur.spin * 1.4 + lv * 2);
+        o.ring.material.color.copy(i === 1 ? cur.c1 : cur.c2).lerp(cur.c1, 0.4); o.ring.material.opacity = (0.32 + cur.intensity * 0.22 - i * 0.05 + (state === "listening" ? lv * 0.5 : 0)) * w;
+        o.nodeMat.opacity = 0.85 * w; o.nodeMat.color.copy(cur.c1).lerp(WHITE, 0.5);
+      });
+      // Bezel draws itself round, then rotates slowly
+      const wBz = win(0.4, 0.64);
+      bezelGeo.setDrawRange(0, Math.floor(bezelGeo.attributes.position.count * wBz / 2) * 2);
+      bezel.rotation.z -= dt * 0.03 * (0.5 + cur.spin); bezelRing.rotation.z = bezel.rotation.z;
+      bezelMat.color.copy(cur.c2).lerp(WHITE, 0.35); bezelMat.opacity = (0.22 + cur.intensity * 0.2) * Math.min(1, wBz * 2);
+      bezelRing.material.opacity = 0.3 * wBz;
+      // Data arcs light in sequence: faster while thinking/researching, all lit while speaking at volume
+      const rate = state === "thinking" || state === "researching" ? 9 : state === "executing" ? 6 : state === "listening" ? 4 : 1.2;
+      const lead = (t * rate) % 12;
+      arcSegs.forEach((a, i) => {
+        const on = win(0.52 + i * 0.012, 0.6 + i * 0.012);
+        const d = (lead - i + 12) % 12, glow = Math.max(0, 1 - d / 4);
+        a.m.color.copy(cur.c1); a.m.opacity = on * (0.14 + glow * (0.35 + busy * 0.3) + (state === "speaking" ? lv * 0.5 : 0));
+        a.s.rotation.z = bezel.rotation.z * -0.5;
+      });
+      // Targeting brackets close in, then breathe with the audio level
+      const wBr = ease(win(0.6, 0.78));
+      brackets.forEach((b) => b.scale.setScalar(1.7 - 0.7 * wBr + lv * 0.06));
+      brMat.opacity = 0.55 * wBr + (state === "listening" ? 0.25 : 0); brMat.color.copy(cur.c1).lerp(WHITE, 0.5);
+      // Radar beam sweeps (faster when scanning); hidden when offline
+      beam.visible = asm > 0.72 && state !== "offline";
+      beam.rotation.z -= dt * (0.7 + busy * 2.4 + (state === "listening" ? 0.8 : 0));
+      beamMat.opacity = (0.05 + busy * 0.12 + (state === "listening" ? 0.06 : 0)) * win(0.72, 0.85);
+      beamMat.color.copy(state === "researching" || state === "thinking" ? cur.c1 : cur.c2).lerp(WHITE, 0.15);
+      // Indicators
+      const wInd = win(0.78, 0.92);
+      indMat.color.copy(cur.c1); indMat.opacity = wInd * (state === "offline" ? 0.2 : 0.45 + 0.35 * Math.max(0, Math.sin(t * (state === "listening" ? 6 : 1.5))));
+      // Particles and spectrum fade in last
+      pUni.uIntensity.value *= win(0.8, 1);
+      barMat.opacity *= win(0.84, 1);
+      if (asm < 1 && asm > 0.86 && !asmWaved) { asmWaved = true; emitWave(1.6); }
+    }
+
     // Dimensional parallax: the core leans gently towards the pointer.
     root.rotation.y += ((ptrX * 0.22) - root.rotation.y) * 0.04;
     root.rotation.x += ((ptrY * 0.14) - root.rotation.x) * 0.04;
@@ -340,7 +461,7 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
   const tc = performance.now();
   try { if (renderer.compileAsync) await Promise.race([renderer.compileAsync(scene, camera), new Promise((r) => setTimeout(r, 4000))]); } catch {}
   timings.compileMs = Math.round(performance.now() - tc);
-  if (gone) return { kind: "3d", tier, firstFrame, pulse() {}, setPalette() {}, setBoost() {}, destroy() {} };
+  if (gone) return { kind: "3d", tier, firstFrame, pulse() {}, setPalette() {}, setBoost() {}, setDesign() {}, assemble: async () => {}, get design() { return "classic"; }, destroy() {} };
   if (still) { draw(performance.now()); drawnOnce = true; firstFrameResolve({ ms: Math.round(performance.now() - mountAt), tier }); } else raf = requestAnimationFrame(loop);
 
   return {
@@ -351,6 +472,23 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
     pulse: (strength = 1.2) => emitWave(strength),
     /** "mission" (violet) or null (normal colours); colours blend over about a second. */
     setPalette(name) { palette = PALETTES[name] || null; if (still) draw(performance.now()); },
+    /** "808" (Mission Control's Core 808) or "classic" (the Command Centre core). Same instance, same canvas. */
+    setDesign(name) {
+      design = name === "808" ? "808" : "classic";
+      g808.visible = design === "808";
+      classic.forEach((o) => { o.visible = design !== "808"; });
+      if (design !== "808") { asm = 1; asmDur = 0; asmResolve?.(); asmResolve = null; coreMesh.scale.setScalar(1); }
+      if (still) draw(performance.now());
+    },
+    get design() { return design; },
+    /** Build Core 808 piece by piece over `ms` (energy point → cage → rings → bezel → brackets → beam → core). */
+    assemble(ms = 2400) {
+      if (design !== "808") this.setDesign("808");
+      asmResolve?.();
+      asmWaved = false; asm = 0; asmFrom = performance.now(); asmDur = Math.max(1, ms);
+      if (still || reduced) { asm = 1; asmDur = 0; draw(performance.now()); return Promise.resolve(); }
+      return new Promise((r) => { asmResolve = r; setTimeout(() => { if (asmResolve === r) { asm = 1; asmDur = 0; asmResolve = null; r(); } }, ms + 1500); });
+    },
     /** Temporary brightness, e.g. 1.6 while Mission Control powers up; eases back when set to 1. */
     setBoost(b) { boostTarget = Math.max(0.3, Math.min(2.5, b)); },
     destroy() {

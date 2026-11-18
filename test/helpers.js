@@ -8,6 +8,9 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Start the real backend against the mocks, in a fresh data directory. */
 export async function startServer(mock, extraEnv = {}, port = 3900 + Math.floor(Math.random() * 90)) {
+  // A server left running on this port by an interrupted run would answer instead of the new one (with its own,
+  // already set-up data), so refuse to start rather than test the wrong server.
+  try { await fetch(`http://127.0.0.1:${port}/api/health/ping`, { signal: AbortSignal.timeout(1500) }); throw new Error(`port ${port} is already in use by another server (a JARVIS left over from an interrupted test run?)`); } catch (e) { if (/already in use/.test(e.message)) throw e; }
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-test-"));
   const proc = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", path.join(ROOT, "server/index.js")], {
     cwd: ROOT,
