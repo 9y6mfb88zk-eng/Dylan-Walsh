@@ -211,6 +211,76 @@ Full description: `docs/mission-control.md`. Rollback point: commit `6be51e2` (l
 | Sounds | Original synthesised sequence sounds and a navigation tick, through the interface sound settings |
 | Live detail | New intelligence reports highlighted; cell values live; radar sweep and scan line (pause when idle, off with reduced motion or effects) |
 
+### Problems found and fixed while testing 6.9
+
+- **Left column cut off at 1366×768:** the core panel kept an older 470px minimum height, which hid the mission log and
+  most of system readiness. The panel now sizes to its content, and the core is smaller on screens under 820px high.
+- **Status-cell titles truncated on 1280–1440px screens:** shorter titles ("Sat · imagery", "Event activity"); the full
+  name is the tooltip and the accessible label.
+- **Activation banner covered the command bar:** it now appears over the bottom of the map, in the command-centre style.
+- **Command bar local time squeezed into a narrow column at 1280px:** hidden at that width (the time is in the top bar
+  directly above).
+- **Reduced motion:** colour transitions in Mission Control and its navigation are now instant too.
+- **Core canvas resizing:**
+  - the renderer is now sized from the layout size, not the transformed size the move animations produce;
+  - parking the core (0 size) no longer reallocates it at 1×1 and then back at full size;
+  - several layout changes in one frame cause one reallocation.
+- **Map library:** loaded and parsed while the Command Centre is idle, not during the first activation.
+- **Test harness:** a test server left running by an interrupted run answered on the suite's port with its own,
+  already set-up data. Starting a server now fails loudly when the port is taken.
+
+### Found, not changed in 6.9
+
+- **Core bloom has never been active.** Since 4.0 the bloom set-up ran before the core's sizing state existed. The error
+  was caught ("bloom unavailable"), so every release's core has looked the way it does without bloom, and the Bloom
+  intensity setting has had no visible effect.
+  - Enabling it as it stands makes the core canvas background opaque (a coloured square behind the core) and washes
+    Core 808 out at panel size.
+  - It is now explicitly off (`BLOOM_READY` in `core3d.js`), with the reason in the code.
+  - Turning it on properly needs an alpha-preserving composer and tuning for both designs.
+
+### Tests
+
+- **Server and unit:** `npm test`, 122 tests, 121 passed and 1 skipped (`test/local-asr.test.js` loads the real Parakeet
+  model and can time out when the machine is busy; it passes on its own). Also a new test for the activation setting:
+  full by default, invalid values rejected, saved alongside the other interface settings.
+- **Desktop:** `cd desktop && npm test`, 13/13.
+- **Conversation:** `test/conversation.test.js`, 14 passed.
+- **UI (`test/ui-check.js`, Playwright):**
+  - the full sequence takes over the screen and Core 808 assembles in the centre;
+  - each real check appears with its actual result;
+  - the confirmation is honest about anything unavailable;
+  - the full sequence lasts 5–8 s (allowing for this machine), and the short one too;
+  - Esc skips;
+  - 10 initialisation results, including the real mapping and satellite checks;
+  - the new layout geometry, the coded and grouped navigation, and a status cell opening and closing;
+  - reduced motion;
+  - every section, and every exit route with one core.
+- **Activation paths (separate probe):**
+  - Off: no overlay, and still Core 808;
+  - section changes never replay the sequence;
+  - exit returns the classic core;
+  - reduced visual effects hide the sweep;
+  - repeated re-opening;
+  - no page errors.
+- **Repeated full activations (6 in a row):** the overlay was removed every time, one core, back home on exit.
+  Intervals (7) and window/document listeners (35) stayed constant.
+- **Layout audit (every Mission Control section; no clipped or unreachable content, no horizontal scrolling):**
+  1280×720, 1366×768, 1536×864 and 1920×1080.
+
+**Timing on this test machine:** it renders WebGL in software. Every resize of the core canvas (three per activation)
+stalls for 1–2 s while queued frames are flushed, so measured activation times here are seconds longer than planned. The
+planned timings are about 7 s for full and 2.5–2.9 s for short. They were not measured on a laptop GPU.
+
+### Not verified
+
+- **Windows 11 laptop:** the sequence, sounds and layout were not seen on the laptop itself (no Windows machine here).
+  On a GPU the canvas resizes should be about a millisecond, but this hasn't been measured.
+- **Sounds:** tested only as code paths (Web Audio is not audible here). Volume, reduced and silent settings use the
+  existing interface sound controls.
+- **Microphone-reactive listening on Core 808:** driven by the same audio level input as the classic core. The state
+  visuals were captured in screenshots; the reaction to a real microphone was not tested (there's no microphone here).
+
 ## JARVIS 6.8: natural conversation, living personality and visual refinement
 
 No new AI provider, no model change and no paid service. Claude, the app and its layout are unchanged; the

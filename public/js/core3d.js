@@ -224,9 +224,18 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
   // Core 808 colours by state: steel cyan at rest, military green while scanning, amber faults, red alarms.
   const P808 = { idle: ["#6ec9dc", "#2f5f80"], listening: ["#9fe8f5", "#4fb3c8"], thinking: ["#d6f0f6", "#3f8fae"], speaking: ["#9fe8f5", "#5cc2d6"], researching: ["#8fdcb8", "#3f8f73"], executing: ["#e8f2f6", "#7f9fb4"], error: ["#f0b070", "#9a5a2c"], alarm: ["#ff7a66", "#a8342a"], offline: ["#52687c", "#2d3c4c"] };
 
+  // Sizing state, declared before the bloom set-up uses it (until 6.9 the set-up's resize hit these before they existed,
+  // the error was caught, and bloom was silently never enabled)
+  let W = 1, H = 1, visible = true, resizeQ = 0, drawable = false;
+  const BLOOM_READY = false;
   // ---------------- Post-processing (bloom) for the high tier
   let composer = null, bloom = null;
   async function setupBloom() {
+    // Bloom is not used. Until 6.9 this set-up always failed (it ran before the sizing state existed and the error was
+    // caught), so every release's core was designed and tuned without it. Enabled as it stands, the bloom pass makes the
+    // canvas background opaque and washes Core 808 out at panel size; it needs an alpha-preserving composer and its
+    // own tuning before it can be turned on. Kept off deliberately rather than by accident.
+    if (!BLOOM_READY) return;
     if (tier === "low" || composer || bloomLevel === 0) return;
     try {
       const [{ EffectComposer }, { RenderPass }, { UnrealBloomPass }, { OutputPass }] = await Promise.all([
@@ -237,17 +246,23 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
       bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 1.05, 0.55, 0.08);
       composer.addPass(bloom);
       composer.addPass(new OutputPass());
-      resize();
+      applySize(true);
     } catch (e) { console.warn("[core] bloom unavailable:", e.message); composer = null; }
   }
   await setupBloom();
   timings.sceneMs = Math.round(performance.now() - T0);
 
   // ---------------- Sizing / visibility
-  let W = 1, H = 1, visible = true;
-  function resize() {
-    const r = canvas.getBoundingClientRect();
-    W = Math.max(1, r.width); H = Math.max(1, r.height);
+  // The canvas moves between hosts (Command Centre, activation sequence, Mission Control panel) and is parked, hidden,
+  // in between. Reallocating the renderer and bloom targets is the costly part, so: the layout size (not the
+  // transformed size the move animations produce), no change while parked at zero size, unchanged sizes skipped, and
+  // at most one reallocation per frame however many layout changes there were.
+  function resize() { if (!resizeQ) resizeQ = requestAnimationFrame(applySize); }
+  function applySize(force = false) {
+    if (resizeQ) { cancelAnimationFrame(resizeQ); resizeQ = 0; }
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (!w || !h || (!force && w === W && h === H)) return;
+    W = w; H = h;
     const pr = Math.min(devicePixelRatio || 1, tier === "high" ? 1.75 : tier === "medium" ? 1.25 : 1);
     renderer.setPixelRatio(pr);
     renderer.setSize(W, H, false);
@@ -256,9 +271,10 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
     camera.updateProjectionMatrix();
     pUni.uPixel.value = pr * Math.min(W, H) / 520;
     if (composer) { composer.setPixelRatio(pr); composer.setSize(W, H); bloom?.resolution.set(W * pr / 2, H * pr / 2); }
-    if (still) draw(performance.now());
+    if (still && drawable) draw(performance.now());
   }
   const ro = new ResizeObserver(resize); ro.observe(canvas);
+  applySize();                                                         // the first size, synchronously
   const io = new IntersectionObserver((e) => { visible = e[0]?.isIntersecting ?? true; }); io.observe(canvas);
   let ptrX = 0, ptrY = 0;
   const onPointer = (e) => { ptrX = (e.clientX / innerWidth - 0.5) * 2; ptrY = (e.clientY / innerHeight - 0.5) * 2; };
@@ -453,10 +469,11 @@ export async function mountCore3D(canvas, { quality = "auto", animation = "full"
     if (!drawnOnce) { drawnOnce = true; timings.firstDrawMs = Math.round(performance.now() - now); timings.totalMs = Math.round(performance.now() - T0); stats.timings = timings; firstFrameResolve({ ms: Math.round(performance.now() - mountAt), tier, timings }); }
     if (quality === "auto" && tier === "high" && !minGap) {
       frames++; if (ft > 34) slow++;
-      if (frames >= 180 || (frames >= 20 && now - (evalAt ||= now) > 6000)) { evalAt = 0; if (slow / frames > 0.5) { tier = "low"; composer = null; bloom = null; resize(); console.info("[core] switched to the light quality tier"); } frames = 0; slow = 0; }
+      if (frames >= 180 || (frames >= 20 && now - (evalAt ||= now) > 6000)) { evalAt = 0; if (slow / frames > 0.5) { tier = "low"; composer = null; bloom = null; applySize(true); console.info("[core] switched to the light quality tier"); } frames = 0; slow = 0; }
     }
   }
-  resize();
+  drawable = true;
+  applySize(true);
   stats.alive++;
   const tc = performance.now();
   try { if (renderer.compileAsync) await Promise.race([renderer.compileAsync(scene, camera), new Promise((r) => setTimeout(r, 4000))]); } catch {}

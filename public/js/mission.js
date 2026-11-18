@@ -14,7 +14,7 @@ import { ensureCore, attachCore, parkCore, coreCanvas as hostCanvas, coreCtl as 
 import { sounds } from "./sounds.js";
 import { $, $$, esc, icon } from "./util.js";
 import { PANELS, RENDER, SERIES_MAX } from "./mc-panels.js";
-import { mountGoc } from "./goc.js";
+import { mountGoc, preloadMap } from "./goc.js";
 import { createSequence } from "./mc-boot.js";
 
 // The first six are the Global Operations navigation; the rest are the earlier Mission Control views, kept as they were.
@@ -112,6 +112,9 @@ const coreCtl = () => hostCtl() || coreCanvas?.__core || null;
 const panelEl = (id) => root?.querySelector(`[data-panel="${id}"]`);
 const visibleIds = () => (root ? $$("[data-panel]", root).filter((p) => !p.hidden).map((p) => p.dataset.panel) : []);
 const sectionLabel = (id) => MC_SECTIONS.find((s) => s[0] === id)?.[1] || "";
+
+// The map library is parsed once while the Command Centre is idle, not during the first activation sequence
+if (typeof window !== "undefined") setTimeout(() => (window.requestIdleCallback || ((f) => f()))(() => preloadMap(), { timeout: 8000 }), 2500);
 
 export const mission = {
   get open() { return phase !== "off"; },
@@ -339,7 +342,7 @@ async function activateSequence(mode) {
     $$(".goc-bottom > *", g).forEach((b, i) => enters.push(anim(b, ENTER.rise, { duration: 420 * D0, delay: (460 + i * 60) * D0 })));
   }
   const rev = seq.reveal();
-  await settle(enters, mode === "full" ? 1500 : 900);
+  await settle(enters, mode === "full" ? 1500 : 700);
   await rev;
   seq.destroy();
   clearAnims([coreCanvas, ...(goc ? $$(".goc-strip, .goc-centre, .goc-left > *, .goc-right, .goc-bottom > *", goc.root) : [])]);

@@ -277,6 +277,8 @@ html.idle .goc-sweep, html.idle .goc-scanline { animation-play-state: paused; }
 }
 @media (prefers-reduced-motion: reduce) {
   .mcb *, .mcb-scan, .goc-sweep, .goc-scanline, .goc-ev.fresh, .mcb-bar > i { animation: none !important; transition: none !important; }
+  /* Nothing in Mission Control eases into place with reduced motion, colour fades included: states change instantly */
+  #mcView *, #mcNav * { transition: none !important; }
 }
 html.reduce-motion .goc-sweep, html.reduce-motion .goc-scanline { animation: none; display: none; }
 html.mc-reduced-fx .goc-sweep, html.mc-reduced-fx .goc-scanline { display: none; }

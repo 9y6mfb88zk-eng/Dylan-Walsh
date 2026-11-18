@@ -27,7 +27,7 @@ const MIL = {   // the check rows, in military register (the underlying checks a
 const STATE_TAG = { ok: "ONLINE", warn: "DEGRADED", bad: "UNAVAILABLE" };
 export const PLAN = {
   full: { darken: 450, ident: 350, title: 250, assemble: 2200, rowGap: 150, minChecks: 1200, maxChecks: 2200, confirm: 800, reveal: 780 },
-  short: { darken: 200, ident: 0, title: 260, assemble: 950, rowGap: 0, minChecks: 300, maxChecks: 700, confirm: 420, reveal: 480 },
+  short: { darken: 150, ident: 0, title: 220, assemble: 800, rowGap: 0, minChecks: 250, maxChecks: 600, confirm: 380, reveal: 420 },
 };
 
 /** A date-time group, e.g. 181942Z NOV 26. */

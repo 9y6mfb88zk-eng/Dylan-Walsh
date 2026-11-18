@@ -58,6 +58,9 @@ async function leaflet() {
   L = await import("/vendor/leaflet/leaflet-src.esm.js");
   return L;
 }
+/** Load and parse the map library ahead of time (while the Command Centre is idle), so the first Mission Control
+ *  activation doesn't spend its opening seconds on it. */
+export const preloadMap = () => leaflet().catch(() => null);
 
 /**
  * Mount Global Operations into `el`. coreHost receives the JARVIS core panel (moved by Mission Control).
